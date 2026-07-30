@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bookdex</string>
+    <string name="title_activity_main">Bookdex</string>
+    <string name="package_name">com.pedroteles.tecnicadex</string>
+    <string name="custom_url_scheme">com.pedroteles.tecnicadex</string>
+</resources>

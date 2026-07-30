@@ -1,0 +1,11 @@
+{
+  "appId": "com.pedroteles.tecnicadex",
+  "appName": "Bookdex",
+  "webDir": "dist",
+  "android": {
+    "backgroundColor": "#e8e6df"
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
