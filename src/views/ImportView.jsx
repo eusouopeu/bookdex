@@ -3,33 +3,51 @@ import { ArrowLeft, FileJson, ClipboardPaste, Download } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { COLORS, primaryButtonStyle } from "../theme";
-import { parsePayload, buildExportPayload } from "../lib/importer";
+import { parsePayload, buildExportPayload, mergeData } from "../lib/importer";
+import { setJSON, KEYS } from "../lib/storage";
 
 export default function ImportView({ onBack, onImport, saved, detailCache }) {
   const [text, setText] = useState("");
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
+  const [pending, setPending] = useState(null); // { payload, stats } aguardando confirmação
   const [backupMsg, setBackupMsg] = useState(null);
   const fileInput = useRef(null);
 
-  function apply(rawText) {
+  function preview(rawText) {
     setError(null);
     setSummary(null);
+    setPending(null);
     try {
       const payload = parsePayload(rawText);
-      const stats = onImport(payload);
-      setSummary(stats);
-      setText("");
+      const { stats } = mergeData(saved, detailCache, payload);
+      setPending({ payload, stats });
     } catch (e) {
       setError(e.message || "Não foi possível ler esses dados.");
     }
+  }
+
+  function confirmImport() {
+    if (!pending) return;
+    const stats = onImport(pending.payload);
+    setSummary(stats);
+    setPending(null);
+    setText("");
+  }
+
+  function cancelImport() {
+    setPending(null);
   }
 
   function onFilePicked(e) {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = () => apply(String(reader.result || ""));
+    reader.onload = () => {
+      const content = String(reader.result || "");
+      setText(content);
+      preview(content);
+    };
     reader.onerror = () => setError("Não foi possível ler o arquivo selecionado.");
     reader.readAsText(file);
     e.target.value = "";
@@ -74,6 +92,7 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
         URL.revokeObjectURL(url);
         setBackupMsg("Download iniciado.");
       }
+      await setJSON(KEYS.lastBackup, Date.now());
     } catch (e) {
       setBackupMsg(`Falha ao salvar o backup: ${e.message || e}`);
     }
@@ -131,8 +150,8 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
       />
 
       <div className="flex gap-2" style={{ marginTop: "10px" }}>
-        <button onClick={() => apply(text)} disabled={!text.trim()} style={{ ...primaryButtonStyle, flex: 1, opacity: text.trim() ? 1 : 0.55 }}>
-          Importar JSON colado
+        <button onClick={() => preview(text)} disabled={!text.trim()} style={{ ...primaryButtonStyle, flex: 1, opacity: text.trim() ? 1 : 0.55 }}>
+          Revisar JSON colado
         </button>
         <button
           onClick={pasteFromClipboard}
@@ -170,6 +189,56 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
         <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "#8a1f1f", marginTop: "12px", lineHeight: 1.4 }}>
           {error}
         </p>
+      )}
+
+      {pending && (
+        <div
+          style={{
+            marginTop: "14px",
+            background: "rgba(255,201,71,0.2)",
+            border: `2px solid ${COLORS.gold}`,
+            borderRadius: "10px",
+            padding: "12px",
+          }}
+        >
+          <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, marginBottom: "6px" }}>
+            Confira antes de importar
+          </h3>
+          <ul
+            style={{
+              fontFamily: "Inter, sans-serif",
+              fontSize: "12px",
+              color: "#3a3a30",
+              lineHeight: 1.6,
+              margin: "0 0 12px",
+              paddingLeft: "18px",
+            }}
+          >
+            <li>{pending.stats.newSubjects} assunto(s) novo(s)</li>
+            <li>{pending.stats.newTechniques} item(ns) será(ão) adicionado(s)</li>
+            <li>{pending.stats.updatedTechniques} item(ns) será(ão) atualizado(s) (versão mais recente vence)</li>
+            <li>{pending.stats.duplicateTechniques} já existe(m) e será(ão) ignorado(s)</li>
+            <li>
+              {pending.stats.newDetails} guia(s) novo(s), {pending.stats.duplicateDetails} já em cache
+            </li>
+          </ul>
+          <div className="flex gap-2">
+            <button onClick={confirmImport} style={{ ...primaryButtonStyle, flex: 1 }}>
+              Confirmar importação
+            </button>
+            <button
+              onClick={cancelImport}
+              style={{
+                ...primaryButtonStyle,
+                background: "transparent",
+                color: COLORS.ink,
+                border: `2px solid ${COLORS.screenBorder}`,
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
       )}
 
       {summary && (

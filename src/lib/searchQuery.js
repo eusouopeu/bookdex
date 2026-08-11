@@ -22,8 +22,19 @@ export function parseSearchQuery(raw) {
   return { mode: "technique", term: trimmed };
 }
 
+export function hasExplicitPrefix(raw) {
+  const trimmed = (raw || "").trim().toLowerCase();
+  return PREFIXES.some(({ prefix }) => trimmed.startsWith(prefix));
+}
+
 export const MODE_LABELS = {
   technique: "Técnicas",
   definition: "Conceito",
   list: "Tipos",
+};
+
+export const PLACEHOLDER_BY_MODE = {
+  technique: "Ex.: respiração, canto, alongamentos para postura",
+  definition: "Ex.: efeito placebo, juros compostos",
+  list: "Ex.: tipos de memória, gêneros musicais",
 };

@@ -120,6 +120,9 @@ export const KEYS = {
   details: "pokedex-details",
   apiKey: "anthropic-api-key",
   proxyUrl: "anthropic-proxy-url",
+  searchHistory: "search-history",
+  lastBackup: "last-backup-at",
+  lastTab: "last-tab",
 };
 
 export default { get, set, delete: remove, list, getJSON, setJSON, KEYS };

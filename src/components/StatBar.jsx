@@ -18,10 +18,11 @@ export default function StatBar({ label, value, color }) {
       >
         {label}
       </span>
-      <div className="flex gap-1">
+      <div className="flex gap-1" role="img" aria-label={`${label}: ${v} de 5`}>
         {[1, 2, 3, 4, 5].map((n) => (
           <div
             key={n}
+            aria-hidden="true"
             style={{
               width: "14px",
               height: "8px",

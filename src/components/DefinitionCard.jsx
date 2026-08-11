@@ -18,7 +18,7 @@ export default function DefinitionCard({ definition, saved, onToggle }) {
     >
       <div className="flex items-start justify-between gap-2 mb-1">
         <div>
-          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "#8a8a7a" }}>
+          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "#6b6b5c" }}>
             CONCEITO
           </div>
           <h3

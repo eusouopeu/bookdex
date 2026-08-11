@@ -16,12 +16,23 @@ const inputStyle = {
   outline: "none",
 };
 
+function looksLikeUrl(url) {
+  if (!url) return true;
+  try {
+    const u = new URL(url);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export default function SettingsView({ onBack, onCredentialsChanged }) {
   const [key, setKey] = useState("");
   const [proxy, setProxy] = useState("");
   const [reveal, setReveal] = useState(false);
   const [status, setStatus] = useState(null);
   const [loaded, setLoaded] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -33,17 +44,27 @@ export default function SettingsView({ onBack, onCredentialsChanged }) {
 
   async function save() {
     const trimmed = key.trim();
+    const trimmedProxy = proxy.trim();
     if (trimmed && !looksLikeApiKey(trimmed)) {
       setStatus({ ok: false, msg: 'A chave deve começar com "sk-ant-". Confira se colou o valor completo.' });
       return;
     }
+    if (trimmedProxy && !looksLikeUrl(trimmedProxy)) {
+      setStatus({ ok: false, msg: "A URL do proxy parece inválida. Ela deve começar com http:// ou https://." });
+      return;
+    }
     await setApiKey(trimmed);
-    await setProxyUrl(proxy.trim());
+    await setProxyUrl(trimmedProxy);
     setStatus({ ok: true, msg: "Configurações salvas neste dispositivo." });
     onCredentialsChanged();
   }
 
   async function clearKey() {
+    if (!confirmingClear) {
+      setConfirmingClear(true);
+      return;
+    }
+    setConfirmingClear(false);
     setKey("");
     await setApiKey("");
     setStatus({ ok: true, msg: "Chave removida deste dispositivo." });
@@ -162,13 +183,29 @@ export default function SettingsView({ onBack, onCredentialsChanged }) {
           onClick={clearKey}
           style={{
             ...primaryButtonStyle,
-            background: "transparent",
-            color: COLORS.ink,
-            border: `2px solid ${COLORS.screenBorder}`,
+            background: confirmingClear ? "#8a1f1f" : "transparent",
+            color: confirmingClear ? COLORS.white : COLORS.ink,
+            border: `2px solid ${confirmingClear ? "#8a1f1f" : COLORS.screenBorder}`,
           }}
         >
-          Apagar chave
+          {confirmingClear ? "Confirmar remoção?" : "Apagar chave"}
         </button>
+        {confirmingClear && (
+          <button
+            onClick={() => setConfirmingClear(false)}
+            aria-label="Cancelar remoção da chave"
+            style={{
+              ...primaryButtonStyle,
+              background: "transparent",
+              color: COLORS.ink,
+              border: `2px solid ${COLORS.screenBorder}`,
+              padding: "0 14px",
+              flexShrink: 0,
+            }}
+          >
+            Cancelar
+          </button>
+        )}
       </div>
 
       {status && (

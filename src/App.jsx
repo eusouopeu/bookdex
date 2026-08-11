@@ -1,10 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Settings as SettingsIcon, Upload } from "lucide-react";
+import { Settings as SettingsIcon, Upload, WifiOff } from "lucide-react";
 import { COLORS, slug, tabStyle, iconButtonStyle } from "./theme";
 import { getJSON, setJSON, KEYS } from "./lib/storage";
 import { fetchTechniques, fetchDefinition, fetchList, hasCredentials, MissingApiKeyError } from "./lib/anthropic";
-import { parseSearchQuery } from "./lib/searchQuery";
+import { parseSearchQuery, hasExplicitPrefix, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
 import { mergeData } from "./lib/importer";
+
+const SEARCH_MODES = [
+  { mode: "technique", label: "Técnicas" },
+  { mode: "definition", label: "Conceito" },
+  { mode: "list", label: "Tipos" },
+];
+const MAX_HISTORY = 8;
 import SearchView from "./views/SearchView";
 import DexView from "./views/DexView";
 import DetailPage from "./views/DetailPage";
@@ -17,31 +24,66 @@ export default function App() {
   const [detailTarget, setDetailTarget] = useState(null);
 
   const [query, setQuery] = useState("");
+  const [searchMode, setSearchMode] = useState("technique");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [needsKey, setNeedsKey] = useState(false);
   const [result, setResult] = useState(null);
   const [scanCount, setScanCount] = useState(0);
+  const [history, setHistory] = useState([]);
 
   const [saved, setSaved] = useState({});
   const [detailCache, setDetailCache] = useState({});
   const [toast, setToast] = useState(null);
   const [storageLoaded, setStorageLoaded] = useState(false);
   const [hasKey, setHasKey] = useState(true);
+  const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" || navigator.onLine);
 
   useEffect(() => {
     (async () => {
       setSaved(await getJSON(KEYS.saved, {}));
       setDetailCache(await getJSON(KEYS.details, {}));
+      setHistory(await getJSON(KEYS.searchHistory, []));
+      const savedTab = await getJSON(KEYS.lastTab, "search");
+      if (savedTab === "search" || savedTab === "dex") {
+        setLastTab(savedTab);
+        setView(savedTab);
+      }
       setStorageLoaded(true);
       setHasKey(await hasCredentials());
     })();
   }, []);
 
-  const showToast = useCallback((msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 2200);
+  useEffect(() => {
+    function goOnline() {
+      setIsOnline(true);
+    }
+    function goOffline() {
+      setIsOnline(false);
+    }
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
   }, []);
+
+  const showToast = useCallback((msg, onUndo) => {
+    setToast({ msg, onUndo });
+    setTimeout(() => setToast((t) => (t && t.msg === msg ? null : t)), onUndo ? 4000 : 2200);
+  }, []);
+
+  function addToHistory(mode, term) {
+    setHistory((prev) => {
+      const next = [
+        { mode, term },
+        ...prev.filter((h) => !(h.mode === mode && h.term.toLowerCase() === term.toLowerCase())),
+      ].slice(0, MAX_HISTORY);
+      setJSON(KEYS.searchHistory, next).catch(() => {});
+      return next;
+    });
+  }
 
   async function persistSaved(newSaved) {
     try {
@@ -69,6 +111,7 @@ export default function App() {
   }
 
   function toggleTechniqueSave(subjectDisplay, technique, statLabels) {
+    const prevSaved = saved;
     const subjectKey = slug(subjectDisplay);
     const techId = technique.id || slug(technique.name);
     const newSaved = { ...saved };
@@ -78,9 +121,10 @@ export default function App() {
       : { displayName: subjectDisplay, kind: "technique", techniques: [] };
 
     const idx = group.techniques.findIndex((t) => t.id === techId);
+    let removed = false;
     if (idx >= 0) {
       group.techniques.splice(idx, 1);
-      showToast(`${technique.name} solto(a) da Pokédex.`);
+      removed = true;
     } else {
       group.techniques.push({
         id: techId,
@@ -92,7 +136,6 @@ export default function App() {
         statLabels: statLabels,
         savedAt: Date.now(),
       });
-      showToast(`${technique.name} capturado(a)!`);
     }
 
     if (group.techniques.length === 0) {
@@ -103,9 +146,19 @@ export default function App() {
 
     setSaved(newSaved);
     persistSaved(newSaved);
+
+    if (removed) {
+      showToast(`${technique.name} solto(a) da Pokédex.`, () => {
+        setSaved(prevSaved);
+        persistSaved(prevSaved);
+      });
+    } else {
+      showToast(`${technique.name} capturado(a)!`);
+    }
   }
 
   function toggleKnowledgeSave(mode, subjectDisplay, payload) {
+    const prevSaved = saved;
     const subjectKey = `kn:${slug(subjectDisplay)}`;
     const newSaved = { ...saved };
     const existing = newSaved[subjectKey];
@@ -144,12 +197,12 @@ export default function App() {
     }
 
     const idx = group.items.findIndex((x) => x.id === itemId);
+    let removed = false;
     if (idx >= 0) {
       group.items.splice(idx, 1);
-      showToast(`${itemName} solto(a) da Pokédex.`);
+      removed = true;
     } else {
       group.items.push(itemObj);
-      showToast(`${itemName} capturado(a)!`);
     }
 
     if (group.items.length === 0) {
@@ -160,6 +213,29 @@ export default function App() {
 
     setSaved(newSaved);
     persistSaved(newSaved);
+
+    if (removed) {
+      showToast(`${itemName} solto(a) da Pokédex.`, () => {
+        setSaved(prevSaved);
+        persistSaved(prevSaved);
+      });
+    } else {
+      showToast(`${itemName} capturado(a)!`);
+    }
+  }
+
+  function removeGroup(key) {
+    const prevSaved = saved;
+    const group = saved[key];
+    if (!group) return;
+    const newSaved = { ...saved };
+    delete newSaved[key];
+    setSaved(newSaved);
+    persistSaved(newSaved);
+    showToast(`"${group.displayName}" removido(a) da Pokédex.`, () => {
+      setSaved(prevSaved);
+      persistSaved(prevSaved);
+    });
   }
 
   function toggleSave(mode, subjectDisplay, payload) {
@@ -170,9 +246,19 @@ export default function App() {
     }
   }
 
-  async function handleSearch() {
-    const { mode, term } = parseSearchQuery(query);
+  async function handleSearch(override) {
+    let mode, term;
+    if (override) {
+      ({ mode, term } = override);
+    } else if (hasExplicitPrefix(query)) {
+      ({ mode, term } = parseSearchQuery(query));
+    } else {
+      mode = searchMode;
+      term = query.trim();
+    }
     if (!term || loading) return;
+    setSearchMode(mode);
+    setQuery(term);
     setLoading(true);
     setError(null);
     setNeedsKey(false);
@@ -183,6 +269,7 @@ export default function App() {
       else data = await fetchTechniques(term);
       setResult({ mode, data });
       setScanCount((c) => c + 1);
+      addToHistory(mode, term);
     } catch (e) {
       console.error(e);
       if (e instanceof MissingApiKeyError) {
@@ -193,6 +280,10 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function runHistoryTerm(mode, term) {
+    handleSearch({ mode, term });
   }
 
   function openDetail(subjectDisplay, technique) {
@@ -221,6 +312,7 @@ export default function App() {
     setDetailTarget(null);
     setLastTab(tab);
     setView(tab);
+    setJSON(KEYS.lastTab, tab).catch(() => {});
   }
 
   function openScreen(screen) {
@@ -315,10 +407,10 @@ export default function App() {
             >
               Bookdex
             </h1>
-            <button onClick={() => openScreen("import")} aria-label="Importar dados" style={iconButtonStyle}>
+            <button onClick={() => openScreen("import")} aria-label="Importar dados" title="Importar dados" style={iconButtonStyle}>
               <Upload size={17} />
             </button>
-            <button onClick={() => openScreen("settings")} aria-label="Configurações" style={iconButtonStyle}>
+            <button onClick={() => openScreen("settings")} aria-label="Configurações" title="Configurações" style={iconButtonStyle}>
               <SettingsIcon size={17} />
             </button>
           </div>
@@ -359,6 +451,24 @@ export default function App() {
             }}
           />
           <div style={{ position: "relative" }}>
+            {!isOnline && (
+              <div
+                className="flex items-center gap-2"
+                style={{
+                  background: "#8a1f1f",
+                  color: COLORS.white,
+                  borderRadius: "8px",
+                  padding: "8px 10px",
+                  marginBottom: "12px",
+                  fontFamily: "Inter, sans-serif",
+                  fontSize: "11.5px",
+                }}
+              >
+                <WifiOff size={15} style={{ flexShrink: 0 }} />
+                <span>Sem conexão com a internet. Buscas e sincronização vão falhar até a conexão voltar.</span>
+              </div>
+            )}
+
             {detailTarget && (
               <DetailPage
                 key={`${slug(detailTarget.subjectDisplay)}:${detailTarget.technique.id || slug(detailTarget.technique.name)}`}
@@ -375,15 +485,18 @@ export default function App() {
             {!detailTarget && view === "search" && (
               <SearchView
                 query={query}
+                searchMode={searchMode}
                 loading={loading}
                 error={error}
                 needsKey={needsKey || (!hasKey && !result)}
                 result={result}
                 scanCount={scanCount}
+                history={history}
                 isSaved={isSaved}
                 onToggleSave={toggleSave}
                 onOpenDetail={openDetail}
-                onRetry={handleSearch}
+                onRetry={() => handleSearch()}
+                onRunHistoryTerm={runHistoryTerm}
                 onGoSettings={() => openScreen("settings")}
               />
             )}
@@ -394,6 +507,8 @@ export default function App() {
                 storageLoaded={storageLoaded}
                 onToggleSave={toggleSave}
                 onOpenDetail={openDetail}
+                onOpenImport={() => openScreen("import")}
+                onRemoveGroup={removeGroup}
               />
             )}
 
@@ -422,21 +537,43 @@ export default function App() {
                 width: "100%",
                 display: "flex",
                 justifyContent: "center",
-                pointerEvents: "none",
+                pointerEvents: toast.onUndo ? "auto" : "none",
               }}
             >
               <div
+                className="flex items-center gap-2"
                 style={{
                   background: COLORS.ink,
                   color: COLORS.white,
-                  padding: "8px 16px",
+                  padding: "8px 8px 8px 16px",
                   borderRadius: "999px",
                   fontSize: "12px",
                   fontFamily: "Inter, sans-serif",
                   boxShadow: "0 4px 10px rgba(0,0,0,0.3)",
                 }}
               >
-                {toast}
+                <span>{toast.msg}</span>
+                {toast.onUndo && (
+                  <button
+                    onClick={() => {
+                      toast.onUndo();
+                      setToast(null);
+                    }}
+                    style={{
+                      background: "rgba(255,255,255,0.15)",
+                      border: "none",
+                      color: COLORS.gold,
+                      fontFamily: '"Baloo 2", sans-serif',
+                      fontWeight: 700,
+                      fontSize: "11.5px",
+                      borderRadius: "999px",
+                      padding: "6px 12px",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Desfazer
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -452,49 +589,75 @@ export default function App() {
           }}
         >
           {showSearchBar ? (
-            <div className="flex gap-2" style={{ width: "100%", minWidth: 0 }}>
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleSearch();
-                }}
-                placeholder="tec: / def: / list: ou um assunto..."
-                enterKeyHint="search"
-                style={{
-                  flex: "1 1 0%",
-                  minWidth: 0,
-                  width: "100%",
-                  borderRadius: "8px",
-                  border: "none",
-                  padding: "12px",
-                  minHeight: "46px",
-                  fontFamily: "Inter, sans-serif",
-                  fontSize: "16px",
-                  outline: "none",
-                }}
-              />
-              <button
-                onClick={handleSearch}
-                disabled={loading || !query.trim()}
-                style={{
-                  background: COLORS.gold,
-                  color: "#4A3300",
-                  fontWeight: 800,
-                  border: "none",
-                  borderRadius: "8px",
-                  padding: "10px 14px",
-                  minHeight: "46px",
-                  fontFamily: '"Baloo 2", sans-serif',
-                  fontSize: "13px",
-                  whiteSpace: "nowrap",
-                  cursor: loading || !query.trim() ? "default" : "pointer",
-                  opacity: loading || !query.trim() ? 0.6 : 1,
-                  flexShrink: 0,
-                }}
-              >
-                {loading ? "..." : "ESCANEAR"}
-              </button>
+            <div style={{ width: "100%", minWidth: 0 }}>
+              <div className="flex gap-1.5" style={{ marginBottom: "8px" }}>
+                {SEARCH_MODES.map(({ mode, label }) => (
+                  <button
+                    key={mode}
+                    onClick={() => setSearchMode(mode)}
+                    style={{
+                      flex: 1,
+                      padding: "6px 8px",
+                      minHeight: "30px",
+                      borderRadius: "999px",
+                      border: "none",
+                      cursor: "pointer",
+                      fontFamily: '"Baloo 2", sans-serif',
+                      fontWeight: 700,
+                      fontSize: "11px",
+                      background: searchMode === mode ? COLORS.gold : "rgba(255,255,255,0.18)",
+                      color: searchMode === mode ? "#4A3300" : COLORS.white,
+                      transition: "background 0.15s ease",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-2">
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSearch();
+                  }}
+                  placeholder={PLACEHOLDER_BY_MODE[searchMode]}
+                  enterKeyHint="search"
+                  style={{
+                    flex: "1 1 0%",
+                    minWidth: 0,
+                    width: "100%",
+                    borderRadius: "8px",
+                    border: "none",
+                    padding: "12px",
+                    minHeight: "46px",
+                    fontFamily: "Inter, sans-serif",
+                    fontSize: "16px",
+                    outline: "none",
+                  }}
+                />
+                <button
+                  onClick={() => handleSearch()}
+                  disabled={loading || !query.trim()}
+                  style={{
+                    background: COLORS.gold,
+                    color: "#4A3300",
+                    fontWeight: 800,
+                    border: "none",
+                    borderRadius: "8px",
+                    padding: "10px 14px",
+                    minHeight: "46px",
+                    fontFamily: '"Baloo 2", sans-serif',
+                    fontSize: "13px",
+                    whiteSpace: "nowrap",
+                    cursor: loading || !query.trim() ? "default" : "pointer",
+                    opacity: loading || !query.trim() ? 0.6 : 1,
+                    flexShrink: 0,
+                  }}
+                >
+                  {loading ? "..." : "ESCANEAR"}
+                </button>
+              </div>
             </div>
           ) : (
             <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", color: "rgba(255,255,255,0.75)", textAlign: "center" }}>

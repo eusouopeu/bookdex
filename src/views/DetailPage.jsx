@@ -1,7 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ArrowLeft, Check, X, RefreshCw, KeyRound } from "lucide-react";
 import { COLORS, getTypeColor, primaryButtonStyle } from "../theme";
 import { fetchDetail, MissingApiKeyError } from "../lib/anthropic";
+import { useProgressiveMessage } from "../lib/hooks";
+
+const SWIPE_EDGE_PX = 28;
+const SWIPE_THRESHOLD_PX = 70;
 
 export default function DetailPage({ subjectDisplay, technique, cacheKey, detailCache, onCached, onBack, onGoSettings }) {
   const cached = detailCache[cacheKey];
@@ -10,6 +14,22 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
   const [error, setError] = useState(null);
   const [needsKey, setNeedsKey] = useState(false);
   const color = getTypeColor(technique.type);
+  const loadingMsg = useProgressiveMessage(loading, ["MONTANDO O GUIA...", "AINDA MONTANDO...", "QUASE PRONTO..."]);
+  const touch = useRef({ active: false, x: 0, y: 0 });
+
+  function onTouchStart(e) {
+    const t = e.touches[0];
+    touch.current = { active: t.clientX < SWIPE_EDGE_PX, x: t.clientX, y: t.clientY };
+  }
+
+  function onTouchEnd(e) {
+    if (!touch.current.active) return;
+    touch.current.active = false;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touch.current.x;
+    const dy = Math.abs(t.clientY - touch.current.y);
+    if (dx > SWIPE_THRESHOLD_PX && dy < 60) onBack();
+  }
 
   async function load() {
     setLoading(true);
@@ -33,7 +53,7 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
   }, [cacheKey]);
 
   return (
-    <div>
+    <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <button
         onClick={onBack}
         className="flex items-center gap-1.5"
@@ -53,7 +73,7 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
         <ArrowLeft size={16} /> Voltar
       </button>
 
-      <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "#6b7a60" }}>
+      <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "#4a5540" }}>
         {subjectDisplay}
       </div>
       <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "19px", color: COLORS.ink, lineHeight: 1.15 }}>
@@ -90,7 +110,7 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
             }}
           />
           <p style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "12px", color: COLORS.ink, letterSpacing: "0.04em" }}>
-            MONTANDO O GUIA...
+            {loadingMsg}
           </p>
         </div>
       )}
