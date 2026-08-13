@@ -1,14 +1,51 @@
+// Paleta base fixa (chrome do "aparelho": nunca muda com o tema) mais os
+// tokens de conteúdo, que apontam para custom properties CSS trocadas pelo
+// tema claro/escuro (ver THEME_VARS + o <style> injetado em App.jsx).
 export const COLORS = {
   shellRed: "#D6293B",
   shellRedDark: "#A81F2E",
   shellRedDarker: "#7A1620",
   lensBlue: "#2E86DE",
   lensBlueLight: "#6FB8FF",
-  screenBg: "#CFE0C6",
-  screenBorder: "#5C6B52",
-  ink: "#23291F",
   gold: "#FFC947",
   white: "#F5F5F0",
+  screenBg: "var(--screen-bg)",
+  screenBorder: "var(--screen-border)",
+  ink: "var(--ink)",
+  surface: "var(--surface)",
+  text: "var(--text)",
+  textMuted: "var(--text-muted)",
+  textFaint: "var(--text-faint)",
+  danger: "var(--danger)",
+  success: "var(--success)",
+  pageBg: "var(--page-bg)",
+};
+
+export const THEME_VARS = {
+  light: {
+    "--page-bg": "#e8e6df",
+    "--screen-bg": "#CFE0C6",
+    "--screen-border": "#5C6B52",
+    "--ink": "#23291F",
+    "--surface": "#F5F5F0",
+    "--text": "#3a3a30",
+    "--text-muted": "#5c6b52",
+    "--text-faint": "#6b6b5c",
+    "--danger": "#8a1f1f",
+    "--success": "#2E7D32",
+  },
+  dark: {
+    "--page-bg": "#111310",
+    "--screen-bg": "#1b2318",
+    "--screen-border": "#7c8c70",
+    "--ink": "#EDEEE6",
+    "--surface": "#242b20",
+    "--text": "#d9d7ca",
+    "--text-muted": "#a8ab9c",
+    "--text-faint": "#8f9284",
+    "--danger": "#ff6b6b",
+    "--success": "#6bcf70",
+  },
 };
 
 export const TYPE_PALETTE = [

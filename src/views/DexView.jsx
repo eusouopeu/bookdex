@@ -1,5 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
-import { BookOpen, ChevronDown, ChevronRight, Library, Search, X, Download, Trash2, ArrowDownAZ, Clock } from "lucide-react";
+import {
+  BookOpen,
+  ChevronDown,
+  ChevronRight,
+  Library,
+  Search,
+  X,
+  Download,
+  Trash2,
+  ArrowDownAZ,
+  Clock,
+  Scale,
+  Tag,
+  CheckSquare,
+  Check,
+} from "lucide-react";
 import { COLORS, slug } from "../theme";
 import { getJSON, KEYS } from "../lib/storage";
 import TechCard from "../components/TechCard";
@@ -7,6 +22,14 @@ import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
 
 const BACKUP_REMINDER_DAYS = 14;
+const CONFIRM_THRESHOLD = 3; // grupos com mais itens do que isso pedem confirmação antes de apagar
+const MAX_COMPARE = 3;
+
+const EXAMPLE_SEARCHES = [
+  { mode: "technique", term: "técnicas de respiração" },
+  { mode: "definition", term: "efeito placebo" },
+  { mode: "list", term: "tipos de memória" },
+];
 
 function badgeStyle(active) {
   return {
@@ -26,13 +49,35 @@ function badgeStyle(active) {
   };
 }
 
-export default function DexView({ saved, storageLoaded, onToggleSave, onOpenDetail, onOpenImport, onRemoveGroup }) {
+export default function DexView({
+  saved,
+  detailCache,
+  storageLoaded,
+  onToggleSave,
+  onOpenDetail,
+  onOpenImport,
+  onRemoveGroup,
+  onUpdateTags,
+  onSearchRelated,
+  onExampleSearch,
+  onOpenCompare,
+  onBulkRemoveItems,
+  onBulkAddTag,
+}) {
   const [collapsed, setCollapsed] = useState({});
   const [category, setCategory] = useState("technique"); // "technique" | "knowledge"
   const [filterText, setFilterText] = useState("");
+  const [activeTag, setActiveTag] = useState(null);
   const [sortBy, setSortBy] = useState("recent"); // "recent" | "name"
   const [lastBackup, setLastBackup] = useState(undefined); // undefined = ainda não carregado
   const [bannerDismissed, setBannerDismissed] = useState(false);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareSelection, setCompareSelection] = useState([]); // [{subjectKey, id}]
+  const [confirmingRemove, setConfirmingRemove] = useState(null); // key do grupo aguardando 2º clique
+  const [selectMode, setSelectMode] = useState(false);
+  const [bulkSelection, setBulkSelection] = useState([]); // [{subjectKey, itemId}]
+  const [bulkTagDraft, setBulkTagDraft] = useState("");
+  const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -54,23 +99,54 @@ export default function DexView({ saved, storageLoaded, onToggleSave, onOpenDeta
     return kind === "definition" ? item.term : item.name;
   }
 
+  function groupItems(group) {
+    return group.kind === "definition" || group.kind === "list" ? group.items : group.techniques;
+  }
+
+  const allTags = useMemo(() => {
+    const set = new Set();
+    for (const [, group] of category === "technique" ? techniqueEntries : knowledgeEntries) {
+      for (const item of groupItems(group)) {
+        for (const t of item.tags || []) set.add(t);
+      }
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [category, techniqueEntries, knowledgeEntries]);
+
+  function guideText(subjectDisplay, item) {
+    if (!detailCache) return "";
+    const detail = detailCache[`${slug(subjectDisplay)}:${item.id}`];
+    if (!detail) return "";
+    return [
+      detail.overview,
+      detail.tip,
+      ...(detail.steps || []).flatMap((s) => [s.title, s.detail]),
+      ...(detail.rightSigns || []),
+      ...(detail.wrongSigns || []),
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
   function filterEntries(list) {
     const q = slug(filterText.trim());
-    if (!q) return list;
+    const bySubjectAllowsAll = (group) => !q || slug(group.displayName).includes(q);
     return list
       .map(([key, group]) => {
         const isKnowledge = group.kind === "definition" || group.kind === "list";
         const items = isKnowledge ? group.items : group.techniques;
-        if (slug(group.displayName).includes(q)) return [key, group];
-        const matchedItems = items.filter((it) => slug(itemLabel(group.kind, it)).includes(q));
-        if (matchedItems.length === 0) return null;
-        return [key, isKnowledge ? { ...group, items: matchedItems } : { ...group, techniques: matchedItems }];
+        const subjectMatches = bySubjectAllowsAll(group);
+        const finalItems = items.filter((it) => {
+          if (activeTag && !(it.tags || []).includes(activeTag)) return false;
+          if (!q || subjectMatches) return true;
+          if (slug(itemLabel(group.kind, it)).includes(q)) return true;
+          if (!isKnowledge && slug(guideText(group.displayName, it)).includes(q)) return true;
+          return false;
+        });
+        if (finalItems.length === 0) return null;
+        return [key, isKnowledge ? { ...group, items: finalItems } : { ...group, techniques: finalItems }];
       })
       .filter(Boolean);
-  }
-
-  function groupItems(group) {
-    return group.kind === "definition" || group.kind === "list" ? group.items : group.techniques;
   }
 
   function sortEntries(list) {
@@ -89,6 +165,98 @@ export default function DexView({ saved, storageLoaded, onToggleSave, onOpenDeta
 
   function toggleFolder(key) {
     setCollapsed((c) => ({ ...c, [key]: !c[key] }));
+  }
+
+  function wrapSelectable(subjectKey, itemId, cardElement) {
+    if (!selectMode) return cardElement;
+    const isSelected = bulkSelection.some((s) => s.subjectKey === subjectKey && s.itemId === itemId);
+    return (
+      <div key={itemId} style={{ position: "relative", marginBottom: "10px" }} onClick={() => toggleBulkItem(subjectKey, itemId)}>
+        <div
+          aria-hidden="true"
+          style={{
+            position: "absolute",
+            top: "10px",
+            left: "10px",
+            zIndex: 2,
+            width: "20px",
+            height: "20px",
+            borderRadius: "5px",
+            border: `2px solid ${isSelected ? COLORS.lensBlue : COLORS.screenBorder}`,
+            background: isSelected ? COLORS.lensBlue : COLORS.surface,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          {isSelected && <Check size={13} color="#fff" strokeWidth={3} />}
+        </div>
+        <div style={{ pointerEvents: "none", marginBottom: 0 }}>{cardElement}</div>
+      </div>
+    );
+  }
+
+  function requestRemoveGroup(key, count) {
+    if (count <= CONFIRM_THRESHOLD || confirmingRemove === key) {
+      onRemoveGroup(key);
+      setConfirmingRemove(null);
+    } else {
+      setConfirmingRemove(key);
+    }
+  }
+
+  function toggleCompareSelection(subjectKey, subjectDisplay, technique) {
+    const id = technique.id;
+    setCompareSelection((prev) => {
+      const exists = prev.some((p) => p.subjectKey === subjectKey && p.id === id);
+      if (exists) return prev.filter((p) => !(p.subjectKey === subjectKey && p.id === id));
+      if (prev.length >= MAX_COMPARE) return prev;
+      return [...prev, { subjectKey, id, subjectDisplay, technique }];
+    });
+  }
+
+  function exitCompareMode() {
+    setCompareMode(false);
+    setCompareSelection([]);
+  }
+
+  function launchCompare() {
+    if (compareSelection.length < 2) return;
+    onOpenCompare(compareSelection.map(({ subjectDisplay, technique }) => ({ subjectDisplay, technique })));
+    exitCompareMode();
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setBulkSelection([]);
+    setBulkTagDraft("");
+    setConfirmingBulkDelete(false);
+  }
+
+  function toggleBulkItem(subjectKey, itemId) {
+    setBulkSelection((prev) => {
+      const exists = prev.some((p) => p.subjectKey === subjectKey && p.itemId === itemId);
+      if (exists) return prev.filter((p) => !(p.subjectKey === subjectKey && p.itemId === itemId));
+      return [...prev, { subjectKey, itemId }];
+    });
+  }
+
+  function applyBulkTag() {
+    const clean = bulkTagDraft.trim();
+    if (!clean || bulkSelection.length === 0) return;
+    onBulkAddTag(bulkSelection, clean);
+    setBulkTagDraft("");
+    exitSelectMode();
+  }
+
+  function applyBulkDelete() {
+    if (bulkSelection.length === 0) return;
+    if (!confirmingBulkDelete) {
+      setConfirmingBulkDelete(true);
+      return;
+    }
+    onBulkRemoveItems(bulkSelection);
+    exitSelectMode();
   }
 
   const daysSinceBackup = lastBackup ? Math.floor((Date.now() - lastBackup) / 86400000) : null;
@@ -111,6 +279,41 @@ export default function DexView({ saved, storageLoaded, onToggleSave, onOpenDeta
         <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", maxWidth: "230px", marginTop: "4px" }}>
           Busque um assunto (tec: / def: / list:) e capture o que quiser guardar — ou importe o que você já capturou.
         </p>
+        {onExampleSearch && (
+          <div style={{ marginTop: "18px", width: "100%", maxWidth: "280px" }}>
+            <div
+              style={{
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "11px",
+                color: COLORS.ink,
+                marginBottom: "8px",
+              }}
+            >
+              Experimente:
+            </div>
+            <div className="flex" style={{ flexWrap: "wrap", gap: "6px", justifyContent: "center" }}>
+              {EXAMPLE_SEARCHES.map((ex) => (
+                <button
+                  key={ex.mode + ex.term}
+                  onClick={() => onExampleSearch(ex.mode, ex.term)}
+                  style={{
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontSize: "11px",
+                    color: COLORS.ink,
+                    background: COLORS.surface,
+                    border: `1.5px solid ${COLORS.screenBorder}`,
+                    borderRadius: "999px",
+                    padding: "5px 11px",
+                    cursor: "pointer",
+                  }}
+                >
+                  {ex.term}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -162,13 +365,103 @@ export default function DexView({ saved, storageLoaded, onToggleSave, onOpenDeta
       )}
 
       <div className="flex gap-2" style={{ marginBottom: "10px" }}>
-        <button onClick={() => setCategory("technique")} style={badgeStyle(category === "technique")}>
+        <button
+          onClick={() => {
+            setCategory("technique");
+            exitCompareMode();
+            exitSelectMode();
+          }}
+          style={badgeStyle(category === "technique")}
+        >
           Técnicas ({techniqueEntries.reduce((s, [, g]) => s + g.techniques.length, 0)})
         </button>
-        <button onClick={() => setCategory("knowledge")} style={badgeStyle(category === "knowledge")}>
+        <button
+          onClick={() => {
+            setCategory("knowledge");
+            exitCompareMode();
+            exitSelectMode();
+          }}
+          style={badgeStyle(category === "knowledge")}
+        >
           Conceitos &amp; Tipos ({knowledgeEntries.reduce((s, [, g]) => s + g.items.length, 0)})
         </button>
+        {category === "technique" && onOpenCompare && (
+          <button
+            onClick={() => {
+              exitSelectMode();
+              compareMode ? exitCompareMode() : setCompareMode(true);
+            }}
+            aria-label="Comparar técnicas salvas"
+            title="Comparar técnicas salvas"
+            style={{
+              ...badgeStyle(compareMode),
+              flex: "none",
+              width: "38px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+            }}
+          >
+            <Scale size={15} />
+          </button>
+        )}
+        {onBulkRemoveItems && (
+          <button
+            onClick={() => {
+              exitCompareMode();
+              selectMode ? exitSelectMode() : setSelectMode(true);
+            }}
+            aria-label="Selecionar vários itens"
+            title="Selecionar vários itens"
+            style={{
+              ...badgeStyle(selectMode),
+              flex: "none",
+              width: "38px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              padding: 0,
+            }}
+          >
+            <CheckSquare size={15} />
+          </button>
+        )}
       </div>
+
+      {compareMode && (
+        <div
+          style={{
+            background: "rgba(46,134,222,0.1)",
+            border: `2px solid ${COLORS.lensBlue}`,
+            borderRadius: "10px",
+            padding: "8px 10px",
+            marginBottom: "10px",
+            fontFamily: "Inter, sans-serif",
+            fontSize: "11.5px",
+            color: COLORS.ink,
+          }}
+        >
+          Selecione de 2 a {MAX_COMPARE} técnicas para comparar lado a lado ({compareSelection.length}/{MAX_COMPARE}).
+        </div>
+      )}
+
+      {selectMode && (
+        <div
+          style={{
+            background: "rgba(46,134,222,0.1)",
+            border: `2px solid ${COLORS.lensBlue}`,
+            borderRadius: "10px",
+            padding: "8px 10px",
+            marginBottom: "10px",
+            fontFamily: "Inter, sans-serif",
+            fontSize: "11.5px",
+            color: COLORS.ink,
+          }}
+        >
+          Toque nos itens que quiser selecionar ({bulkSelection.length} selecionado(s)).
+        </div>
+      )}
 
       <div className="flex items-center gap-2" style={{ marginBottom: "10px", position: "relative" }}>
         <Search size={14} style={{ position: "absolute", left: "11px", color: COLORS.screenBorder, pointerEvents: "none" }} />
@@ -184,7 +477,7 @@ export default function DexView({ saved, storageLoaded, onToggleSave, onOpenDeta
             minHeight: "38px",
             fontFamily: "Inter, sans-serif",
             fontSize: "12.5px",
-            background: COLORS.white,
+            background: COLORS.surface,
             color: COLORS.ink,
             outline: "none",
           }}
@@ -200,8 +493,32 @@ export default function DexView({ saved, storageLoaded, onToggleSave, onOpenDeta
         )}
       </div>
 
+      {allTags.length > 0 && (
+        <div className="flex items-center" style={{ flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+          <Tag size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+          {allTags.map((tag) => (
+            <button
+              key={tag}
+              onClick={() => setActiveTag((t) => (t === tag ? null : tag))}
+              style={{
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: "10.5px",
+                padding: "3px 9px",
+                borderRadius: "999px",
+                border: `1.5px solid ${COLORS.lensBlue}`,
+                background: activeTag === tag ? COLORS.lensBlue : "transparent",
+                color: activeTag === tag ? COLORS.white : COLORS.lensBlue,
+                cursor: "pointer",
+              }}
+            >
+              {tag}
+            </button>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-center gap-1.5" style={{ marginBottom: "16px" }}>
-        <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "#5c6b52", marginRight: "2px" }}>Ordenar:</span>
+        <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginRight: "2px" }}>Ordenar:</span>
         <button
           onClick={() => setSortBy("recent")}
           className="flex items-center gap-1"
@@ -268,6 +585,7 @@ export default function DexView({ saved, storageLoaded, onToggleSave, onOpenDeta
         const open = !collapsed[key];
         const isKnowledge = group.kind === "definition" || group.kind === "list";
         const count = isKnowledge ? group.items.length : group.techniques.length;
+        const confirming = confirmingRemove === key;
         return (
           <div key={key} style={{ marginBottom: "18px" }}>
             <div
@@ -311,55 +629,245 @@ export default function DexView({ saved, storageLoaded, onToggleSave, onOpenDeta
                   </span>
                 </h3>
               </button>
-              <button
-                onClick={() => onRemoveGroup(key)}
-                aria-label={`Remover assunto "${group.displayName}" inteiro`}
-                style={{
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  color: "#8a1f1f",
-                  padding: "9px 4px",
-                  flexShrink: 0,
-                }}
-              >
-                <Trash2 size={15} />
-              </button>
+              {confirming ? (
+                <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
+                  <span style={{ fontFamily: "Inter, sans-serif", fontSize: "10.5px", color: "var(--danger)", whiteSpace: "nowrap" }}>
+                    Remover {count}?
+                  </span>
+                  <button
+                    onClick={() => requestRemoveGroup(key, count)}
+                    aria-label={`Confirmar remoção de "${group.displayName}"`}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", padding: "9px 4px" }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                  <button
+                    onClick={() => setConfirmingRemove(null)}
+                    aria-label="Cancelar remoção"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, padding: "9px 4px" }}
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => requestRemoveGroup(key, count)}
+                  aria-label={`Remover assunto "${group.displayName}" inteiro`}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--danger)",
+                    padding: "9px 4px",
+                    flexShrink: 0,
+                  }}
+                >
+                  <Trash2 size={15} />
+                </button>
+              )}
             </div>
             {open && !isKnowledge &&
-              group.techniques.map((t, i) => (
-                <TechCard
-                  key={t.id}
-                  index={i}
-                  technique={t}
-                  statLabels={t.statLabels || []}
-                  saved={true}
-                  onToggle={() => onToggleSave("technique", group.displayName, { technique: t, statLabels: t.statLabels })}
-                  onOpenDetail={() => onOpenDetail(group.displayName, t)}
-                />
-              ))}
+              group.techniques.map((t, i) =>
+                wrapSelectable(
+                  key,
+                  t.id,
+                  <TechCard
+                    key={t.id}
+                    index={i}
+                    subjectDisplay={group.displayName}
+                    technique={t}
+                    statLabels={t.statLabels || []}
+                    saved={true}
+                    onToggle={() => onToggleSave("technique", group.displayName, { technique: t, statLabels: t.statLabels })}
+                    onOpenDetail={compareMode ? undefined : () => onOpenDetail(group.displayName, t)}
+                    onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, t.id, group.kind || "technique", tags) : undefined}
+                    selectable={compareMode}
+                    selected={compareSelection.some((c) => c.subjectKey === key && c.id === t.id)}
+                    onSelectToggle={() => toggleCompareSelection(key, group.displayName, t)}
+                  />
+                )
+              )}
             {open && group.kind === "definition" &&
-              group.items.map((d) => (
-                <DefinitionCard
-                  key={d.id}
-                  definition={d}
-                  saved={true}
-                  onToggle={() => onToggleSave("definition", group.displayName, { definition: d })}
-                />
-              ))}
+              group.items.map((d) =>
+                wrapSelectable(
+                  key,
+                  d.id,
+                  <DefinitionCard
+                    key={d.id}
+                    definition={d}
+                    saved={true}
+                    onToggle={() => onToggleSave("definition", group.displayName, { definition: d })}
+                    onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, d.id, "definition", tags) : undefined}
+                    onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
+                  />
+                )
+              )}
             {open && group.kind === "list" &&
-              group.items.map((it, i) => (
-                <ListItemCard
-                  key={it.id}
-                  index={i}
-                  item={it}
-                  saved={true}
-                  onToggle={() => onToggleSave("list", group.displayName, { item: it })}
-                />
-              ))}
+              group.items.map((it, i) =>
+                wrapSelectable(
+                  key,
+                  it.id,
+                  <ListItemCard
+                    key={it.id}
+                    index={i}
+                    subjectDisplay={group.displayName}
+                    item={it}
+                    saved={true}
+                    onToggle={() => onToggleSave("list", group.displayName, { item: it })}
+                    onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, it.id, "list", tags) : undefined}
+                  />
+                )
+              )}
           </div>
         );
       })}
+
+      {compareMode && (
+        <div
+          style={{
+            position: "sticky",
+            bottom: "4px",
+            display: "flex",
+            justifyContent: "center",
+            marginTop: "14px",
+          }}
+        >
+          <div className="flex gap-2">
+            <button
+              onClick={launchCompare}
+              disabled={compareSelection.length < 2}
+              style={{
+                background: COLORS.lensBlue,
+                color: "#fff",
+                border: "none",
+                borderRadius: "999px",
+                padding: "10px 18px",
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "12.5px",
+                cursor: compareSelection.length < 2 ? "default" : "pointer",
+                opacity: compareSelection.length < 2 ? 0.5 : 1,
+                boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
+              }}
+            >
+              Comparar ({compareSelection.length})
+            </button>
+            <button
+              onClick={exitCompareMode}
+              style={{
+                background: "#23291F",
+                color: "#fff",
+                border: "none",
+                borderRadius: "999px",
+                padding: "10px 16px",
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "12.5px",
+                cursor: "pointer",
+                boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {selectMode && (
+        <div
+          style={{
+            position: "sticky",
+            bottom: "4px",
+            display: "flex",
+            justifyContent: "center",
+            marginTop: "14px",
+          }}
+        >
+          <div
+            className="flex items-center gap-2"
+            style={{
+              background: COLORS.surface,
+              border: `2px solid ${COLORS.screenBorder}`,
+              borderRadius: "999px",
+              padding: "6px 8px 6px 14px",
+              boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
+              flexWrap: "wrap",
+              justifyContent: "center",
+            }}
+          >
+            <span style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "12px", color: COLORS.ink }}>
+              {bulkSelection.length} selecionado(s)
+            </span>
+            <input
+              value={bulkTagDraft}
+              onChange={(e) => setBulkTagDraft(e.target.value)}
+              placeholder="tag..."
+              style={{
+                width: "80px",
+                borderRadius: "999px",
+                border: `1.5px solid ${COLORS.screenBorder}`,
+                padding: "5px 10px",
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: "10.5px",
+                outline: "none",
+              }}
+            />
+            <button
+              onClick={applyBulkTag}
+              disabled={bulkSelection.length === 0 || !bulkTagDraft.trim()}
+              style={{
+                background: COLORS.lensBlue,
+                color: "#fff",
+                border: "none",
+                borderRadius: "999px",
+                padding: "7px 12px",
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "11.5px",
+                cursor: "pointer",
+                opacity: bulkSelection.length === 0 || !bulkTagDraft.trim() ? 0.5 : 1,
+              }}
+            >
+              Marcar
+            </button>
+            <button
+              onClick={applyBulkDelete}
+              disabled={bulkSelection.length === 0}
+              style={{
+                background: "var(--danger)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "999px",
+                padding: "7px 12px",
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "11.5px",
+                cursor: "pointer",
+                opacity: bulkSelection.length === 0 ? 0.5 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {confirmingBulkDelete ? "Confirmar?" : "Excluir"}
+            </button>
+            <button
+              onClick={exitSelectMode}
+              style={{
+                background: "#23291F",
+                color: "#fff",
+                border: "none",
+                borderRadius: "999px",
+                padding: "7px 12px",
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "11.5px",
+                cursor: "pointer",
+              }}
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 }

@@ -1,16 +1,19 @@
 import { COLORS, getTypeColor } from "../theme";
 import PokeballIcon from "./PokeballIcon";
+import ShareButton from "./ShareButton";
+import TagEditor from "./TagEditor";
+import { listItemShareText } from "../lib/share";
 
 /**
  * Card de um item de enumeração/tipo (modo "list:"). Como TechCard, mas sem
  * stats — apenas nome, categoria e descrição.
  */
-export default function ListItemCard({ index, item, saved, onToggle }) {
+export default function ListItemCard({ index, subjectDisplay, item, saved, onToggle, onTagsChange }) {
   const color = getTypeColor(item.category);
   return (
     <div
       style={{
-        background: COLORS.white,
+        background: COLORS.surface,
         border: `2px solid ${COLORS.screenBorder}`,
         borderRadius: "10px",
         padding: "12px",
@@ -19,7 +22,7 @@ export default function ListItemCard({ index, item, saved, onToggle }) {
     >
       <div className="flex items-start justify-between gap-2 mb-1">
         <div>
-          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "#6b6b5c" }}>
+          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "var(--text-faint)" }}>
             Nº {String(index + 1).padStart(3, "0")}
           </div>
           <h3
@@ -34,20 +37,23 @@ export default function ListItemCard({ index, item, saved, onToggle }) {
             {item.name}
           </h3>
         </div>
-        <button
-          onClick={onToggle}
-          aria-label={saved ? "Soltar da Pokédex" : "Capturar item"}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: "9px",
-            margin: "-9px",
-            flexShrink: 0,
-          }}
-        >
-          <PokeballIcon filled={saved} size={26} />
-        </button>
+        <div className="flex items-center" style={{ flexShrink: 0 }}>
+          <ShareButton title={item.name} text={listItemShareText(subjectDisplay || "", item)} />
+          <button
+            onClick={onToggle}
+            aria-label={saved ? "Soltar da Pokédex" : "Capturar item"}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "9px",
+              margin: "-9px",
+              flexShrink: 0,
+            }}
+          >
+            <PokeballIcon filled={saved} size={26} />
+          </button>
+        </div>
       </div>
       {item.category && (
         <span
@@ -67,9 +73,10 @@ export default function ListItemCard({ index, item, saved, onToggle }) {
           {item.category}
         </span>
       )}
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "#3a3a30", lineHeight: 1.4 }}>
+      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.4 }}>
         {item.description}
       </p>
+      {onTagsChange && <TagEditor tags={item.tags || []} onChange={onTagsChange} />}
     </div>
   );
 }

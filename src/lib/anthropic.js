@@ -11,7 +11,7 @@
  * Plano B (opcional): se o usuário configurar uma URL de proxy em Configurações,
  * a requisição vai para lá em vez de api.anthropic.com. Ver README.
  */
-import { get, set, KEYS } from "./storage";
+import { get, set, getJSON, setJSON, KEYS } from "./storage";
 
 // Sempre Sonnet, esforço médio, com thinking adaptativo ligado.
 export const MODEL = "claude-sonnet-5";
@@ -50,6 +50,27 @@ export async function hasCredentials() {
 
 export function looksLikeApiKey(key) {
   return /^sk-ant-[\w-]{10,}$/.test((key || "").trim());
+}
+
+const EMPTY_USAGE = { calls: 0, inputTokens: 0, outputTokens: 0, since: null };
+
+export async function getUsageStats() {
+  return await getJSON(KEYS.usageStats, EMPTY_USAGE);
+}
+
+export async function resetUsageStats() {
+  await setJSON(KEYS.usageStats, { ...EMPTY_USAGE, since: Date.now() });
+}
+
+async function trackUsage(usage) {
+  if (!usage) return;
+  const current = await getUsageStats();
+  await setJSON(KEYS.usageStats, {
+    calls: (current.calls || 0) + 1,
+    inputTokens: (current.inputTokens || 0) + (usage.input_tokens || 0),
+    outputTokens: (current.outputTokens || 0) + (usage.output_tokens || 0),
+    since: current.since || Date.now(),
+  });
 }
 
 function extractJson(text) {
@@ -117,6 +138,7 @@ export async function sendMessage({ system, user, maxTokens = 1000 }) {
   }
 
   const data = await response.json();
+  trackUsage(data.usage).catch(() => {});
   return (data.content || [])
     .filter((b) => b.type === "text")
     .map((b) => b.text)

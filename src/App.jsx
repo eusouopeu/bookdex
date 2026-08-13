@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
-import { Settings as SettingsIcon, Upload, WifiOff } from "lucide-react";
-import { COLORS, slug, tabStyle, iconButtonStyle } from "./theme";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Settings as SettingsIcon, Upload, WifiOff, Brain, Mic, MicOff } from "lucide-react";
+import { COLORS, THEME_VARS, slug, tabStyle, iconButtonStyle } from "./theme";
 import { getJSON, setJSON, KEYS } from "./lib/storage";
 import { fetchTechniques, fetchDefinition, fetchList, hasCredentials, MissingApiKeyError } from "./lib/anthropic";
 import { parseSearchQuery, hasExplicitPrefix, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
 import { mergeData } from "./lib/importer";
+import { initReviewState, gradeReviewState, countDue } from "./lib/review";
+import { recordVisit, recordReviewCompleted } from "./lib/gamification";
+import { scheduleReviewReminder, requestNotificationPermission, cancelReviewReminder } from "./lib/notifications";
 
 const SEARCH_MODES = [
   { mode: "technique", label: "Técnicas" },
@@ -17,14 +20,19 @@ import DexView from "./views/DexView";
 import DetailPage from "./views/DetailPage";
 import SettingsView from "./views/SettingsView";
 import ImportView from "./views/ImportView";
+import CompareView from "./views/CompareView";
+import ReviewView from "./views/ReviewView";
 
 export default function App() {
   const [view, setView] = useState("search");
   const [lastTab, setLastTab] = useState("search");
   const [detailTarget, setDetailTarget] = useState(null);
+  const [compareTarget, setCompareTarget] = useState(null);
 
   const [query, setQuery] = useState("");
   const [searchMode, setSearchMode] = useState("technique");
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [needsKey, setNeedsKey] = useState(false);
@@ -38,25 +46,51 @@ export default function App() {
   const [storageLoaded, setStorageLoaded] = useState(false);
   const [hasKey, setHasKey] = useState(true);
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" || navigator.onLine);
+  const [theme, setTheme] = useState("light");
+  const [offlineQueue, setOfflineQueue] = useState([]);
+  const offlineQueueRef = useRef([]);
+  const [gamification, setGamification] = useState(null);
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
 
   useEffect(() => {
     (async () => {
       setSaved(await getJSON(KEYS.saved, {}));
       setDetailCache(await getJSON(KEYS.details, {}));
       setHistory(await getJSON(KEYS.searchHistory, []));
+      setTheme(await getJSON(KEYS.theme, "light"));
+      setOfflineQueue(await getJSON(KEYS.offlineQueue, []));
+      setNotificationsEnabled(await getJSON(KEYS.notificationsEnabled, false));
       const savedTab = await getJSON(KEYS.lastTab, "search");
       if (savedTab === "search" || savedTab === "dex") {
         setLastTab(savedTab);
         setView(savedTab);
       }
+      const gState = await getJSON(KEYS.gamification, null);
+      const nextG = recordVisit(gState);
+      setGamification(nextG);
+      setJSON(KEYS.gamification, nextG).catch(() => {});
       setStorageLoaded(true);
       setHasKey(await hasCredentials());
     })();
   }, []);
 
   useEffect(() => {
-    function goOnline() {
+    offlineQueueRef.current = offlineQueue;
+  }, [offlineQueue]);
+
+  useEffect(() => {
+    async function goOnline() {
       setIsOnline(true);
+      const queue = offlineQueueRef.current;
+      if (queue.length) {
+        showToast(`Conexão restabelecida — buscando ${queue.length} item(ns) da fila...`);
+        for (const item of queue) {
+          // eslint-disable-next-line no-await-in-loop
+          await handleSearch({ mode: item.mode, term: item.term });
+        }
+        setOfflineQueue([]);
+        setJSON(KEYS.offlineQueue, []).catch(() => {});
+      }
     }
     function goOffline() {
       setIsOnline(false);
@@ -67,7 +101,14 @@ export default function App() {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!storageLoaded || !notificationsEnabled) return;
+    scheduleReviewReminder(countDue(saved)).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageLoaded, notificationsEnabled, saved]);
 
   const showToast = useCallback((msg, onUndo) => {
     setToast({ msg, onUndo });
@@ -135,6 +176,8 @@ export default function App() {
         stats: technique.stats,
         statLabels: statLabels,
         savedAt: Date.now(),
+        tags: [],
+        reviewState: initReviewState(),
       });
     }
 
@@ -182,6 +225,8 @@ export default function App() {
         example: d.example || "",
         relatedTerms: d.relatedTerms || [],
         savedAt: Date.now(),
+        tags: [],
+        reviewState: initReviewState(),
       };
     } else {
       const it = payload.item;
@@ -193,6 +238,8 @@ export default function App() {
         category: it.category,
         description: it.description,
         savedAt: Date.now(),
+        tags: [],
+        reviewState: initReviewState(),
       };
     }
 
@@ -238,12 +285,130 @@ export default function App() {
     });
   }
 
+  function bulkRemoveItems(items) {
+    const prevSaved = saved;
+    const next = { ...saved };
+    for (const { subjectKey, itemId } of items) {
+      const group = next[subjectKey];
+      if (!group) continue;
+      const isKnowledge = group.kind === "definition" || group.kind === "list";
+      const list = isKnowledge ? group.items : group.techniques;
+      const filtered = list.filter((it) => it.id !== itemId);
+      if (filtered.length === 0) {
+        delete next[subjectKey];
+      } else {
+        next[subjectKey] = isKnowledge ? { ...group, items: filtered } : { ...group, techniques: filtered };
+      }
+    }
+    setSaved(next);
+    persistSaved(next);
+    showToast(`${items.length} item(ns) removido(s) da Pokédex.`, () => {
+      setSaved(prevSaved);
+      persistSaved(prevSaved);
+    });
+  }
+
+  function bulkAddTag(items, tag) {
+    const clean = (tag || "").trim();
+    if (!clean) return;
+    const next = { ...saved };
+    for (const { subjectKey, itemId } of items) {
+      const group = next[subjectKey];
+      if (!group) continue;
+      const isKnowledge = group.kind === "definition" || group.kind === "list";
+      const list = isKnowledge ? group.items : group.techniques;
+      const idx = list.findIndex((it) => it.id === itemId);
+      if (idx === -1) continue;
+      const item = list[idx];
+      if ((item.tags || []).includes(clean)) continue;
+      const nextList = [...list];
+      nextList[idx] = { ...item, tags: [...(item.tags || []), clean] };
+      next[subjectKey] = isKnowledge ? { ...group, items: nextList } : { ...group, techniques: nextList };
+    }
+    setSaved(next);
+    persistSaved(next);
+    showToast(`Tag "${clean}" aplicada a ${items.length} item(ns).`);
+  }
+
+  function updateItemInGroup(subjectKey, itemId, mutate) {
+    setSaved((prev) => {
+      const group = prev[subjectKey];
+      if (!group) return prev;
+      const isKnowledge = group.kind === "definition" || group.kind === "list";
+      const list = isKnowledge ? group.items : group.techniques;
+      const idx = list.findIndex((it) => it.id === itemId);
+      if (idx === -1) return prev;
+      const nextList = [...list];
+      nextList[idx] = mutate(nextList[idx]);
+      const nextGroup = isKnowledge ? { ...group, items: nextList } : { ...group, techniques: nextList };
+      const next = { ...prev, [subjectKey]: nextGroup };
+      persistSaved(next);
+      return next;
+    });
+  }
+
+  function updateItemTags(subjectKey, itemId, _kind, tags) {
+    updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, tags }));
+  }
+
+  function gradeReviewItem(subjectKey, itemId, _kind, correct) {
+    updateItemInGroup(subjectKey, itemId, (item) => ({
+      ...item,
+      reviewState: gradeReviewState(item.reviewState, correct),
+    }));
+    setGamification((prev) => {
+      const next = recordReviewCompleted(prev);
+      setJSON(KEYS.gamification, next).catch(() => {});
+      return next;
+    });
+  }
+
+  function changeTheme(next) {
+    setTheme(next);
+    setJSON(KEYS.theme, next).catch(() => {});
+  }
+
+  async function changeNotifications(enabled) {
+    if (enabled) {
+      const granted = await requestNotificationPermission();
+      if (!granted) {
+        showToast("Permissão de notificações negada pelo sistema.");
+        return false;
+      }
+    } else {
+      await cancelReviewReminder();
+    }
+    setNotificationsEnabled(enabled);
+    await setJSON(KEYS.notificationsEnabled, enabled);
+    return true;
+  }
+
+  function searchRelated(mode, term) {
+    setDetailTarget(null);
+    setCompareTarget(null);
+    setLastTab("search");
+    setView("search");
+    setJSON(KEYS.lastTab, "search").catch(() => {});
+    handleSearch({ mode, term });
+  }
+
   function toggleSave(mode, subjectDisplay, payload) {
     if (mode === "technique") {
       toggleTechniqueSave(subjectDisplay, payload.technique, payload.statLabels);
     } else {
       toggleKnowledgeSave(mode, subjectDisplay, payload);
     }
+  }
+
+  function enqueueOfflineSearch(mode, term) {
+    setOfflineQueue((prev) => {
+      const next = [...prev.filter((q) => !(q.mode === mode && q.term.toLowerCase() === term.toLowerCase())), { mode, term }];
+      setJSON(KEYS.offlineQueue, next).catch(() => {});
+      return next;
+    });
+    setSearchMode(mode);
+    setQuery(term);
+    showToast(`Sem internet — "${term}" foi enfileirado(a) e será buscado(a) ao reconectar.`);
   }
 
   async function handleSearch(override) {
@@ -257,6 +422,10 @@ export default function App() {
       term = query.trim();
     }
     if (!term || loading) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      enqueueOfflineSearch(mode, term);
+      return;
+    }
     setSearchMode(mode);
     setQuery(term);
     setLoading(true);
@@ -286,8 +455,42 @@ export default function App() {
     handleSearch({ mode, term });
   }
 
+  function toggleVoiceSearch() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      showToast("Busca por voz não é suportada neste navegador.");
+      return;
+    }
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const recognition = new SpeechRecognition();
+    recognition.lang = "pt-BR";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+    recognition.onstart = () => setListening(true);
+    recognition.onend = () => setListening(false);
+    recognition.onerror = () => {
+      setListening(false);
+      showToast("Não foi possível ouvir. Tente novamente.");
+    };
+    recognition.onresult = (event) => {
+      const transcript = event.results[0][0].transcript.trim();
+      if (transcript) handleSearch({ mode: searchMode, term: transcript });
+    };
+    recognitionRef.current = recognition;
+    recognition.start();
+  }
+
   function openDetail(subjectDisplay, technique) {
+    setCompareTarget(null);
     setDetailTarget({ subjectDisplay, technique });
+  }
+
+  function openCompare(items) {
+    setDetailTarget(null);
+    setCompareTarget(items);
   }
 
   function cacheDetail(cacheKey, detail) {
@@ -310,6 +513,7 @@ export default function App() {
 
   function goTab(tab) {
     setDetailTarget(null);
+    setCompareTarget(null);
     setLastTab(tab);
     setView(tab);
     setJSON(KEYS.lastTab, tab).catch(() => {});
@@ -317,11 +521,13 @@ export default function App() {
 
   function openScreen(screen) {
     setDetailTarget(null);
+    setCompareTarget(null);
     setView(screen);
   }
 
   function backToTab() {
     setDetailTarget(null);
+    setCompareTarget(null);
     setView(lastTab);
   }
 
@@ -329,8 +535,9 @@ export default function App() {
     (sum, g) => sum + (g.kind === "definition" || g.kind === "list" ? g.items.length : g.techniques.length),
     0
   );
+  const dueCount = countDue(saved);
   const isTab = view === "search" || view === "dex";
-  const showSearchBar = view === "search" && !detailTarget;
+  const showSearchBar = view === "search" && !detailTarget && !compareTarget;
 
   return (
     <div
@@ -338,12 +545,17 @@ export default function App() {
         height: "100dvh",
         maxHeight: "100dvh",
         overflow: "hidden",
-        background: "#e8e6df",
+        background: "var(--page-bg)",
         display: "flex",
         justifyContent: "center",
       }}
     >
       <style>{`
+        :root {
+          ${Object.entries(THEME_VARS[theme] || THEME_VARS.light)
+            .map(([k, v]) => `${k}: ${v};`)
+            .join("\n          ")}
+        }
         @keyframes lensPulse {
           0%, 100% { box-shadow: 0 0 0 4px rgba(111,184,255,0.35), 0 0 14px rgba(111,184,255,0.7); }
           50% { box-shadow: 0 0 0 7px rgba(111,184,255,0.15), 0 0 22px rgba(111,184,255,0.9); }
@@ -407,6 +619,33 @@ export default function App() {
             >
               Bookdex
             </h1>
+            <button onClick={() => openScreen("review")} aria-label="Revisão espaçada" title="Revisão espaçada" style={{ ...iconButtonStyle, position: "relative" }}>
+              <Brain size={17} />
+              {dueCount > 0 && (
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "-3px",
+                    right: "-3px",
+                    background: COLORS.gold,
+                    color: "#4A3300",
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontWeight: 700,
+                    fontSize: "9px",
+                    borderRadius: "999px",
+                    minWidth: "15px",
+                    height: "15px",
+                    padding: "0 3px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "1.5px solid #7A5A00",
+                  }}
+                >
+                  {dueCount > 99 ? "99+" : dueCount}
+                </span>
+              )}
+            </button>
             <button onClick={() => openScreen("import")} aria-label="Importar dados" title="Importar dados" style={iconButtonStyle}>
               <Upload size={17} />
             </button>
@@ -455,7 +694,7 @@ export default function App() {
               <div
                 className="flex items-center gap-2"
                 style={{
-                  background: "#8a1f1f",
+                  background: "var(--danger)",
                   color: COLORS.white,
                   borderRadius: "8px",
                   padding: "8px 10px",
@@ -482,7 +721,7 @@ export default function App() {
               />
             )}
 
-            {!detailTarget && view === "search" && (
+            {!detailTarget && !compareTarget && view === "search" && (
               <SearchView
                 query={query}
                 searchMode={searchMode}
@@ -498,18 +737,32 @@ export default function App() {
                 onRetry={() => handleSearch()}
                 onRunHistoryTerm={runHistoryTerm}
                 onGoSettings={() => openScreen("settings")}
+                onSearchRelated={searchRelated}
               />
             )}
 
-            {!detailTarget && view === "dex" && (
+            {!detailTarget && !compareTarget && view === "dex" && (
               <DexView
                 saved={saved}
+                detailCache={detailCache}
                 storageLoaded={storageLoaded}
                 onToggleSave={toggleSave}
                 onOpenDetail={openDetail}
                 onOpenImport={() => openScreen("import")}
                 onRemoveGroup={removeGroup}
+                onUpdateTags={updateItemTags}
+                onSearchRelated={searchRelated}
+                onExampleSearch={(mode, term) => searchRelated(mode, term)}
+                onOpenCompare={openCompare}
+                onBulkRemoveItems={bulkRemoveItems}
+                onBulkAddTag={bulkAddTag}
               />
+            )}
+
+            {compareTarget && <CompareView items={compareTarget} onBack={() => setCompareTarget(null)} />}
+
+            {!detailTarget && !compareTarget && view === "review" && (
+              <ReviewView saved={saved} onBack={backToTab} onGrade={gradeReviewItem} />
             )}
 
             {!detailTarget && view === "settings" && (
@@ -520,6 +773,12 @@ export default function App() {
                   setHasKey(ok);
                   if (ok) setNeedsKey(false);
                 }}
+                theme={theme}
+                onThemeChange={changeTheme}
+                notificationsEnabled={notificationsEnabled}
+                onNotificationsChange={changeNotifications}
+                gamification={gamification}
+                totalSavedCount={totalSavedCount}
               />
             )}
 
@@ -543,7 +802,7 @@ export default function App() {
               <div
                 className="flex items-center gap-2"
                 style={{
-                  background: COLORS.ink,
+                  background: "#23291F",
                   color: COLORS.white,
                   padding: "8px 8px 8px 16px",
                   borderRadius: "999px",
@@ -636,6 +895,30 @@ export default function App() {
                     outline: "none",
                   }}
                 />
+                {(window.SpeechRecognition || window.webkitSpeechRecognition) && (
+                  <button
+                    onClick={toggleVoiceSearch}
+                    disabled={loading}
+                    aria-label={listening ? "Parar busca por voz" : "Buscar por voz"}
+                    title={listening ? "Parar busca por voz" : "Buscar por voz"}
+                    style={{
+                      background: listening ? COLORS.shellRedDark : "rgba(255,255,255,0.18)",
+                      color: COLORS.white,
+                      border: "none",
+                      borderRadius: "8px",
+                      minWidth: "46px",
+                      minHeight: "46px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      cursor: loading ? "default" : "pointer",
+                      flexShrink: 0,
+                      animation: listening ? "lensPulse 1s ease-in-out infinite" : "none",
+                    }}
+                  >
+                    {listening ? <MicOff size={17} /> : <Mic size={17} />}
+                  </button>
+                )}
                 <button
                   onClick={() => handleSearch()}
                   disabled={loading || !query.trim()}

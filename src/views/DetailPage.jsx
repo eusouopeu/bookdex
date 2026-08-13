@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, X, RefreshCw, KeyRound } from "lucide-react";
-import { COLORS, getTypeColor, primaryButtonStyle } from "../theme";
+import { ArrowLeft, Check, X, RefreshCw, KeyRound, Share2, FileDown } from "lucide-react";
+import { COLORS, getTypeColor, primaryButtonStyle, slug } from "../theme";
 import { fetchDetail, MissingApiKeyError } from "../lib/anthropic";
 import { useProgressiveMessage } from "../lib/hooks";
+import { GuideSkeleton } from "../components/Skeleton";
+import { shareOrCopyText, shareOrDownloadFile, guideMarkdown } from "../lib/share";
 
 const SWIPE_EDGE_PX = 28;
 const SWIPE_THRESHOLD_PX = 70;
@@ -13,9 +15,35 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
   const [loading, setLoading] = useState(!cached);
   const [error, setError] = useState(null);
   const [needsKey, setNeedsKey] = useState(false);
+  const [shareMsg, setShareMsg] = useState(null);
   const color = getTypeColor(technique.type);
   const loadingMsg = useProgressiveMessage(loading, ["MONTANDO O GUIA...", "AINDA MONTANDO...", "QUASE PRONTO..."]);
   const touch = useRef({ active: false, x: 0, y: 0 });
+
+  function flashShareMsg(msg) {
+    setShareMsg(msg);
+    setTimeout(() => setShareMsg((m) => (m === msg ? null : m)), 2200);
+  }
+
+  async function handleShareGuide() {
+    const text = [
+      `${technique.name} — ${subjectDisplay}`,
+      detail.overview,
+      ...(detail.steps || []).map((s, i) => `${i + 1}. ${s.title}: ${s.detail}`),
+      "",
+      "via Bookdex",
+    ].join("\n");
+    const outcome = await shareOrCopyText(technique.name, text);
+    if (outcome === "copied") flashShareMsg("Guia copiado para a área de transferência.");
+    else if (outcome === "failed") flashShareMsg("Não foi possível compartilhar.");
+  }
+
+  async function handleExportGuide() {
+    const md = guideMarkdown(subjectDisplay, technique, detail);
+    const fileName = `${slug(technique.name)}.md`;
+    const outcome = await shareOrDownloadFile(fileName, md, "text/markdown", technique.name);
+    if (outcome === "downloaded") flashShareMsg("Guia exportado em .md.");
+  }
 
   function onTouchStart(e) {
     const t = e.touches[0];
@@ -73,7 +101,7 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
         <ArrowLeft size={16} /> Voltar
       </button>
 
-      <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "#4a5540" }}>
+      <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "var(--text-muted)" }}>
         {subjectDisplay}
       </div>
       <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "19px", color: COLORS.ink, lineHeight: 1.15 }}>
@@ -97,21 +125,19 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
       </span>
 
       {loading && (
-        <div className="flex flex-col items-center justify-center text-center" style={{ minHeight: "260px" }}>
-          <div
+        <div>
+          <p
             style={{
-              width: "44px",
-              height: "44px",
-              borderRadius: "50%",
-              border: `4px solid ${COLORS.screenBorder}`,
-              borderTopColor: COLORS.lensBlue,
-              animation: "spin 0.9s linear infinite",
+              fontFamily: '"JetBrains Mono", monospace',
+              fontSize: "12px",
+              color: COLORS.ink,
+              letterSpacing: "0.04em",
               marginBottom: "12px",
             }}
-          />
-          <p style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "12px", color: COLORS.ink, letterSpacing: "0.04em" }}>
+          >
             {loadingMsg}
           </p>
+          <GuideSkeleton />
         </div>
       )}
 
@@ -141,7 +167,7 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
 
       {!loading && !needsKey && error && (
         <div className="flex flex-col items-center justify-center text-center" style={{ minHeight: "240px" }}>
-          <p style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, color: "#8a1f1f", marginBottom: "6px", fontSize: "15px" }}>
+          <p style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, color: "var(--danger)", marginBottom: "6px", fontSize: "15px" }}>
             Sinal perdido
           </p>
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: COLORS.ink, maxWidth: "240px", marginBottom: "12px" }}>
@@ -155,7 +181,50 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
 
       {!loading && detail && (
         <div style={{ animation: "flicker 0.4s ease-out" }}>
-          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "#3a3a30", lineHeight: 1.45, marginBottom: "14px" }}>
+          <div className="flex items-center gap-2" style={{ marginBottom: "10px" }}>
+            <button
+              onClick={handleShareGuide}
+              className="flex items-center gap-1.5"
+              style={{
+                background: "transparent",
+                border: `2px solid ${COLORS.screenBorder}`,
+                borderRadius: "8px",
+                color: COLORS.ink,
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "11px",
+                padding: "6px 10px",
+                minHeight: "32px",
+                cursor: "pointer",
+              }}
+            >
+              <Share2 size={13} /> Compartilhar
+            </button>
+            <button
+              onClick={handleExportGuide}
+              className="flex items-center gap-1.5"
+              style={{
+                background: "transparent",
+                border: `2px solid ${COLORS.screenBorder}`,
+                borderRadius: "8px",
+                color: COLORS.ink,
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "11px",
+                padding: "6px 10px",
+                minHeight: "32px",
+                cursor: "pointer",
+              }}
+            >
+              <FileDown size={13} /> Exportar .md
+            </button>
+          </div>
+          {shareMsg && (
+            <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "10px" }}>
+              {shareMsg}
+            </p>
+          )}
+          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.45, marginBottom: "14px" }}>
             {detail.overview}
           </p>
 
@@ -165,7 +234,7 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
               key={i}
               className="flex gap-2"
               style={{
-                background: COLORS.white,
+                background: COLORS.surface,
                 border: `2px solid ${COLORS.screenBorder}`,
                 borderRadius: "10px",
                 padding: "10px 12px",
@@ -194,7 +263,7 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
                 <div style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "13.5px", color: COLORS.ink }}>
                   {step.title}
                 </div>
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "#3a3a30", lineHeight: 1.4 }}>
+                <div style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text)", lineHeight: 1.4 }}>
                   {step.detail}
                 </div>
               </div>
@@ -257,7 +326,7 @@ function SectionTitle({ children }) {
 }
 
 function SignList({ items, good }) {
-  const accent = good ? "#2E7D32" : "#8a1f1f";
+  const accent = good ? "var(--success)" : "var(--danger)";
   const Icon = good ? Check : X;
   return (
     <div>
@@ -279,7 +348,7 @@ function SignList({ items, good }) {
           >
             <Icon size={12} strokeWidth={3} />
           </div>
-          <span style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "#3a3a30", lineHeight: 1.4 }}>{s}</span>
+          <span style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text)", lineHeight: 1.4 }}>{s}</span>
         </div>
       ))}
     </div>

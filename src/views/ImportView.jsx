@@ -1,10 +1,11 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, FileJson, ClipboardPaste, Download } from "lucide-react";
+import { ArrowLeft, FileJson, ClipboardPaste, Download, BookOpenText } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { COLORS, primaryButtonStyle } from "../theme";
 import { parsePayload, buildExportPayload, mergeData } from "../lib/importer";
 import { setJSON, KEYS } from "../lib/storage";
+import { buildPokedexPdf } from "../lib/pdfExport";
 
 export default function ImportView({ onBack, onImport, saved, detailCache }) {
   const [text, setText] = useState("");
@@ -12,7 +13,10 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
   const [summary, setSummary] = useState(null);
   const [pending, setPending] = useState(null); // { payload, stats } aguardando confirmação
   const [backupMsg, setBackupMsg] = useState(null);
+  const [pdfMsg, setPdfMsg] = useState(null);
+  const [generatingPdf, setGeneratingPdf] = useState(false);
   const fileInput = useRef(null);
+  const hasSaved = Object.keys(saved || {}).length > 0;
 
   function preview(rawText) {
     setError(null);
@@ -98,6 +102,32 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
     }
   }
 
+  async function exportPdf() {
+    setPdfMsg(null);
+    setGeneratingPdf(true);
+    try {
+      const doc = buildPokedexPdf(saved, detailCache);
+      const fileName = "bookdex-pokedex.pdf";
+      if (Capacitor.isNativePlatform()) {
+        const base64 = doc.output("datauristring").split(",")[1];
+        await Filesystem.writeFile({
+          path: fileName,
+          data: base64,
+          directory: Directory.Documents,
+          recursive: true,
+        });
+        setPdfMsg(`Salvo em Documentos/${fileName}.`);
+      } else {
+        doc.save(fileName);
+        setPdfMsg("Download iniciado.");
+      }
+    } catch (e) {
+      setPdfMsg(`Falha ao gerar o PDF: ${e.message || e}`);
+    } finally {
+      setGeneratingPdf(false);
+    }
+  }
+
   return (
     <div>
       <button
@@ -121,7 +151,7 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
       <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "18px", color: COLORS.ink, marginBottom: "4px" }}>
         Importar dados
       </h2>
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "#4a5540", marginBottom: "14px", lineHeight: 1.45 }}>
+      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "14px", lineHeight: 1.45 }}>
         Cole aqui o JSON exportado do Bookdex do claude.ai, ou selecione o arquivo <code>.json</code> baixado. Nada é
         apagado: os dados são mesclados com o que já está neste aparelho.
       </p>
@@ -142,7 +172,7 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
           fontFamily: '"JetBrains Mono", monospace',
           fontSize: "11.5px",
           lineHeight: 1.4,
-          background: COLORS.white,
+          background: COLORS.surface,
           color: COLORS.ink,
           outline: "none",
           resize: "vertical",
@@ -186,7 +216,7 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
       <input ref={fileInput} type="file" accept="application/json,.json" onChange={onFilePicked} style={{ display: "none" }} />
 
       {error && (
-        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "#8a1f1f", marginTop: "12px", lineHeight: 1.4 }}>
+        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--danger)", marginTop: "12px", lineHeight: 1.4 }}>
           {error}
         </p>
       )}
@@ -208,7 +238,7 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
             style={{
               fontFamily: "Inter, sans-serif",
               fontSize: "12px",
-              color: "#3a3a30",
+              color: "var(--text)",
               lineHeight: 1.6,
               margin: "0 0 12px",
               paddingLeft: "18px",
@@ -245,7 +275,7 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
         <div
           style={{
             marginTop: "14px",
-            background: COLORS.white,
+            background: COLORS.surface,
             border: `2px solid ${COLORS.screenBorder}`,
             borderRadius: "10px",
             padding: "12px",
@@ -258,7 +288,7 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
             style={{
               fontFamily: "Inter, sans-serif",
               fontSize: "12px",
-              color: "#3a3a30",
+              color: "var(--text)",
               lineHeight: 1.6,
               margin: 0,
               paddingLeft: "18px",
@@ -290,7 +320,32 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
           <Download size={16} /> Salvar backup deste aparelho
         </button>
         {backupMsg && (
-          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "#5c6b52", marginTop: "8px" }}>{backupMsg}</p>
+          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{backupMsg}</p>
+        )}
+
+        <button
+          onClick={exportPdf}
+          disabled={!hasSaved || generatingPdf}
+          className="flex items-center justify-center gap-1.5"
+          style={{
+            ...primaryButtonStyle,
+            width: "100%",
+            marginTop: "10px",
+            background: "transparent",
+            color: COLORS.ink,
+            border: `2px solid ${COLORS.screenBorder}`,
+            opacity: !hasSaved || generatingPdf ? 0.55 : 1,
+          }}
+        >
+          <BookOpenText size={16} /> {generatingPdf ? "Gerando PDF..." : "Exportar Pokédex em PDF"}
+        </button>
+        {!hasSaved && (
+          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginTop: "6px" }}>
+            Capture algo antes de exportar o livro em PDF.
+          </p>
+        )}
+        {pdfMsg && (
+          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{pdfMsg}</p>
         )}
       </div>
     </div>

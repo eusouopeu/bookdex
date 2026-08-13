@@ -123,6 +123,11 @@ export const KEYS = {
   searchHistory: "search-history",
   lastBackup: "last-backup-at",
   lastTab: "last-tab",
+  usageStats: "usage-stats",
+  theme: "theme",
+  gamification: "gamification",
+  offlineQueue: "offline-search-queue",
+  notificationsEnabled: "notifications-enabled",
 };
 
 export default { get, set, delete: remove, list, getJSON, setJSON, KEYS };

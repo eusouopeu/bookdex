@@ -2,50 +2,85 @@ import { BookOpen } from "lucide-react";
 import { COLORS, getTypeColor } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import StatBar from "./StatBar";
+import ShareButton from "./ShareButton";
+import TagEditor from "./TagEditor";
+import { techniqueShareText } from "../lib/share";
 
-export default function TechCard({ index, technique, statLabels, saved, onToggle, onOpenDetail }) {
+export default function TechCard({
+  index,
+  subjectDisplay,
+  technique,
+  statLabels,
+  saved,
+  onToggle,
+  onOpenDetail,
+  onTagsChange,
+  selectable,
+  selected,
+  onSelectToggle,
+}) {
   const color = getTypeColor(technique.type);
   return (
     <div
+      onClick={selectable ? onSelectToggle : undefined}
       style={{
-        background: COLORS.white,
-        border: `2px solid ${COLORS.screenBorder}`,
+        background: COLORS.surface,
+        border: `2px solid ${selectable && selected ? COLORS.lensBlue : COLORS.screenBorder}`,
         borderRadius: "10px",
         padding: "12px",
         marginBottom: "10px",
+        cursor: selectable ? "pointer" : "default",
+        boxShadow: selectable && selected ? `0 0 0 2px ${COLORS.lensBlue} inset` : "none",
       }}
     >
       <div className="flex items-start justify-between gap-2 mb-1">
-        <div>
-          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "#6b6b5c" }}>
-            Nº {String(index + 1).padStart(3, "0")}
+        <div className="flex items-start gap-2">
+          {selectable && (
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={onSelectToggle}
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: "18px", height: "18px", marginTop: "3px", flexShrink: 0 }}
+              aria-label={`Selecionar ${technique.name} para comparar`}
+            />
+          )}
+          <div>
+            <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "var(--text-faint)" }}>
+              Nº {String(index + 1).padStart(3, "0")}
+            </div>
+            <h3
+              style={{
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "16px",
+                color: COLORS.ink,
+                lineHeight: 1.15,
+              }}
+            >
+              {technique.name}
+            </h3>
           </div>
-          <h3
-            style={{
-              fontFamily: '"Baloo 2", sans-serif',
-              fontWeight: 700,
-              fontSize: "16px",
-              color: COLORS.ink,
-              lineHeight: 1.15,
-            }}
-          >
-            {technique.name}
-          </h3>
         </div>
-        <button
-          onClick={onToggle}
-          aria-label={saved ? "Soltar da Pokédex" : "Capturar técnica"}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: "9px",
-            margin: "-9px",
-            flexShrink: 0,
-          }}
-        >
-          <PokeballIcon filled={saved} size={26} />
-        </button>
+        {!selectable && (
+          <div className="flex items-center" style={{ flexShrink: 0 }}>
+            <ShareButton title={technique.name} text={techniqueShareText(subjectDisplay || "", technique, statLabels)} />
+            <button
+              onClick={onToggle}
+              aria-label={saved ? "Soltar da Pokédex" : "Capturar técnica"}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "9px",
+                margin: "-9px",
+                flexShrink: 0,
+              }}
+            >
+              <PokeballIcon filled={saved} size={26} />
+            </button>
+          </div>
+        )}
       </div>
       <span
         style={{
@@ -63,7 +98,7 @@ export default function TechCard({ index, technique, statLabels, saved, onToggle
       >
         {technique.type}
       </span>
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "#3a3a30", lineHeight: 1.4, marginBottom: "9px" }}>
+      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.4, marginBottom: "9px" }}>
         {technique.description}
       </p>
       <div className="space-y-1.5" style={{ marginBottom: "8px" }}>
@@ -71,9 +106,10 @@ export default function TechCard({ index, technique, statLabels, saved, onToggle
           <StatBar key={label + i} label={label} value={technique.stats ? technique.stats[i] : 0} color={color} />
         ))}
       </div>
-      <div style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "#5c6b52", fontStyle: "italic" }}>
+      <div style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", fontStyle: "italic" }}>
         Ideal para: {technique.bestFor}
       </div>
+      {onTagsChange && <TagEditor tags={technique.tags || []} onChange={onTagsChange} />}
       {onOpenDetail && (
         <button
           onClick={onOpenDetail}

@@ -1,16 +1,19 @@
 import { COLORS, getTypeColor } from "../theme";
 import PokeballIcon from "./PokeballIcon";
+import ShareButton from "./ShareButton";
+import TagEditor from "./TagEditor";
+import { definitionShareText } from "../lib/share";
 
 /**
  * Verbete de conceito/definição (modo "def:"). Ao contrário do TechCard, não
  * tem stats — tem pontos-chave, exemplo e termos relacionados.
  */
-export default function DefinitionCard({ definition, saved, onToggle }) {
+export default function DefinitionCard({ definition, saved, onToggle, onTagsChange, onSearchRelated }) {
   const color = getTypeColor(definition.category);
   return (
     <div
       style={{
-        background: COLORS.white,
+        background: COLORS.surface,
         border: `2px solid ${COLORS.screenBorder}`,
         borderRadius: "10px",
         padding: "14px",
@@ -18,7 +21,7 @@ export default function DefinitionCard({ definition, saved, onToggle }) {
     >
       <div className="flex items-start justify-between gap-2 mb-1">
         <div>
-          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "#6b6b5c" }}>
+          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "var(--text-faint)" }}>
             CONCEITO
           </div>
           <h3
@@ -33,20 +36,23 @@ export default function DefinitionCard({ definition, saved, onToggle }) {
             {definition.term}
           </h3>
         </div>
-        <button
-          onClick={onToggle}
-          aria-label={saved ? "Soltar da Pokédex" : "Capturar conceito"}
-          style={{
-            background: "none",
-            border: "none",
-            cursor: "pointer",
-            padding: "9px",
-            margin: "-9px",
-            flexShrink: 0,
-          }}
-        >
-          <PokeballIcon filled={saved} size={26} />
-        </button>
+        <div className="flex items-center" style={{ flexShrink: 0 }}>
+          <ShareButton title={definition.term} text={definitionShareText(definition)} />
+          <button
+            onClick={onToggle}
+            aria-label={saved ? "Soltar da Pokédex" : "Capturar conceito"}
+            style={{
+              background: "none",
+              border: "none",
+              cursor: "pointer",
+              padding: "9px",
+              margin: "-9px",
+              flexShrink: 0,
+            }}
+          >
+            <PokeballIcon filled={saved} size={26} />
+          </button>
+        </div>
       </div>
       <span
         style={{
@@ -64,7 +70,7 @@ export default function DefinitionCard({ definition, saved, onToggle }) {
       >
         {definition.category}
       </span>
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "#3a3a30", lineHeight: 1.45, marginBottom: "12px" }}>
+      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.45, marginBottom: "12px" }}>
         {definition.definition}
       </p>
 
@@ -85,7 +91,7 @@ export default function DefinitionCard({ definition, saved, onToggle }) {
             {definition.keyPoints.map((k, i) => (
               <li
                 key={i}
-                style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "#3a3a30", lineHeight: 1.5 }}
+                style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text)", lineHeight: 1.5 }}
               >
                 {k}
               </li>
@@ -113,24 +119,45 @@ export default function DefinitionCard({ definition, saved, onToggle }) {
       )}
 
       {!!(definition.relatedTerms || []).length && (
-        <div className="flex" style={{ flexWrap: "wrap", gap: "6px" }}>
-          {definition.relatedTerms.map((t, i) => (
-            <span
-              key={i}
-              style={{
-                fontFamily: '"JetBrains Mono", monospace',
-                fontSize: "10.5px",
-                color: COLORS.screenBorder,
-                border: `1.5px solid ${COLORS.screenBorder}`,
-                borderRadius: "999px",
-                padding: "2px 8px",
-              }}
-            >
-              {t}
-            </span>
-          ))}
+        <div className="flex" style={{ flexWrap: "wrap", gap: "6px", marginBottom: onTagsChange ? "10px" : 0 }}>
+          {definition.relatedTerms.map((t, i) =>
+            onSearchRelated ? (
+              <button
+                key={i}
+                onClick={() => onSearchRelated(t)}
+                style={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: "10.5px",
+                  color: COLORS.lensBlue,
+                  background: "rgba(46,134,222,0.1)",
+                  border: `1.5px solid ${COLORS.lensBlue}`,
+                  borderRadius: "999px",
+                  padding: "2px 8px",
+                  cursor: "pointer",
+                }}
+              >
+                {t} →
+              </button>
+            ) : (
+              <span
+                key={i}
+                style={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: "10.5px",
+                  color: COLORS.screenBorder,
+                  border: `1.5px solid ${COLORS.screenBorder}`,
+                  borderRadius: "999px",
+                  padding: "2px 8px",
+                }}
+              >
+                {t}
+              </span>
+            )
+          )}
         </div>
       )}
+
+      {onTagsChange && <TagEditor tags={definition.tags || []} onChange={onTagsChange} />}
     </div>
   );
 }

@@ -5,6 +5,7 @@ import { useProgressiveMessage } from "../lib/hooks";
 import TechCard from "../components/TechCard";
 import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
+import SkeletonList from "../components/Skeleton";
 
 export default function SearchView({
   query,
@@ -21,6 +22,7 @@ export default function SearchView({
   onRetry,
   onGoSettings,
   onRunHistoryTerm,
+  onSearchRelated,
 }) {
   const loadingMsg = useProgressiveMessage(loading, [
     `ESCANEANDO "${query}"...`,
@@ -30,21 +32,30 @@ export default function SearchView({
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center text-center" style={{ minHeight: "380px" }}>
-        <div
+      <div>
+        <p
+          className="flex items-center gap-2"
           style={{
-            width: "48px",
-            height: "48px",
-            borderRadius: "50%",
-            border: `4px solid ${COLORS.screenBorder}`,
-            borderTopColor: COLORS.lensBlue,
-            animation: "spin 0.9s linear infinite",
-            marginBottom: "12px",
+            fontFamily: '"JetBrains Mono", monospace',
+            fontSize: "11.5px",
+            color: COLORS.ink,
+            letterSpacing: "0.03em",
+            marginBottom: "14px",
           }}
-        />
-        <p style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "12px", color: COLORS.ink, letterSpacing: "0.04em" }}>
+        >
+          <span
+            style={{
+              width: "9px",
+              height: "9px",
+              borderRadius: "50%",
+              background: COLORS.lensBlue,
+              animation: "spin 0.9s linear infinite, flicker 1s ease-in-out infinite",
+              flexShrink: 0,
+            }}
+          />
           {loadingMsg}
         </p>
+        <SkeletonList count={searchMode === "definition" ? 1 : 3} />
       </div>
     );
   }
@@ -60,7 +71,7 @@ export default function SearchView({
           style={{
             fontFamily: "Inter, sans-serif",
             fontSize: "12px",
-            color: "#4a5540",
+            color: "var(--text-muted)",
             maxWidth: "250px",
             marginTop: "4px",
             marginBottom: "6px",
@@ -92,7 +103,7 @@ export default function SearchView({
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center text-center" style={{ minHeight: "380px" }}>
-        <p style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, color: "#8a1f1f", marginBottom: "6px", fontSize: "15px" }}>
+        <p style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, color: "var(--danger)", marginBottom: "6px", fontSize: "15px" }}>
           Sinal perdido
         </p>
         <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: COLORS.ink, maxWidth: "240px", marginBottom: "12px" }}>
@@ -118,7 +129,7 @@ export default function SearchView({
         <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", maxWidth: "240px", marginTop: "4px" }}>
           {PLACEHOLDER_BY_MODE[searchMode]}
         </p>
-        <p style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", color: "#4a5540", marginTop: "10px" }}>
+        <p style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", color: "var(--text-muted)", marginTop: "10px" }}>
           tec: técnicas &nbsp;·&nbsp; def: conceitos &nbsp;·&nbsp; list: tipos
         </p>
 
@@ -139,7 +150,7 @@ export default function SearchView({
                     fontFamily: '"JetBrains Mono", monospace',
                     fontSize: "11px",
                     color: COLORS.ink,
-                    background: COLORS.white,
+                    background: COLORS.surface,
                     border: `1.5px solid ${COLORS.screenBorder}`,
                     borderRadius: "999px",
                     padding: "5px 11px",
@@ -188,6 +199,7 @@ export default function SearchView({
           definition={data}
           saved={isSaved("definition", data.term, slug(data.term))}
           onToggle={() => onToggleSave("definition", data.term, { definition: data })}
+          onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
         />
       </div>
     );
@@ -199,13 +211,14 @@ export default function SearchView({
         <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "18px", color: COLORS.ink }}>
           {data.subject}
         </h2>
-        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "#4a5540", marginBottom: "12px" }}>
+        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>
           {data.subjectIntro}
         </p>
         {data.items.map((item, i) => (
           <ListItemCard
             key={item.name + i}
             index={i}
+            subjectDisplay={data.subject}
             item={item}
             saved={isSaved("list", data.subject, slug(item.name))}
             onToggle={() => onToggleSave("list", data.subject, { item })}
@@ -220,13 +233,14 @@ export default function SearchView({
       <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "18px", color: COLORS.ink }}>
         {data.subject}
       </h2>
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "#4a5540", marginBottom: "12px" }}>
+      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>
         {data.subjectIntro}
       </p>
       {data.techniques.map((t, i) => (
         <TechCard
           key={t.name + i}
           index={i}
+          subjectDisplay={data.subject}
           technique={t}
           statLabels={data.statLabels}
           saved={isSaved("technique", data.subject, slug(t.name))}
