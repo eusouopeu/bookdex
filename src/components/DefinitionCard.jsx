@@ -2,13 +2,14 @@ import { COLORS, getTypeColor } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
+import NoteEditor from "./NoteEditor";
 import { definitionShareText } from "../lib/share";
 
 /**
  * Verbete de conceito/definição (modo "def:"). Ao contrário do TechCard, não
  * tem stats — tem pontos-chave, exemplo e termos relacionados.
  */
-export default function DefinitionCard({ definition, saved, onToggle, onTagsChange, onSearchRelated }) {
+export default function DefinitionCard({ definition, saved, onToggle, onTagsChange, onNoteChange, onSearchRelated }) {
   const color = getTypeColor(definition.category);
   return (
     <div
@@ -158,6 +159,7 @@ export default function DefinitionCard({ definition, saved, onToggle, onTagsChan
       )}
 
       {onTagsChange && <TagEditor tags={definition.tags || []} onChange={onTagsChange} />}
+      {onNoteChange && <NoteEditor note={definition.note} onChange={onNoteChange} />}
     </div>
   );
 }

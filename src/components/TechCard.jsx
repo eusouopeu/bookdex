@@ -4,6 +4,7 @@ import PokeballIcon from "./PokeballIcon";
 import StatBar from "./StatBar";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
+import NoteEditor from "./NoteEditor";
 import { techniqueShareText } from "../lib/share";
 
 export default function TechCard({
@@ -15,6 +16,7 @@ export default function TechCard({
   onToggle,
   onOpenDetail,
   onTagsChange,
+  onNoteChange,
   selectable,
   selected,
   onSelectToggle,
@@ -110,6 +112,7 @@ export default function TechCard({
         Ideal para: {technique.bestFor}
       </div>
       {onTagsChange && <TagEditor tags={technique.tags || []} onChange={onTagsChange} />}
+      {onNoteChange && <NoteEditor note={technique.note} onChange={onNoteChange} />}
       {onOpenDetail && (
         <button
           onClick={onOpenDetail}

@@ -145,30 +145,60 @@ src/
   theme.js                 cores, paleta de tipos, slug, estilos comuns
   utilities.css            subconjunto das utilitárias usadas no artefato
   components/
-    TechCard.jsx           card da técnica (+ botão Aprofundar)
-    DefinitionCard.jsx     card do verbete de conceito (modo def:)
-    ListItemCard.jsx       card de item de enumeração (modo list:)
-    StatBar.jsx            barra de 5 blocos das stats
-    PokeballIcon.jsx       ícone de captura
+    TechCard.jsx            card da técnica (+ botão Aprofundar)
+    DefinitionCard.jsx      card do verbete de conceito (modo def:)
+    ListItemCard.jsx        card de item de enumeração (modo list:)
+    StatBar.jsx             barra de 5 blocos das stats
+    PokeballIcon.jsx        ícone de captura
+    TagEditor.jsx           chips de tag livre num item salvo
+    NoteEditor.jsx          anotação pessoal livre num item salvo
+    RelatedSuggestions.jsx  card de sugestões de assuntos relacionados (sob demanda)
+    CollectionPicker.jsx    bottom sheet pra escolher/criar coleção na seleção em lote
+    CollectionsSection.jsx  aba "Coleções" dentro da Pokédex
   views/
-    SearchView.jsx         busca, loading, erro, aviso de chave ausente
-    DexView.jsx            Pokédex com badge Técnicas/Conceitos & Tipos e pastas por assunto
-    DetailPage.jsx         guia passo a passo + sinais de acerto/erro
-    SettingsView.jsx       API key e proxy
-    ImportView.jsx         importar JSON (colado ou arquivo) e backup
+    SearchView.jsx          busca, loading, erro, aviso de chave ausente
+    DexView.jsx             Pokédex com badges Técnicas/Conceitos & Tipos/Coleções e pastas por assunto
+    DetailPage.jsx          guia passo a passo + sinais de acerto/erro
+    SettingsView.jsx        API key, proxy, tema, notificações, pré-carregamento de guias
+    ImportView.jsx          importar JSON, backup, export em PDF e export para Anki
   lib/
-    storage.js             get/set/delete/list sobre @capacitor/preferences
-    anthropic.js           chamadas à API, prompts e erros tratados (técnica/def/list)
+    storage.js              get/set/delete/list sobre @capacitor/preferences
+    anthropic.js            chamadas à API, prompts e erros tratados (técnica/def/list/sugestões)
     searchQuery.js          parse dos prefixos tec:/def:/list:
-    importer.js            validação e merge do payload importado
+    importer.js             validação e merge do payload importado
+    reviewWidget.js         ponte com o widget de tela inicial do Android
+    collections.js          resolução de refs de coleções manuais contra `saved`
+    ankiExport.js           gera o CSV de export para o Anki
 proxy/cloudflare-worker.js proxy opcional (plano B)
+android/app/src/main/java/com/pedroteles/tecnicadex/
+  ReviewWidgetPlugin.java   plugin Capacitor custom: grava a fila de revisão em SharedPreferences próprio
+  ReviewWidgetProvider.java AppWidgetProvider que desenha o widget de tela inicial
 ```
 
 Chaves de armazenamento (prefixadas com `tecnicadex:`): `pokedex-saved`,
-`pokedex-details`, `anthropic-api-key`, `anthropic-proxy-url`. Dentro de `pokedex-saved`,
+`pokedex-details`, `anthropic-api-key`, `anthropic-proxy-url`, `search-history`,
+`collections`, `related-suggestions`, `prefetch-details-enabled`, entre outras (ver
+`KEYS` em `src/lib/storage.js`). Dentro de `pokedex-saved`,
 grupos de técnica guardam um array `techniques`; grupos de conceito/tipo (`kind:
 "definition"` ou `"list"`) guardam um array `items` e são prefixados com `kn:` para não
-colidir com o slug de um assunto de técnica igual.
+colidir com o slug de um assunto de técnica igual. Cada item salvo tem um campo `note`
+de anotação pessoal livre, além de `tags`.
+
+`collections` guarda pastas manuais que cruzam itens de assuntos diferentes: cada
+coleção é `{ id, name, createdAt, refs: [{subjectKey, itemId}] }` — as refs apontam pro
+item real em `pokedex-saved` (nunca duplicam o dado); uma ref cujo item foi removido da
+Pokédex simplesmente some da exibição.
+
+### Widget de tela inicial (Android)
+
+`ReviewWidgetPlugin` é um plugin Capacitor local (não é um pacote npm): o app chama
+`updateReviewWidget(dueCount, headline)` (em `src/lib/reviewWidget.js`) sempre que a fila
+de revisão muda; o plugin grava isso num `SharedPreferences` próprio
+(`com.pedroteles.tecnicadex.widget`, separado do storage do resto do app) e força o
+`ReviewWidgetProvider` a redesenhar todas as instâncias do widget na tela inicial. Fora
+do Android nativo (PWA/browser) a chamada falha silenciosamente — o widget só existe no
+APK, e precisa ser adicionado manualmente à tela inicial pelo usuário (padrão do Android:
+tocar e segurar a tela inicial → Widgets → Bookdex).
 
 ## 7. Notas
 

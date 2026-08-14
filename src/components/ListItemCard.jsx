@@ -2,13 +2,14 @@ import { COLORS, getTypeColor } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
+import NoteEditor from "./NoteEditor";
 import { listItemShareText } from "../lib/share";
 
 /**
  * Card de um item de enumeração/tipo (modo "list:"). Como TechCard, mas sem
  * stats — apenas nome, categoria e descrição.
  */
-export default function ListItemCard({ index, subjectDisplay, item, saved, onToggle, onTagsChange }) {
+export default function ListItemCard({ index, subjectDisplay, item, saved, onToggle, onTagsChange, onNoteChange }) {
   const color = getTypeColor(item.category);
   return (
     <div
@@ -77,6 +78,7 @@ export default function ListItemCard({ index, subjectDisplay, item, saved, onTog
         {item.description}
       </p>
       {onTagsChange && <TagEditor tags={item.tags || []} onChange={onTagsChange} />}
+      {onNoteChange && <NoteEditor note={item.note} onChange={onNoteChange} />}
     </div>
   );
 }

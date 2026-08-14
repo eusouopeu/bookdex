@@ -14,12 +14,17 @@ import {
   Tag,
   CheckSquare,
   Check,
+  FolderPlus,
+  Folder,
 } from "lucide-react";
 import { COLORS, slug } from "../theme";
 import { getJSON, KEYS } from "../lib/storage";
 import TechCard from "../components/TechCard";
 import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
+import CollectionPicker from "../components/CollectionPicker";
+import CollectionsSection from "../components/CollectionsSection";
+import RelatedSuggestions from "../components/RelatedSuggestions";
 
 const BACKUP_REMINDER_DAYS = 14;
 const CONFIRM_THRESHOLD = 3; // grupos com mais itens do que isso pedem confirmação antes de apagar
@@ -58,14 +63,24 @@ export default function DexView({
   onOpenImport,
   onRemoveGroup,
   onUpdateTags,
+  onUpdateNote,
   onSearchRelated,
   onExampleSearch,
   onOpenCompare,
   onBulkRemoveItems,
   onBulkAddTag,
+  collections,
+  onCreateCollection,
+  onDeleteCollection,
+  onAddToCollection,
+  onRemoveFromCollection,
+  suggestions,
+  suggestionsLoading,
+  suggestionsError,
+  onGenerateSuggestions,
 }) {
   const [collapsed, setCollapsed] = useState({});
-  const [category, setCategory] = useState("technique"); // "technique" | "knowledge"
+  const [category, setCategory] = useState("technique"); // "technique" | "knowledge" | "collections"
   const [filterText, setFilterText] = useState("");
   const [activeTag, setActiveTag] = useState(null);
   const [sortBy, setSortBy] = useState("recent"); // "recent" | "name"
@@ -78,6 +93,7 @@ export default function DexView({
   const [bulkSelection, setBulkSelection] = useState([]); // [{subjectKey, itemId}]
   const [bulkTagDraft, setBulkTagDraft] = useState("");
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
+  const [pickingCollection, setPickingCollection] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -259,6 +275,17 @@ export default function DexView({
     exitSelectMode();
   }
 
+  function pickCollectionForBulk(collectionId, newName) {
+    if (bulkSelection.length === 0) return;
+    if (collectionId) {
+      onAddToCollection(collectionId, bulkSelection);
+    } else if (newName) {
+      onAddToCollection(null, bulkSelection, newName);
+    }
+    setPickingCollection(false);
+    exitSelectMode();
+  }
+
   const daysSinceBackup = lastBackup ? Math.floor((Date.now() - lastBackup) / 86400000) : null;
   const showBackupReminder =
     storageLoaded &&
@@ -364,7 +391,17 @@ export default function DexView({
         </div>
       )}
 
-      <div className="flex gap-2" style={{ marginBottom: "10px" }}>
+      {onGenerateSuggestions && (
+        <RelatedSuggestions
+          suggestions={suggestions || []}
+          loading={!!suggestionsLoading}
+          error={suggestionsError}
+          onGenerate={onGenerateSuggestions}
+          onPick={(mode, term) => onSearchRelated && onSearchRelated(mode, term)}
+        />
+      )}
+
+      <div className="flex gap-2" style={{ marginBottom: "10px", flexWrap: "wrap" }}>
         <button
           onClick={() => {
             setCategory("technique");
@@ -385,6 +422,19 @@ export default function DexView({
         >
           Conceitos &amp; Tipos ({knowledgeEntries.reduce((s, [, g]) => s + g.items.length, 0)})
         </button>
+        {onCreateCollection && (
+          <button
+            onClick={() => {
+              setCategory("collections");
+              exitCompareMode();
+              exitSelectMode();
+            }}
+            className="flex items-center justify-center gap-1"
+            style={badgeStyle(category === "collections")}
+          >
+            <Folder size={12} /> Coleções ({Object.keys(collections || {}).length})
+          </button>
+        )}
         {category === "technique" && onOpenCompare && (
           <button
             onClick={() => {
@@ -406,7 +456,7 @@ export default function DexView({
             <Scale size={15} />
           </button>
         )}
-        {onBulkRemoveItems && (
+        {category !== "collections" && onBulkRemoveItems && (
           <button
             onClick={() => {
               exitCompareMode();
@@ -429,6 +479,21 @@ export default function DexView({
         )}
       </div>
 
+      {category === "collections" ? (
+        <CollectionsSection
+          collections={collections}
+          saved={saved}
+          onCreateCollection={onCreateCollection}
+          onDeleteCollection={onDeleteCollection}
+          onRemoveFromCollection={onRemoveFromCollection}
+          onToggleSave={onToggleSave}
+          onOpenDetail={onOpenDetail}
+          onUpdateTags={onUpdateTags}
+          onUpdateNote={onUpdateNote}
+          onSearchRelated={onSearchRelated}
+        />
+      ) : (
+        <>
       {compareMode && (
         <div
           style={{
@@ -681,6 +746,7 @@ export default function DexView({
                     onToggle={() => onToggleSave("technique", group.displayName, { technique: t, statLabels: t.statLabels })}
                     onOpenDetail={compareMode ? undefined : () => onOpenDetail(group.displayName, t)}
                     onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, t.id, group.kind || "technique", tags) : undefined}
+                    onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, t.id, group.kind || "technique", note) : undefined}
                     selectable={compareMode}
                     selected={compareSelection.some((c) => c.subjectKey === key && c.id === t.id)}
                     onSelectToggle={() => toggleCompareSelection(key, group.displayName, t)}
@@ -698,6 +764,7 @@ export default function DexView({
                     saved={true}
                     onToggle={() => onToggleSave("definition", group.displayName, { definition: d })}
                     onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, d.id, "definition", tags) : undefined}
+                    onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, d.id, "definition", note) : undefined}
                     onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
                   />
                 )
@@ -715,6 +782,7 @@ export default function DexView({
                     saved={true}
                     onToggle={() => onToggleSave("list", group.displayName, { item: it })}
                     onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, it.id, "list", tags) : undefined}
+                    onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, it.id, "list", note) : undefined}
                   />
                 )
               )}
@@ -830,6 +898,28 @@ export default function DexView({
             >
               Marcar
             </button>
+            {onAddToCollection && (
+              <button
+                onClick={() => setPickingCollection(true)}
+                disabled={bulkSelection.length === 0}
+                className="flex items-center gap-1"
+                style={{
+                  background: "transparent",
+                  color: COLORS.ink,
+                  border: `1.5px solid ${COLORS.screenBorder}`,
+                  borderRadius: "999px",
+                  padding: "7px 12px",
+                  fontFamily: '"Baloo 2", sans-serif',
+                  fontWeight: 700,
+                  fontSize: "11.5px",
+                  cursor: "pointer",
+                  opacity: bulkSelection.length === 0 ? 0.5 : 1,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <FolderPlus size={12} /> Coleção
+              </button>
+            )}
             <button
               onClick={applyBulkDelete}
               disabled={bulkSelection.length === 0}
@@ -867,6 +957,16 @@ export default function DexView({
             </button>
           </div>
         </div>
+      )}
+        </>
+      )}
+
+      {pickingCollection && (
+        <CollectionPicker
+          collections={collections}
+          onPick={(id, name) => pickCollectionForBulk(id, name)}
+          onClose={() => setPickingCollection(false)}
+        />
       )}
     </>
   );

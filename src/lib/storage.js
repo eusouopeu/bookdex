@@ -128,6 +128,9 @@ export const KEYS = {
   gamification: "gamification",
   offlineQueue: "offline-search-queue",
   notificationsEnabled: "notifications-enabled",
+  collections: "collections",
+  suggestions: "related-suggestions",
+  prefetchDetails: "prefetch-details-enabled",
 };
 
 export default { get, set, delete: remove, list, getJSON, setJSON, KEYS };

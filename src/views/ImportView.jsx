@@ -1,11 +1,13 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, FileJson, ClipboardPaste, Download, BookOpenText } from "lucide-react";
+import { ArrowLeft, FileJson, ClipboardPaste, Download, BookOpenText, Layers } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { COLORS, primaryButtonStyle } from "../theme";
 import { parsePayload, buildExportPayload, mergeData } from "../lib/importer";
 import { setJSON, KEYS } from "../lib/storage";
 import { buildPokedexPdf } from "../lib/pdfExport";
+import { buildAnkiCsv, countAnkiRows } from "../lib/ankiExport";
+import { shareOrDownloadFile } from "../lib/share";
 
 export default function ImportView({ onBack, onImport, saved, detailCache }) {
   const [text, setText] = useState("");
@@ -15,6 +17,8 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
   const [backupMsg, setBackupMsg] = useState(null);
   const [pdfMsg, setPdfMsg] = useState(null);
   const [generatingPdf, setGeneratingPdf] = useState(false);
+  const [ankiMsg, setAnkiMsg] = useState(null);
+  const [generatingAnki, setGeneratingAnki] = useState(false);
   const fileInput = useRef(null);
   const hasSaved = Object.keys(saved || {}).length > 0;
 
@@ -125,6 +129,36 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
       setPdfMsg(`Falha ao gerar o PDF: ${e.message || e}`);
     } finally {
       setGeneratingPdf(false);
+    }
+  }
+
+  async function exportAnki() {
+    setAnkiMsg(null);
+    setGeneratingAnki(true);
+    try {
+      const csv = buildAnkiCsv(saved, detailCache);
+      const fileName = "bookdex-anki.csv";
+      if (Capacitor.isNativePlatform()) {
+        await Filesystem.writeFile({
+          path: fileName,
+          data: csv,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8,
+          recursive: true,
+        });
+        setAnkiMsg(`Salvo em Documentos/${fileName}. Importe em Anki → Arquivo → Importar.`);
+      } else {
+        const outcome = await shareOrDownloadFile(fileName, csv, "text/csv", "Bookdex — export Anki");
+        setAnkiMsg(
+          outcome === "shared"
+            ? "Compartilhado."
+            : "Download iniciado. Importe em Anki → Arquivo → Importar."
+        );
+      }
+    } catch (e) {
+      setAnkiMsg(`Falha ao gerar o CSV: ${e.message || e}`);
+    } finally {
+      setGeneratingAnki(false);
     }
   }
 
@@ -346,6 +380,26 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
         )}
         {pdfMsg && (
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{pdfMsg}</p>
+        )}
+
+        <button
+          onClick={exportAnki}
+          disabled={!hasSaved || generatingAnki}
+          className="flex items-center justify-center gap-1.5"
+          style={{
+            ...primaryButtonStyle,
+            width: "100%",
+            marginTop: "10px",
+            background: "transparent",
+            color: COLORS.ink,
+            border: `2px solid ${COLORS.screenBorder}`,
+            opacity: !hasSaved || generatingAnki ? 0.55 : 1,
+          }}
+        >
+          <Layers size={16} /> {generatingAnki ? "Gerando CSV..." : `Exportar para Anki (${countAnkiRows(saved)} cartões)`}
+        </button>
+        {ankiMsg && (
+          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{ankiMsg}</p>
         )}
       </div>
     </div>

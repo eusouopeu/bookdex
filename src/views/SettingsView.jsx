@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Eye, EyeOff, Gauge, Sun, Moon, Bell, BellOff, Flame, Award } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Gauge, Sun, Moon, Bell, BellOff, Flame, Award, Download } from "lucide-react";
 import { COLORS, primaryButtonStyle } from "../theme";
 import {
   getApiKey,
@@ -53,6 +53,8 @@ export default function SettingsView({
   onNotificationsChange,
   gamification,
   totalSavedCount,
+  prefetchDetailsEnabled,
+  onPrefetchDetailsChange,
 }) {
   const [key, setKey] = useState("");
   const [proxy, setProxy] = useState("");
@@ -222,6 +224,56 @@ export default function SettingsView({
           />
         </span>
       </button>
+
+      <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, marginBottom: "8px" }}>
+        Guias offline
+      </h3>
+      <button
+        onClick={() => onPrefetchDetailsChange && onPrefetchDetailsChange(!prefetchDetailsEnabled)}
+        className="flex items-center gap-2"
+        style={{
+          width: "100%",
+          minHeight: "44px",
+          borderRadius: "8px",
+          border: `2px solid ${COLORS.screenBorder}`,
+          background: "transparent",
+          padding: "0 12px",
+          cursor: "pointer",
+          marginBottom: "6px",
+        }}
+      >
+        <Download size={16} style={{ color: COLORS.ink }} />
+        <span style={{ flex: 1, textAlign: "left", fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: COLORS.ink }}>
+          Pré-carregar guias ao capturar uma técnica
+        </span>
+        <span
+          style={{
+            width: "38px",
+            height: "22px",
+            borderRadius: "999px",
+            background: prefetchDetailsEnabled ? COLORS.lensBlue : COLORS.screenBorder,
+            position: "relative",
+            flexShrink: 0,
+          }}
+        >
+          <span
+            style={{
+              position: "absolute",
+              top: "2px",
+              left: prefetchDetailsEnabled ? "18px" : "2px",
+              width: "18px",
+              height: "18px",
+              borderRadius: "50%",
+              background: "#fff",
+              transition: "left 0.15s ease",
+            }}
+          />
+        </span>
+      </button>
+      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.4 }}>
+        Baixa o guia "Aprofundar" em segundo plano assim que você captura uma técnica, pra ele já estar disponível
+        offline depois. Gasta uma chamada extra à API por técnica capturada.
+      </p>
 
       {gamification && (
         <div style={{ marginBottom: "20px" }}>

@@ -1,13 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Settings as SettingsIcon, Upload, WifiOff, Brain, Mic, MicOff } from "lucide-react";
+import { Settings as SettingsIcon, Upload, WifiOff, Brain, Mic, MicOff, History } from "lucide-react";
 import { COLORS, THEME_VARS, slug, tabStyle, iconButtonStyle } from "./theme";
 import { getJSON, setJSON, KEYS } from "./lib/storage";
-import { fetchTechniques, fetchDefinition, fetchList, hasCredentials, MissingApiKeyError } from "./lib/anthropic";
+import {
+  fetchTechniques,
+  fetchDefinition,
+  fetchList,
+  fetchDetail,
+  fetchRelatedSuggestions,
+  hasCredentials,
+  MissingApiKeyError,
+} from "./lib/anthropic";
 import { parseSearchQuery, hasExplicitPrefix, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
 import { mergeData } from "./lib/importer";
-import { initReviewState, gradeReviewState, countDue } from "./lib/review";
+import { initReviewState, gradeReviewState, countDue, getDueQueue } from "./lib/review";
 import { recordVisit, recordReviewCompleted } from "./lib/gamification";
 import { scheduleReviewReminder, requestNotificationPermission, cancelReviewReminder } from "./lib/notifications";
+import { updateReviewWidget } from "./lib/reviewWidget";
+import { createCollectionId } from "./lib/collections";
 
 const SEARCH_MODES = [
   { mode: "technique", label: "Técnicas" },
@@ -15,6 +25,7 @@ const SEARCH_MODES = [
   { mode: "list", label: "Tipos" },
 ];
 const MAX_HISTORY = 8;
+const MODE_LABELS_SHORT = { technique: "téc", definition: "def", list: "list" };
 import SearchView from "./views/SearchView";
 import DexView from "./views/DexView";
 import DetailPage from "./views/DetailPage";
@@ -51,6 +62,12 @@ export default function App() {
   const offlineQueueRef = useRef([]);
   const [gamification, setGamification] = useState(null);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
+  const [collections, setCollections] = useState({});
+  const [suggestions, setSuggestions] = useState([]);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [suggestionsError, setSuggestionsError] = useState(null);
+  const [prefetchDetailsEnabled, setPrefetchDetailsEnabled] = useState(true);
+  const [showHistorySuggestions, setShowHistorySuggestions] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -60,6 +77,9 @@ export default function App() {
       setTheme(await getJSON(KEYS.theme, "light"));
       setOfflineQueue(await getJSON(KEYS.offlineQueue, []));
       setNotificationsEnabled(await getJSON(KEYS.notificationsEnabled, false));
+      setCollections(await getJSON(KEYS.collections, {}));
+      setSuggestions((await getJSON(KEYS.suggestions, null))?.items || []);
+      setPrefetchDetailsEnabled(await getJSON(KEYS.prefetchDetails, true));
       const savedTab = await getJSON(KEYS.lastTab, "search");
       if (savedTab === "search" || savedTab === "dex") {
         setLastTab(savedTab);
@@ -109,6 +129,18 @@ export default function App() {
     scheduleReviewReminder(countDue(saved)).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storageLoaded, notificationsEnabled, saved]);
+
+  useEffect(() => {
+    if (!storageLoaded) return;
+    const queue = getDueQueue(saved);
+    const headline = queue.length
+      ? queue[0].kind === "definition"
+        ? queue[0].item.term
+        : queue[0].item.name
+      : "Tudo revisado por hoje!";
+    updateReviewWidget(queue.length, headline).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageLoaded, saved]);
 
   const showToast = useCallback((msg, onUndo) => {
     setToast({ msg, onUndo });
@@ -177,6 +209,7 @@ export default function App() {
         statLabels: statLabels,
         savedAt: Date.now(),
         tags: [],
+        note: "",
         reviewState: initReviewState(),
       });
     }
@@ -197,6 +230,22 @@ export default function App() {
       });
     } else {
       showToast(`${technique.name} capturado(a)!`);
+      prefetchDetail(subjectDisplay, { ...technique, id: techId });
+    }
+  }
+
+  /** Baixa o guia em background assim que uma técnica é capturada, pra já ficar disponível offline. */
+  async function prefetchDetail(subjectDisplay, technique) {
+    if (!prefetchDetailsEnabled) return;
+    const cacheKey = `${slug(subjectDisplay)}:${technique.id}`;
+    if (detailCache[cacheKey]) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    if (!(await hasCredentials())) return;
+    try {
+      const parsed = await fetchDetail(subjectDisplay, technique);
+      cacheDetail(cacheKey, parsed);
+    } catch {
+      /* best-effort — o usuário ainda pode abrir "Aprofundar" manualmente depois */
     }
   }
 
@@ -226,6 +275,7 @@ export default function App() {
         relatedTerms: d.relatedTerms || [],
         savedAt: Date.now(),
         tags: [],
+        note: "",
         reviewState: initReviewState(),
       };
     } else {
@@ -239,6 +289,7 @@ export default function App() {
         description: it.description,
         savedAt: Date.now(),
         tags: [],
+        note: "",
         reviewState: initReviewState(),
       };
     }
@@ -349,6 +400,110 @@ export default function App() {
 
   function updateItemTags(subjectKey, itemId, _kind, tags) {
     updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, tags }));
+  }
+
+  function updateItemNote(subjectKey, itemId, _kind, note) {
+    updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, note }));
+  }
+
+  function persistCollections(next) {
+    setJSON(KEYS.collections, next).catch(() => {});
+  }
+
+  function createCollection(name) {
+    const clean = (name || "").trim();
+    if (!clean) return null;
+    const id = createCollectionId();
+    setCollections((prev) => {
+      const next = { ...prev, [id]: { id, name: clean, createdAt: Date.now(), refs: [] } };
+      persistCollections(next);
+      return next;
+    });
+    showToast(`Coleção "${clean}" criada.`);
+    return id;
+  }
+
+  function deleteCollection(id) {
+    setCollections((prev) => {
+      const col = prev[id];
+      if (!col) return prev;
+      const next = { ...prev };
+      delete next[id];
+      persistCollections(next);
+      showToast(`Coleção "${col.name}" excluída.`);
+      return next;
+    });
+  }
+
+  function addToCollection(collectionId, refs, newName) {
+    setCollections((prev) => {
+      let id = collectionId;
+      let next = prev;
+      if (!id) {
+        const clean = (newName || "").trim();
+        if (!clean) return prev;
+        id = createCollectionId();
+        next = { ...prev, [id]: { id, name: clean, createdAt: Date.now(), refs: [] } };
+      }
+      const col = next[id];
+      if (!col) return prev;
+      const existingKeys = new Set(col.refs.map((r) => `${r.subjectKey}:${r.itemId}`));
+      const merged = [...col.refs];
+      for (const r of refs) {
+        const k = `${r.subjectKey}:${r.itemId}`;
+        if (!existingKeys.has(k)) {
+          merged.push(r);
+          existingKeys.add(k);
+        }
+      }
+      next = { ...next, [id]: { ...col, refs: merged } };
+      persistCollections(next);
+      showToast(`${refs.length} item(ns) adicionado(s) a "${col.name}".`);
+      return next;
+    });
+  }
+
+  function removeFromCollection(collectionId, ref) {
+    setCollections((prev) => {
+      const col = prev[collectionId];
+      if (!col) return prev;
+      const next = {
+        ...prev,
+        [collectionId]: { ...col, refs: col.refs.filter((r) => !(r.subjectKey === ref.subjectKey && r.itemId === ref.itemId)) },
+      };
+      persistCollections(next);
+      return next;
+    });
+  }
+
+  async function generateSuggestions() {
+    setSuggestionsLoading(true);
+    setSuggestionsError(null);
+    try {
+      const captured = [];
+      for (const group of Object.values(saved)) {
+        captured.push(group.displayName);
+        const items = group.kind === "definition" || group.kind === "list" ? group.items : group.techniques;
+        for (const it of items || []) captured.push(it.term || it.name);
+      }
+      const uniqueCaptured = [...new Set(captured)].slice(0, 60);
+      const result = await fetchRelatedSuggestions(uniqueCaptured);
+      setSuggestions(result);
+      setJSON(KEYS.suggestions, { items: result, generatedAt: Date.now() }).catch(() => {});
+    } catch (e) {
+      if (e instanceof MissingApiKeyError) {
+        setSuggestionsError("Configure sua API key em Configurações para gerar sugestões.");
+      } else {
+        setSuggestionsError(e.message || "Não foi possível gerar sugestões agora.");
+      }
+    } finally {
+      setSuggestionsLoading(false);
+    }
+  }
+
+  function changePrefetchDetails(enabled) {
+    setPrefetchDetailsEnabled(enabled);
+    setJSON(KEYS.prefetchDetails, enabled).catch(() => {});
   }
 
   function gradeReviewItem(subjectKey, itemId, _kind, correct) {
@@ -538,6 +693,9 @@ export default function App() {
   const dueCount = countDue(saved);
   const isTab = view === "search" || view === "dex";
   const showSearchBar = view === "search" && !detailTarget && !compareTarget;
+  const matchingHistory = query.trim()
+    ? history.filter((h) => h.term.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 5)
+    : [];
 
   return (
     <div
@@ -751,11 +909,21 @@ export default function App() {
                 onOpenImport={() => openScreen("import")}
                 onRemoveGroup={removeGroup}
                 onUpdateTags={updateItemTags}
+                onUpdateNote={updateItemNote}
                 onSearchRelated={searchRelated}
                 onExampleSearch={(mode, term) => searchRelated(mode, term)}
                 onOpenCompare={openCompare}
                 onBulkRemoveItems={bulkRemoveItems}
                 onBulkAddTag={bulkAddTag}
+                collections={collections}
+                onCreateCollection={createCollection}
+                onDeleteCollection={deleteCollection}
+                onAddToCollection={addToCollection}
+                onRemoveFromCollection={removeFromCollection}
+                suggestions={suggestions}
+                suggestionsLoading={suggestionsLoading}
+                suggestionsError={suggestionsError}
+                onGenerateSuggestions={generateSuggestions}
               />
             )}
 
@@ -779,6 +947,8 @@ export default function App() {
                 onNotificationsChange={changeNotifications}
                 gamification={gamification}
                 totalSavedCount={totalSavedCount}
+                prefetchDetailsEnabled={prefetchDetailsEnabled}
+                onPrefetchDetailsChange={changePrefetchDetails}
               />
             )}
 
@@ -873,12 +1043,63 @@ export default function App() {
                   </button>
                 ))}
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2" style={{ position: "relative" }}>
+                {showHistorySuggestions && matchingHistory.length > 0 && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      bottom: "calc(100% + 6px)",
+                      left: 0,
+                      right: 0,
+                      background: COLORS.surface,
+                      border: `2px solid ${COLORS.screenBorder}`,
+                      borderRadius: "8px",
+                      overflow: "hidden",
+                      zIndex: 10,
+                      boxShadow: "0 -4px 10px rgba(0,0,0,0.3)",
+                    }}
+                  >
+                    {matchingHistory.map((h, i) => (
+                      <button
+                        key={h.mode + h.term + i}
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => {
+                          setShowHistorySuggestions(false);
+                          handleSearch({ mode: h.mode, term: h.term });
+                        }}
+                        className="flex items-center gap-2"
+                        style={{
+                          width: "100%",
+                          padding: "9px 12px",
+                          background: "none",
+                          border: "none",
+                          borderBottom: i < matchingHistory.length - 1 ? `1px solid ${COLORS.screenBorder}` : "none",
+                          cursor: "pointer",
+                          fontFamily: "Inter, sans-serif",
+                          fontSize: "12.5px",
+                          color: COLORS.ink,
+                          textAlign: "left",
+                        }}
+                      >
+                        <History size={12} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
+                        <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.term}</span>
+                        <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "9.5px", color: "var(--text-muted)" }}>
+                          {MODE_LABELS_SHORT[h.mode] || h.mode}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <input
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
+                  onFocus={() => setShowHistorySuggestions(true)}
+                  onBlur={() => setShowHistorySuggestions(false)}
                   onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSearch();
+                    if (e.key === "Enter") {
+                      setShowHistorySuggestions(false);
+                      handleSearch();
+                    }
                   }}
                   placeholder={PLACEHOLDER_BY_MODE[searchMode]}
                   enterKeyHint="search"

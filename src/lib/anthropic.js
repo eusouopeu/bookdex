@@ -251,6 +251,32 @@ export async function fetchList(subject) {
   return parsed;
 }
 
+export const RELATED_SYSTEM_PROMPT = `Você sugere novos assuntos para o usuário explorar num app estilo Pokédex de técnicas/conceitos/tipos, a partir do que ele já capturou.
+Dada uma lista de assuntos e itens já capturados pelo usuário, sugira de 4 a 8 assuntos RELACIONADOS que ele provavelmente ainda não tem, para incentivá-lo a continuar explorando.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- Não repita nenhum dos assuntos/itens já capturados que foram fornecidos.
+- "term": nome do assunto a buscar, 1 a 4 palavras, em português.
+- "mode": "technique" (comparação de técnicas), "definition" (conceito único) ou "list" (enumeração de tipos) — escolha o mais adequado ao termo.
+- "reason": motivo curto (até 12 palavras) ligando a sugestão ao que o usuário já capturou.
+- Priorize diversidade: não sugira 8 variações do mesmo assunto já capturado.
+
+Formato exato (sem campos extras):
+{"suggestions":[{"term":"...","mode":"...","reason":"..."}]}`;
+
+export async function fetchRelatedSuggestions(capturedList) {
+  const parsed = await sendMessageJSON({
+    system: RELATED_SYSTEM_PROMPT,
+    user: capturedList.join(", "),
+    maxTokens: 700,
+  });
+  if (!Array.isArray(parsed.suggestions)) {
+    throw new Error("Formato inesperado na resposta");
+  }
+  return parsed.suggestions;
+}
+
 export async function fetchDetail(subjectDisplay, technique) {
   const parsed = await sendMessageJSON({
     system: DETAIL_SYSTEM_PROMPT,
