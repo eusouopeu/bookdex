@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, FileJson, ClipboardPaste, Download, BookOpenText, Layers } from "lucide-react";
+import { ArrowLeft, FileJson, ClipboardPaste, Download, BookOpenText, Layers, FileText } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { COLORS, primaryButtonStyle } from "../theme";
@@ -7,6 +7,7 @@ import { parsePayload, buildExportPayload, mergeData } from "../lib/importer";
 import { setJSON, KEYS } from "../lib/storage";
 import { buildPokedexPdf } from "../lib/pdfExport";
 import { buildAnkiCsv, countAnkiRows } from "../lib/ankiExport";
+import { buildPokedexMarkdown, countMarkdownItems } from "../lib/markdownExport";
 import { shareOrDownloadFile } from "../lib/share";
 
 export default function ImportView({ onBack, onImport, saved, detailCache }) {
@@ -19,6 +20,8 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
   const [generatingPdf, setGeneratingPdf] = useState(false);
   const [ankiMsg, setAnkiMsg] = useState(null);
   const [generatingAnki, setGeneratingAnki] = useState(false);
+  const [mdMsg, setMdMsg] = useState(null);
+  const [generatingMd, setGeneratingMd] = useState(false);
   const fileInput = useRef(null);
   const hasSaved = Object.keys(saved || {}).length > 0;
 
@@ -159,6 +162,32 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
       setAnkiMsg(`Falha ao gerar o CSV: ${e.message || e}`);
     } finally {
       setGeneratingAnki(false);
+    }
+  }
+
+  async function exportMarkdown() {
+    setMdMsg(null);
+    setGeneratingMd(true);
+    try {
+      const md = buildPokedexMarkdown(saved, detailCache);
+      const fileName = "bookdex-pokedex.md";
+      if (Capacitor.isNativePlatform()) {
+        await Filesystem.writeFile({
+          path: fileName,
+          data: md,
+          directory: Directory.Documents,
+          encoding: Encoding.UTF8,
+          recursive: true,
+        });
+        setMdMsg(`Salvo em Documentos/${fileName}.`);
+      } else {
+        const outcome = await shareOrDownloadFile(fileName, md, "text/markdown", "Bookdex — export Markdown");
+        setMdMsg(outcome === "shared" ? "Compartilhado." : "Download iniciado.");
+      }
+    } catch (e) {
+      setMdMsg(`Falha ao gerar o Markdown: ${e.message || e}`);
+    } finally {
+      setGeneratingMd(false);
     }
   }
 
@@ -400,6 +429,26 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
         </button>
         {ankiMsg && (
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{ankiMsg}</p>
+        )}
+
+        <button
+          onClick={exportMarkdown}
+          disabled={!hasSaved || generatingMd}
+          className="flex items-center justify-center gap-1.5"
+          style={{
+            ...primaryButtonStyle,
+            width: "100%",
+            marginTop: "10px",
+            background: "transparent",
+            color: COLORS.ink,
+            border: `2px solid ${COLORS.screenBorder}`,
+            opacity: !hasSaved || generatingMd ? 0.55 : 1,
+          }}
+        >
+          <FileText size={16} /> {generatingMd ? "Gerando Markdown..." : `Exportar em Markdown (${countMarkdownItems(saved)} itens)`}
+        </button>
+        {mdMsg && (
+          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{mdMsg}</p>
         )}
       </div>
     </div>

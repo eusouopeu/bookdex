@@ -18,6 +18,7 @@ import { recordVisit, recordReviewCompleted } from "./lib/gamification";
 import { scheduleReviewReminder, requestNotificationPermission, cancelReviewReminder } from "./lib/notifications";
 import { updateReviewWidget } from "./lib/reviewWidget";
 import { createCollectionId } from "./lib/collections";
+import { addLink, removeLink } from "./lib/links";
 
 const SEARCH_MODES = [
   { mode: "technique", label: "Técnicas" },
@@ -404,6 +405,22 @@ export default function App() {
 
   function updateItemNote(subjectKey, itemId, _kind, note) {
     updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, note }));
+  }
+
+  function linkItems(a, b) {
+    setSaved((prev) => {
+      const next = addLink(prev, a, b);
+      persistSaved(next);
+      return next;
+    });
+  }
+
+  function unlinkItems(a, b) {
+    setSaved((prev) => {
+      const next = removeLink(prev, a, b);
+      persistSaved(next);
+      return next;
+    });
   }
 
   function persistCollections(next) {
@@ -910,6 +927,8 @@ export default function App() {
                 onRemoveGroup={removeGroup}
                 onUpdateTags={updateItemTags}
                 onUpdateNote={updateItemNote}
+                onLinkItems={linkItems}
+                onUnlinkItems={unlinkItems}
                 onSearchRelated={searchRelated}
                 onExampleSearch={(mode, term) => searchRelated(mode, term)}
                 onOpenCompare={openCompare}

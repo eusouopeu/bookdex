@@ -1,0 +1,82 @@
+/**
+ * Exporta a Pokédex inteira (técnicas, conceitos, tipos e os guias já
+ * cacheados) num único arquivo Markdown — pensado para levar o conteúdo
+ * para Obsidian, Notion ou qualquer editor de texto puro.
+ */
+import { slug } from "../theme";
+
+function isKnowledgeGroup(group) {
+  return group.kind === "definition" || group.kind === "list";
+}
+
+function writeTechnique(lines, displayName, t, detailCache) {
+  lines.push(`### ${t.name} (${t.type})`, "");
+  if (t.statLabels && t.stats) {
+    lines.push(t.statLabels.map((label, i) => `**${label}:** ${t.stats[i] ?? "?"}/5`).join("  ·  "), "");
+  }
+  if (t.description) lines.push(t.description, "");
+  if (t.bestFor) lines.push(`_Ideal para: ${t.bestFor}_`, "");
+
+  const detail = detailCache?.[`${slug(displayName)}:${t.id}`];
+  if (detail) {
+    lines.push("**Guia passo a passo:**", "");
+    (detail.steps || []).forEach((step, i) => {
+      lines.push(`${i + 1}. **${step.title}** — ${step.detail}`);
+    });
+    if (detail.steps?.length) lines.push("");
+    if (detail.tip) lines.push(`> Dica: ${detail.tip}`, "");
+  }
+
+  if (t.tags?.length) lines.push(`Tags: ${t.tags.map((tag) => `\`${tag}\``).join(" ")}`, "");
+  if (t.note) lines.push(`Nota pessoal: ${t.note}`, "");
+  lines.push("---", "");
+}
+
+function writeKnowledgeItem(lines, group, it) {
+  if (group.kind === "definition") {
+    lines.push(`### ${it.term}${it.category ? ` (${it.category})` : ""}`, "");
+    if (it.definition) lines.push(it.definition, "");
+    (it.keyPoints || []).forEach((k) => lines.push(`- ${k}`));
+    if (it.keyPoints?.length) lines.push("");
+    if (it.example) lines.push(`_Exemplo: ${it.example}_`, "");
+  } else {
+    lines.push(`### ${it.name}${it.category ? ` (${it.category})` : ""}`, "");
+    if (it.description) lines.push(it.description, "");
+  }
+  if (it.tags?.length) lines.push(`Tags: ${it.tags.map((tag) => `\`${tag}\``).join(" ")}`, "");
+  if (it.note) lines.push(`Nota pessoal: ${it.note}`, "");
+  lines.push("---", "");
+}
+
+export function buildPokedexMarkdown(saved, detailCache) {
+  const lines = ["# Bookdex — minha Pokédex", "", `_Exportado em ${new Date().toLocaleDateString("pt-BR")}_`, ""];
+
+  const entries = Object.entries(saved || {});
+  const techniqueEntries = entries.filter(([, g]) => !isKnowledgeGroup(g));
+  const knowledgeEntries = entries.filter(([, g]) => isKnowledgeGroup(g));
+
+  if (techniqueEntries.length) {
+    lines.push("## Técnicas", "");
+    for (const [, group] of techniqueEntries) {
+      lines.push(`## ${group.displayName}`, "");
+      for (const t of group.techniques) writeTechnique(lines, group.displayName, t, detailCache);
+    }
+  }
+
+  if (knowledgeEntries.length) {
+    lines.push("## Conceitos & Tipos", "");
+    for (const [, group] of knowledgeEntries) {
+      lines.push(`## ${group.displayName}`, "");
+      for (const it of group.items) writeKnowledgeItem(lines, group, it);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+export function countMarkdownItems(saved) {
+  return Object.values(saved || {}).reduce((sum, group) => {
+    const items = isKnowledgeGroup(group) ? group.items : group.techniques;
+    return sum + (items ? items.length : 0);
+  }, 0);
+}

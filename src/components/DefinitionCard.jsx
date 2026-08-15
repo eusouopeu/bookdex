@@ -3,13 +3,25 @@ import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
+import LinksEditor from "./LinksEditor";
 import { definitionShareText } from "../lib/share";
 
 /**
  * Verbete de conceito/definição (modo "def:"). Ao contrário do TechCard, não
  * tem stats — tem pontos-chave, exemplo e termos relacionados.
  */
-export default function DefinitionCard({ definition, saved, onToggle, onTagsChange, onNoteChange, onSearchRelated }) {
+export default function DefinitionCard({
+  definition,
+  saved,
+  onToggle,
+  onTagsChange,
+  onNoteChange,
+  onSearchRelated,
+  links,
+  onOpenLinkPicker,
+  onRemoveLink,
+  onJumpLink,
+}) {
   const color = getTypeColor(definition.category);
   return (
     <div
@@ -160,6 +172,9 @@ export default function DefinitionCard({ definition, saved, onToggle, onTagsChan
 
       {onTagsChange && <TagEditor tags={definition.tags || []} onChange={onTagsChange} />}
       {onNoteChange && <NoteEditor note={definition.note} onChange={onNoteChange} />}
+      {onOpenLinkPicker && (
+        <LinksEditor links={links || []} onOpenPicker={onOpenLinkPicker} onRemove={onRemoveLink} onJump={onJumpLink} />
+      )}
     </div>
   );
 }

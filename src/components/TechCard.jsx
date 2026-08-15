@@ -5,6 +5,7 @@ import StatBar from "./StatBar";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
+import LinksEditor from "./LinksEditor";
 import { techniqueShareText } from "../lib/share";
 
 export default function TechCard({
@@ -20,6 +21,10 @@ export default function TechCard({
   selectable,
   selected,
   onSelectToggle,
+  links,
+  onOpenLinkPicker,
+  onRemoveLink,
+  onJumpLink,
 }) {
   const color = getTypeColor(technique.type);
   return (
@@ -113,6 +118,9 @@ export default function TechCard({
       </div>
       {onTagsChange && <TagEditor tags={technique.tags || []} onChange={onTagsChange} />}
       {onNoteChange && <NoteEditor note={technique.note} onChange={onNoteChange} />}
+      {onOpenLinkPicker && (
+        <LinksEditor links={links || []} onOpenPicker={onOpenLinkPicker} onRemove={onRemoveLink} onJump={onJumpLink} />
+      )}
       {onOpenDetail && (
         <button
           onClick={onOpenDetail}
