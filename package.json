@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:pages": "GH_PAGES=true vite build",
     "preview": "vite preview",
     "sync": "npm run build && cap sync",
-    "android": "npm run sync && cap open android"
+    "android": "npm run sync && cap open android",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
@@ -25,6 +28,7 @@
     "@capacitor/cli": "^7.0.0",
     "@vitejs/plugin-react": "^4.3.4",
     "vite": "^6.0.7",
-    "vite-plugin-pwa": "^0.21.1"
+    "vite-plugin-pwa": "^0.21.1",
+    "vitest": "^4.1.10"
   }
 }

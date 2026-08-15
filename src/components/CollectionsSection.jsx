@@ -1,7 +1,9 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Folder, FolderPlus, Trash2, X } from "lucide-react";
-import { COLORS } from "../theme";
+import { ChevronDown, ChevronRight, Folder, FolderPlus, Share2, Trash2, X } from "lucide-react";
+import { COLORS, slug } from "../theme";
 import { resolveCollectionItems, refKey } from "../lib/collections";
+import { buildCollectionExportPayload } from "../lib/importer";
+import { shareOrDownloadFile } from "../lib/share";
 import TechCard from "./TechCard";
 import DefinitionCard from "./DefinitionCard";
 import ListItemCard from "./ListItemCard";
@@ -17,21 +19,33 @@ const CONFIRM_THRESHOLD = 3;
 export default function CollectionsSection({
   collections,
   saved,
+  detailCache,
   onCreateCollection,
   onDeleteCollection,
   onRemoveFromCollection,
   onToggleSave,
   onOpenDetail,
+  hasDetail,
   onUpdateTags,
   onUpdateNote,
+  onUpdateImages,
   onSearchRelated,
 }) {
   const [collapsed, setCollapsed] = useState({});
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(null);
+  const [exportMsg, setExportMsg] = useState(null);
 
   const list = Object.values(collections || {}).sort((a, b) => b.createdAt - a.createdAt);
+
+  async function exportCollection(col) {
+    const payload = buildCollectionExportPayload(col.id, col, saved, detailCache);
+    const fileName = `bookdex-colecao-${slug(col.name)}.json`;
+    const outcome = await shareOrDownloadFile(fileName, JSON.stringify(payload, null, 2), "application/json", `Bookdex — ${col.name}`);
+    setExportMsg(outcome === "shared" ? `"${col.name}" compartilhada.` : `"${col.name}" exportada — envie o arquivo pra quem quiser importar.`);
+    setTimeout(() => setExportMsg((m) => (m ? null : m)), 3200);
+  }
 
   function submitNew() {
     const clean = name.trim();
@@ -62,6 +76,7 @@ export default function CollectionsSection({
           onTagsChange={onUpdateTags ? (tags) => onUpdateTags(ref.subjectKey, item.id, "definition", tags) : undefined}
           onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
           onNoteChange={onUpdateNote ? (note) => onUpdateNote(ref.subjectKey, item.id, "definition", note) : undefined}
+          onImagesChange={onUpdateImages ? (images) => onUpdateImages(ref.subjectKey, item.id, "definition", images) : undefined}
         />
       );
     } else if (kind === "list") {
@@ -74,6 +89,7 @@ export default function CollectionsSection({
           onToggle={() => onToggleSave("list", group.displayName, { item })}
           onTagsChange={onUpdateTags ? (tags) => onUpdateTags(ref.subjectKey, item.id, "list", tags) : undefined}
           onNoteChange={onUpdateNote ? (note) => onUpdateNote(ref.subjectKey, item.id, "list", note) : undefined}
+          onImagesChange={onUpdateImages ? (images) => onUpdateImages(ref.subjectKey, item.id, "list", images) : undefined}
         />
       );
     } else {
@@ -86,8 +102,10 @@ export default function CollectionsSection({
           saved={true}
           onToggle={() => onToggleSave("technique", group.displayName, { technique: item, statLabels: item.statLabels })}
           onOpenDetail={onOpenDetail ? () => onOpenDetail(group.displayName, item) : undefined}
+          hasDetail={hasDetail ? hasDetail(group.displayName, item) : false}
           onTagsChange={onUpdateTags ? (tags) => onUpdateTags(ref.subjectKey, item.id, "technique", tags) : undefined}
           onNoteChange={onUpdateNote ? (note) => onUpdateNote(ref.subjectKey, item.id, "technique", note) : undefined}
+          onImagesChange={onUpdateImages ? (images) => onUpdateImages(ref.subjectKey, item.id, "technique", images) : undefined}
         />
       );
     }
@@ -115,6 +133,11 @@ export default function CollectionsSection({
 
   return (
     <div>
+      {exportMsg && (
+        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginBottom: "10px" }}>
+          {exportMsg}
+        </p>
+      )}
       {!creating ? (
         <button
           onClick={() => setCreating(true)}
@@ -245,6 +268,16 @@ export default function CollectionsSection({
                   </span>
                 </h3>
               </button>
+              {!confirming && resolvedItems.length > 0 && (
+                <button
+                  onClick={() => exportCollection(col)}
+                  aria-label={`Compartilhar coleção "${col.name}"`}
+                  title="Compartilhar/exportar coleção"
+                  style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, padding: "9px 4px", flexShrink: 0 }}
+                >
+                  <Share2 size={15} />
+                </button>
+              )}
               {confirming ? (
                 <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
                   <span style={{ fontFamily: "Inter, sans-serif", fontSize: "10.5px", color: "var(--danger)", whiteSpace: "nowrap" }}>

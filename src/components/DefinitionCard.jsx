@@ -3,7 +3,9 @@ import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
+import ImageEditor from "./ImageEditor";
 import LinksEditor from "./LinksEditor";
+import ConceptExpand from "./ConceptExpand";
 import { definitionShareText } from "../lib/share";
 
 /**
@@ -16,7 +18,9 @@ export default function DefinitionCard({
   onToggle,
   onTagsChange,
   onNoteChange,
+  onImagesChange,
   onSearchRelated,
+  onAddRelatedCard,
   links,
   onOpenLinkPicker,
   onRemoveLink,
@@ -170,8 +174,18 @@ export default function DefinitionCard({
         </div>
       )}
 
+      <ConceptExpand
+        term={definition.term}
+        category={definition.category}
+        summary={definition.definition}
+        onAddRelatedCard={onAddRelatedCard}
+      />
+
       {onTagsChange && <TagEditor tags={definition.tags || []} onChange={onTagsChange} />}
-      {onNoteChange && <NoteEditor note={definition.note} onChange={onNoteChange} />}
+      <div className="flex items-center" style={{ flexWrap: "wrap" }}>
+        {onNoteChange && <NoteEditor note={definition.note} onChange={onNoteChange} />}
+        {onImagesChange && <ImageEditor images={definition.images} onChange={onImagesChange} />}
+      </div>
       {onOpenLinkPicker && (
         <LinksEditor links={links || []} onOpenPicker={onOpenLinkPicker} onRemove={onRemoveLink} onJump={onJumpLink} />
       )}

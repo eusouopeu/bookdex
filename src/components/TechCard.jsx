@@ -1,10 +1,11 @@
-import { BookOpen } from "lucide-react";
+import { BookOpen, Sparkles, ThumbsDown } from "lucide-react";
 import { COLORS, getTypeColor } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import StatBar from "./StatBar";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
+import ImageEditor from "./ImageEditor";
 import LinksEditor from "./LinksEditor";
 import { techniqueShareText } from "../lib/share";
 
@@ -16,8 +17,10 @@ export default function TechCard({
   saved,
   onToggle,
   onOpenDetail,
+  hasDetail,
   onTagsChange,
   onNoteChange,
+  onImagesChange,
   selectable,
   selected,
   onSelectToggle,
@@ -25,6 +28,8 @@ export default function TechCard({
   onOpenLinkPicker,
   onRemoveLink,
   onJumpLink,
+  irrelevant,
+  onMarkIrrelevant,
 }) {
   const color = getTypeColor(technique.type);
   return (
@@ -38,6 +43,7 @@ export default function TechCard({
         marginBottom: "10px",
         cursor: selectable ? "pointer" : "default",
         boxShadow: selectable && selected ? `0 0 0 2px ${COLORS.lensBlue} inset` : "none",
+        opacity: irrelevant ? 0.5 : 1,
       }}
     >
       <div className="flex items-start justify-between gap-2 mb-1">
@@ -71,6 +77,27 @@ export default function TechCard({
         </div>
         {!selectable && (
           <div className="flex items-center" style={{ flexShrink: 0 }}>
+            {onMarkIrrelevant && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onMarkIrrelevant();
+                }}
+                aria-label={irrelevant ? "Desmarcar como pouco relevante" : "Marcar como pouco relevante"}
+                title={irrelevant ? "Desmarcar como pouco relevante" : "Marcar como pouco relevante"}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "9px",
+                  margin: "-9px",
+                  flexShrink: 0,
+                  color: irrelevant ? "var(--danger)" : COLORS.screenBorder,
+                }}
+              >
+                <ThumbsDown size={15} fill={irrelevant ? "currentColor" : "none"} />
+              </button>
+            )}
             <ShareButton title={technique.name} text={techniqueShareText(subjectDisplay || "", technique, statLabels)} />
             <button
               onClick={onToggle}
@@ -117,7 +144,10 @@ export default function TechCard({
         Ideal para: {technique.bestFor}
       </div>
       {onTagsChange && <TagEditor tags={technique.tags || []} onChange={onTagsChange} />}
-      {onNoteChange && <NoteEditor note={technique.note} onChange={onNoteChange} />}
+      <div className="flex items-center" style={{ flexWrap: "wrap" }}>
+        {onNoteChange && <NoteEditor note={technique.note} onChange={onNoteChange} />}
+        {onImagesChange && <ImageEditor images={technique.images} onChange={onImagesChange} />}
+      </div>
       {onOpenLinkPicker && (
         <LinksEditor links={links || []} onOpenPicker={onOpenLinkPicker} onRemove={onRemoveLink} onJump={onJumpLink} />
       )}
@@ -139,7 +169,7 @@ export default function TechCard({
             cursor: "pointer",
           }}
         >
-          <BookOpen size={14} /> Aprofundar
+          {hasDetail ? <BookOpen size={14} /> : <Sparkles size={14} />} Aprofundar
         </button>
       )}
     </div>

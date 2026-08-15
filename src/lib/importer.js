@@ -46,7 +46,46 @@ export function validatePayload(payload) {
   ) {
     throw new Error('O campo "detailCache" está com formato inválido.');
   }
+  if (
+    payload.collections !== undefined &&
+    (typeof payload.collections !== "object" || payload.collections === null || Array.isArray(payload.collections))
+  ) {
+    throw new Error('O campo "collections" está com formato inválido.');
+  }
   return payload;
+}
+
+/**
+ * Faz merge de coleções manuais importadas sobre as locais. Coleção com `id`
+ * já existente localmente tem suas refs UNIDAS (nunca substituídas); coleção
+ * nova é adicionada como está.
+ */
+export function mergeCollections(localCollections, incomingCollections) {
+  const collections = { ...(localCollections || {}) };
+  const stats = { newCollections: 0, updatedCollections: 0 };
+  for (const [id, incoming] of Object.entries(incomingCollections || {})) {
+    if (!incoming || !Array.isArray(incoming.refs)) continue;
+    const existing = collections[id];
+    if (!existing) {
+      collections[id] = { id, name: incoming.name || id, createdAt: incoming.createdAt || Date.now(), refs: [...incoming.refs] };
+      stats.newCollections++;
+    } else {
+      const existingKeys = new Set(existing.refs.map((r) => `${r.subjectKey}:${r.itemId}`));
+      const merged = [...existing.refs];
+      let changed = false;
+      for (const r of incoming.refs) {
+        const k = `${r.subjectKey}:${r.itemId}`;
+        if (!existingKeys.has(k)) {
+          merged.push(r);
+          existingKeys.add(k);
+          changed = true;
+        }
+      }
+      collections[id] = { ...existing, refs: merged };
+      if (changed) stats.updatedCollections++;
+    }
+  }
+  return { collections, stats };
 }
 
 /**
@@ -120,6 +159,42 @@ export function buildExportPayload(saved, detailCache) {
   return {
     saved: saved || {},
     detailCache: detailCache || {},
+    exportedAt: Date.now(),
+    version: 1,
+  };
+}
+
+function itemsArrayOfKind(kind) {
+  return kind === "definition" || kind === "list" ? "items" : "techniques";
+}
+
+/**
+ * Empacota UMA coleção manual pra compartilhar com outro usuário: a coleção
+ * em si, mais os itens de `saved` (e seus guias em `detailCache`, se houver)
+ * que ela referencia — sem levar o resto da Pokédex junto.
+ */
+export function buildCollectionExportPayload(collectionId, collection, saved, detailCache) {
+  const packagedSaved = {};
+  const packagedDetails = {};
+  for (const ref of collection.refs || []) {
+    const group = saved[ref.subjectKey];
+    if (!group) continue;
+    const field = itemsArrayOfKind(group.kind);
+    const item = (group[field] || []).find((it) => it.id === ref.itemId);
+    if (!item) continue;
+    if (!packagedSaved[ref.subjectKey]) {
+      packagedSaved[ref.subjectKey] = group.kind && group.kind !== "technique"
+        ? { displayName: group.displayName, kind: group.kind, items: [] }
+        : { displayName: group.displayName, kind: "technique", techniques: [] };
+    }
+    packagedSaved[ref.subjectKey][field].push(item);
+    const detailKey = `${ref.subjectKey}:${ref.itemId}`;
+    if (detailCache && detailCache[detailKey]) packagedDetails[detailKey] = detailCache[detailKey];
+  }
+  return {
+    saved: packagedSaved,
+    detailCache: packagedDetails,
+    collections: { [collectionId]: { id: collectionId, name: collection.name, createdAt: collection.createdAt, refs: collection.refs } },
     exportedAt: Date.now(),
     version: 1,
   };

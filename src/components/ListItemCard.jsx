@@ -1,9 +1,12 @@
+import { ThumbsDown } from "lucide-react";
 import { COLORS, getTypeColor } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
+import ImageEditor from "./ImageEditor";
 import LinksEditor from "./LinksEditor";
+import ConceptExpand from "./ConceptExpand";
 import { listItemShareText } from "../lib/share";
 
 /**
@@ -18,10 +21,14 @@ export default function ListItemCard({
   onToggle,
   onTagsChange,
   onNoteChange,
+  onImagesChange,
+  onAddRelatedCard,
   links,
   onOpenLinkPicker,
   onRemoveLink,
   onJumpLink,
+  irrelevant,
+  onMarkIrrelevant,
 }) {
   const color = getTypeColor(item.category);
   return (
@@ -32,6 +39,7 @@ export default function ListItemCard({
         borderRadius: "10px",
         padding: "12px",
         marginBottom: "10px",
+        opacity: irrelevant ? 0.5 : 1,
       }}
     >
       <div className="flex items-start justify-between gap-2 mb-1">
@@ -52,6 +60,27 @@ export default function ListItemCard({
           </h3>
         </div>
         <div className="flex items-center" style={{ flexShrink: 0 }}>
+          {onMarkIrrelevant && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onMarkIrrelevant();
+              }}
+              aria-label={irrelevant ? "Desmarcar como pouco relevante" : "Marcar como pouco relevante"}
+              title={irrelevant ? "Desmarcar como pouco relevante" : "Marcar como pouco relevante"}
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "9px",
+                margin: "-9px",
+                flexShrink: 0,
+                color: irrelevant ? "var(--danger)" : COLORS.screenBorder,
+              }}
+            >
+              <ThumbsDown size={15} fill={irrelevant ? "currentColor" : "none"} />
+            </button>
+          )}
           <ShareButton title={item.name} text={listItemShareText(subjectDisplay || "", item)} />
           <button
             onClick={onToggle}
@@ -90,8 +119,12 @@ export default function ListItemCard({
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.4 }}>
         {item.description}
       </p>
+      <ConceptExpand term={item.name} category={item.category} summary={item.description} onAddRelatedCard={onAddRelatedCard} />
       {onTagsChange && <TagEditor tags={item.tags || []} onChange={onTagsChange} />}
-      {onNoteChange && <NoteEditor note={item.note} onChange={onNoteChange} />}
+      <div className="flex items-center" style={{ flexWrap: "wrap" }}>
+        {onNoteChange && <NoteEditor note={item.note} onChange={onNoteChange} />}
+        {onImagesChange && <ImageEditor images={item.images} onChange={onImagesChange} />}
+      </div>
       {onOpenLinkPicker && (
         <LinksEditor links={links || []} onOpenPicker={onOpenLinkPicker} onRemove={onRemoveLink} onJump={onJumpLink} />
       )}

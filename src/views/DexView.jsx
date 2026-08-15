@@ -63,10 +63,12 @@ export default function DexView({
   storageLoaded,
   onToggleSave,
   onOpenDetail,
+  hasDetail,
   onOpenImport,
   onRemoveGroup,
   onUpdateTags,
   onUpdateNote,
+  onUpdateImages,
   onLinkItems,
   onUnlinkItems,
   onSearchRelated,
@@ -514,13 +516,16 @@ export default function DexView({
         <CollectionsSection
           collections={collections}
           saved={saved}
+          detailCache={detailCache}
           onCreateCollection={onCreateCollection}
           onDeleteCollection={onDeleteCollection}
           onRemoveFromCollection={onRemoveFromCollection}
           onToggleSave={onToggleSave}
           onOpenDetail={onOpenDetail}
+          hasDetail={hasDetail}
           onUpdateTags={onUpdateTags}
           onUpdateNote={onUpdateNote}
+          onUpdateImages={onUpdateImages}
           onSearchRelated={onSearchRelated}
         />
       ) : (
@@ -793,8 +798,10 @@ export default function DexView({
                     saved={true}
                     onToggle={() => onToggleSave("technique", group.displayName, { technique: t, statLabels: t.statLabels })}
                     onOpenDetail={compareMode ? undefined : () => onOpenDetail(group.displayName, t)}
+                    hasDetail={hasDetail ? hasDetail(group.displayName, t) : false}
                     onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, t.id, group.kind || "technique", tags) : undefined}
                     onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, t.id, group.kind || "technique", note) : undefined}
+                    onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, t.id, group.kind || "technique", images) : undefined}
                     links={resolveLinks(saved, t.links)}
                     onOpenLinkPicker={onLinkItems ? () => openLinkPicker(key, t.id, "technique") : undefined}
                     onRemoveLink={onUnlinkItems ? (l) => onUnlinkItems({ subjectKey: key, itemId: t.id, kind: "technique" }, l) : undefined}
@@ -817,6 +824,7 @@ export default function DexView({
                     onToggle={() => onToggleSave("definition", group.displayName, { definition: d })}
                     onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, d.id, "definition", tags) : undefined}
                     onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, d.id, "definition", note) : undefined}
+                    onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, d.id, "definition", images) : undefined}
                     onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
                     links={resolveLinks(saved, d.links)}
                     onOpenLinkPicker={onLinkItems ? () => openLinkPicker(key, d.id, "definition") : undefined}
@@ -839,6 +847,7 @@ export default function DexView({
                     onToggle={() => onToggleSave("list", group.displayName, { item: it })}
                     onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, it.id, "list", tags) : undefined}
                     onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, it.id, "list", note) : undefined}
+                    onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, it.id, "list", images) : undefined}
                     links={resolveLinks(saved, it.links)}
                     onOpenLinkPicker={onLinkItems ? () => openLinkPicker(key, it.id, "list") : undefined}
                     onRemoveLink={onUnlinkItems ? (l) => onUnlinkItems({ subjectKey: key, itemId: it.id, kind: "list" }, l) : undefined}

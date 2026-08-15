@@ -215,10 +215,17 @@ Regras obrigatórias:
 Formato exato (sem campos extras):
 {"subject":"...","subjectIntro":"...","items":[{"name":"...","category":"...","description":"..."}]}`;
 
-export async function fetchTechniques(subject) {
+/** Monta o texto de personalização a partir do que o usuário já marcou como pouco relevante. */
+function avoidNote(avoid) {
+  const clean = [...new Set((avoid || []).filter(Boolean))];
+  if (!clean.length) return "";
+  return `\n\n[Preferências do usuário: ele já marcou os itens a seguir como pouco relevantes em buscas anteriores — evite repeti-los ou sugerir variações muito parecidas: ${clean.join(", ")}.]`;
+}
+
+export async function fetchTechniques(subject, avoid) {
   const parsed = await sendMessageJSON({
     system: SEARCH_SYSTEM_PROMPT,
-    user: subject,
+    user: subject + avoidNote(avoid),
     maxTokens: 1000,
   });
   if (!parsed.subject || !Array.isArray(parsed.statLabels) || !Array.isArray(parsed.techniques)) {
@@ -227,10 +234,10 @@ export async function fetchTechniques(subject) {
   return parsed;
 }
 
-export async function fetchDefinition(term) {
+export async function fetchDefinition(term, avoid) {
   const parsed = await sendMessageJSON({
     system: DEFINITION_SYSTEM_PROMPT,
-    user: term,
+    user: term + avoidNote(avoid),
     maxTokens: 900,
   });
   if (!parsed.term || !parsed.definition) {
@@ -239,10 +246,10 @@ export async function fetchDefinition(term) {
   return parsed;
 }
 
-export async function fetchList(subject) {
+export async function fetchList(subject, avoid) {
   const parsed = await sendMessageJSON({
     system: LIST_SYSTEM_PROMPT,
-    user: subject,
+    user: subject + avoidNote(avoid),
     maxTokens: 1000,
   });
   if (!parsed.subject || !Array.isArray(parsed.items)) {
@@ -287,4 +294,71 @@ export async function fetchDetail(subjectDisplay, technique) {
     throw new Error("Formato inesperado na resposta");
   }
   return parsed;
+}
+
+export const STEP_DEEPDIVE_SYSTEM_PROMPT = `Você aprofunda UM passo específico de um guia de técnica, num app estilo Pokédex.
+Dado o assunto, a técnica e um passo (título + instrução) já mostrados ao usuário, quebre esse passo em uma sub-lista mais granular, explicando COMO executá-lo na prática.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "substeps": de 3 a 5 itens, cada um até 16 palavras, concreto e acionável — mais específico que o passo original, sem repeti-lo literalmente.
+
+Formato exato (sem campos extras):
+{"substeps":["...","..."]}`;
+
+export async function fetchStepDeepDive(subjectDisplay, technique, step) {
+  const parsed = await sendMessageJSON({
+    system: STEP_DEEPDIVE_SYSTEM_PROMPT,
+    user: `Assunto: ${subjectDisplay}\nTécnica: ${technique.name}\nPasso: ${step.title}\nInstrução: ${step.detail}`,
+    maxTokens: 500,
+  });
+  if (!Array.isArray(parsed.substeps)) {
+    throw new Error("Formato inesperado na resposta");
+  }
+  return parsed.substeps;
+}
+
+export const CONCEPT_DEEPDIVE_SYSTEM_PROMPT = `Você aprofunda a explicação de um conceito/tipo já apresentado brevemente, num app estilo Pokédex de conhecimento.
+Dado o termo, a categoria e a explicação resumida já mostrada ao usuário, gere um complemento MAIS profundo — sem repetir o que já foi dito.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "deepDive": 2 a 4 frases adicionais, em português, aprofundando mecanismos, nuances, contexto histórico ou aplicações não cobertas na explicação resumida.
+- "extraPoints": 2 a 4 pontos adicionais e complementares (até 14 palavras cada), diferentes dos pontos-chave já mostrados.
+
+Formato exato (sem campos extras):
+{"deepDive":"...","extraPoints":["..."]}`;
+
+export async function fetchConceptDeepDive(term, category, summary) {
+  const parsed = await sendMessageJSON({
+    system: CONCEPT_DEEPDIVE_SYSTEM_PROMPT,
+    user: `Termo: ${term}\nCategoria: ${category || ""}\nJá explicado: ${summary || ""}`,
+    maxTokens: 500,
+  });
+  if (!parsed.deepDive) {
+    throw new Error("Formato inesperado na resposta");
+  }
+  return parsed;
+}
+
+export const RELATED_NAMES_SYSTEM_PROMPT = `Você sugere nomes de conceitos ou tipos relacionados a um termo dado, num app estilo Pokédex de conhecimento.
+Dado um termo e sua categoria, retorne SOMENTE nomes de 4 a 6 conceitos/tipos relacionados — sem explicá-los.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "related": 4 a 6 nomes curtos (1 a 4 palavras cada), em português, diferentes do termo original entre si.
+
+Formato exato (sem campos extras):
+{"related":["...","..."]}`;
+
+export async function fetchRelatedConceptNames(term, category) {
+  const parsed = await sendMessageJSON({
+    system: RELATED_NAMES_SYSTEM_PROMPT,
+    user: `Termo: ${term}\nCategoria: ${category || ""}`,
+    maxTokens: 300,
+  });
+  if (!Array.isArray(parsed.related)) {
+    throw new Error("Formato inesperado na resposta");
+  }
+  return parsed.related;
 }

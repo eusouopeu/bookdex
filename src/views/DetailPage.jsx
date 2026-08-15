@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, X, RefreshCw, KeyRound, Share2, FileDown } from "lucide-react";
+import { ArrowLeft, Check, X, RefreshCw, KeyRound, Share2, FileDown, Plus, Minus, Loader2 } from "lucide-react";
 import { COLORS, getTypeColor, primaryButtonStyle, slug } from "../theme";
-import { fetchDetail, MissingApiKeyError } from "../lib/anthropic";
+import { fetchDetail, fetchStepDeepDive, MissingApiKeyError } from "../lib/anthropic";
 import { useProgressiveMessage } from "../lib/hooks";
 import { GuideSkeleton } from "../components/Skeleton";
 import { shareOrCopyText, shareOrDownloadFile, guideMarkdown } from "../lib/share";
@@ -16,6 +16,7 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
   const [error, setError] = useState(null);
   const [needsKey, setNeedsKey] = useState(false);
   const [shareMsg, setShareMsg] = useState(null);
+  const [stepBreakdowns, setStepBreakdowns] = useState({}); // { [i]: { loading, error, substeps, open } }
   const color = getTypeColor(technique.type);
   const loadingMsg = useProgressiveMessage(loading, ["MONTANDO O GUIA...", "AINDA MONTANDO...", "QUASE PRONTO..."]);
   const touch = useRef({ active: false, x: 0, y: 0 });
@@ -43,6 +44,22 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
     const fileName = `${slug(technique.name)}.md`;
     const outcome = await shareOrDownloadFile(fileName, md, "text/markdown", technique.name);
     if (outcome === "downloaded") flashShareMsg("Guia exportado em .md.");
+  }
+
+  async function toggleStepBreakdown(i, step) {
+    const current = stepBreakdowns[i];
+    if (current && current.substeps) {
+      setStepBreakdowns((prev) => ({ ...prev, [i]: { ...current, open: !current.open } }));
+      return;
+    }
+    setStepBreakdowns((prev) => ({ ...prev, [i]: { loading: true, error: null, substeps: null, open: true } }));
+    try {
+      const substeps = await fetchStepDeepDive(subjectDisplay, technique, step);
+      setStepBreakdowns((prev) => ({ ...prev, [i]: { loading: false, error: null, substeps, open: true } }));
+    } catch (e) {
+      const msg = e instanceof MissingApiKeyError ? "Configure sua API key em Configurações." : e.message || "Não foi possível aprofundar este passo.";
+      setStepBreakdowns((prev) => ({ ...prev, [i]: { loading: false, error: msg, substeps: null, open: true } }));
+    }
   }
 
   function onTouchStart(e) {
@@ -229,46 +246,89 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
           </p>
 
           <SectionTitle>Passo a passo</SectionTitle>
-          {(detail.steps || []).map((step, i) => (
-            <div
-              key={i}
-              className="flex gap-2"
-              style={{
-                background: COLORS.surface,
-                border: `2px solid ${COLORS.screenBorder}`,
-                borderRadius: "10px",
-                padding: "10px 12px",
-                marginBottom: "8px",
-              }}
-            >
+          {(detail.steps || []).map((step, i) => {
+            const bd = stepBreakdowns[i];
+            return (
               <div
+                key={i}
                 style={{
-                  fontFamily: '"JetBrains Mono", monospace',
-                  fontWeight: 700,
-                  fontSize: "12px",
-                  color: color.text,
-                  background: color.bg,
-                  borderRadius: "6px",
-                  width: "22px",
-                  height: "22px",
-                  flexShrink: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  background: COLORS.surface,
+                  border: `2px solid ${COLORS.screenBorder}`,
+                  borderRadius: "10px",
+                  padding: "10px 12px",
+                  marginBottom: "8px",
                 }}
               >
-                {i + 1}
-              </div>
-              <div>
-                <div style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "13.5px", color: COLORS.ink }}>
-                  {step.title}
+                <div className="flex gap-2">
+                  <div
+                    style={{
+                      fontFamily: '"JetBrains Mono", monospace',
+                      fontWeight: 700,
+                      fontSize: "12px",
+                      color: color.text,
+                      background: color.bg,
+                      borderRadius: "6px",
+                      width: "22px",
+                      height: "22px",
+                      flexShrink: 0,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    {i + 1}
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-start justify-between gap-2">
+                      <div style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "13.5px", color: COLORS.ink }}>
+                        {step.title}
+                      </div>
+                      <button
+                        onClick={() => toggleStepBreakdown(i, step)}
+                        aria-label={bd && bd.open ? "Recolher detalhamento do passo" : "Detalhar mais este passo"}
+                        title={bd && bd.open ? "Recolher detalhamento do passo" : "Detalhar mais este passo"}
+                        style={{
+                          background: "none",
+                          border: `1.5px solid ${COLORS.screenBorder}`,
+                          borderRadius: "999px",
+                          color: COLORS.ink,
+                          cursor: "pointer",
+                          padding: "3px",
+                          display: "flex",
+                          flexShrink: 0,
+                        }}
+                      >
+                        {bd && bd.loading ? (
+                          <Loader2 size={11} style={{ animation: "spin 0.9s linear infinite" }} />
+                        ) : bd && bd.open && bd.substeps ? (
+                          <Minus size={11} />
+                        ) : (
+                          <Plus size={11} />
+                        )}
+                      </button>
+                    </div>
+                    <div style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text)", lineHeight: 1.4 }}>
+                      {step.detail}
+                    </div>
+                  </div>
                 </div>
-                <div style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text)", lineHeight: 1.4 }}>
-                  {step.detail}
-                </div>
+                {bd && bd.error && (
+                  <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--danger)", marginTop: "6px", marginLeft: "30px" }}>
+                    {bd.error}
+                  </p>
+                )}
+                {bd && bd.open && bd.substeps && (
+                  <ul style={{ margin: "8px 0 0", paddingLeft: "30px" }}>
+                    {bd.substeps.map((s, j) => (
+                      <li key={j} style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text)", lineHeight: 1.5 }}>
+                        {s}
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {!!(detail.rightSigns || []).length && (
             <>

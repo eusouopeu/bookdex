@@ -18,3 +18,11 @@ refatoração, etc.), ao concluir a tarefa você deve, automaticamente, sem perg
 Não é necessário pedir confirmação para esses três passos quando a mudança já foi solicitada e
 implementada pelo usuário nesta sessão — eles fazem parte de concluir a tarefa, não de uma ação
 nova e independente.
+
+## Uso de agentes em segundo plano
+
+Para tarefas independentes e bem simples (ex.: pesquisas pontuais, verificações isoladas,
+levantamentos que não dependem do restante do trabalho em andamento), pode-se delegar a agentes
+em segundo plano (subagentes) em vez de executar tudo sequencialmente na conversa principal.
+Reservar essa delegação para tarefas realmente simples e independentes — não usar para trabalho
+que exige contexto acumulado da conversa ou que depende de decisões ainda não tomadas.

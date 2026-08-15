@@ -3,14 +3,14 @@ import { ArrowLeft, FileJson, ClipboardPaste, Download, BookOpenText, Layers, Fi
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { COLORS, primaryButtonStyle } from "../theme";
-import { parsePayload, buildExportPayload, mergeData } from "../lib/importer";
+import { parsePayload, buildExportPayload, mergeData, mergeCollections } from "../lib/importer";
 import { setJSON, KEYS } from "../lib/storage";
 import { buildPokedexPdf } from "../lib/pdfExport";
 import { buildAnkiCsv, countAnkiRows } from "../lib/ankiExport";
 import { buildPokedexMarkdown, countMarkdownItems } from "../lib/markdownExport";
 import { shareOrDownloadFile } from "../lib/share";
 
-export default function ImportView({ onBack, onImport, saved, detailCache }) {
+export default function ImportView({ onBack, onImport, saved, detailCache, collections }) {
   const [text, setText] = useState("");
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -32,7 +32,8 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
     try {
       const payload = parsePayload(rawText);
       const { stats } = mergeData(saved, detailCache, payload);
-      setPending({ payload, stats });
+      const { stats: collectionStats } = mergeCollections(collections, payload.collections);
+      setPending({ payload, stats: { ...stats, ...collectionStats } });
     } catch (e) {
       setError(e.message || "Não foi possível ler esses dados.");
     }
@@ -314,6 +315,12 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
             <li>
               {pending.stats.newDetails} guia(s) novo(s), {pending.stats.duplicateDetails} já em cache
             </li>
+            {!!(pending.stats.newCollections || pending.stats.updatedCollections) && (
+              <li>
+                {pending.stats.newCollections} coleção(ões) nova(s), {pending.stats.updatedCollections} coleção(ões) com itens
+                adicionados
+              </li>
+            )}
           </ul>
           <div className="flex gap-2">
             <button onClick={confirmImport} style={{ ...primaryButtonStyle, flex: 1 }}>
@@ -364,6 +371,11 @@ export default function ImportView({ onBack, onImport, saved, detailCache }) {
             <li>
               {summary.newDetails} guia(s) importado(s), {summary.duplicateDetails} já em cache
             </li>
+            {!!(summary.newCollections || summary.updatedCollections) && (
+              <li>
+                {summary.newCollections} coleção(ões) nova(s), {summary.updatedCollections} coleção(ões) com itens adicionados
+              </li>
+            )}
           </ul>
         </div>
       )}

@@ -2,7 +2,13 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 
+// No app nativo (Capacitor) e no dev local os assets moram na raiz do
+// domínio. No GitHub Pages (projeto, não usuário/org) eles moram em
+// /<repo>/ — o workflow de deploy exporta GH_PAGES=true antes do build.
+const BASE = process.env.GH_PAGES === "true" ? "/bookdex/" : "/";
+
 export default defineConfig({
+  base: BASE,
   plugins: [
     react(),
     VitePWA({
@@ -13,8 +19,8 @@ export default defineConfig({
         short_name: "Bookdex",
         description: "Escaneie um assunto: técnicas, conceitos ou tipos, e monte sua Pokédex de conhecimento.",
         lang: "pt-BR",
-        start_url: "/",
-        scope: "/",
+        start_url: BASE,
+        scope: BASE,
         display: "standalone",
         orientation: "portrait",
         theme_color: "#D6293B",

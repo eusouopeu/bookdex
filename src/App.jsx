@@ -12,13 +12,21 @@ import {
   MissingApiKeyError,
 } from "./lib/anthropic";
 import { parseSearchQuery, hasExplicitPrefix, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
-import { mergeData } from "./lib/importer";
+import { mergeData, mergeCollections } from "./lib/importer";
 import { initReviewState, gradeReviewState, countDue, getDueQueue } from "./lib/review";
 import { recordVisit, recordReviewCompleted } from "./lib/gamification";
 import { scheduleReviewReminder, requestNotificationPermission, cancelReviewReminder } from "./lib/notifications";
 import { updateReviewWidget } from "./lib/reviewWidget";
 import { createCollectionId } from "./lib/collections";
 import { addLink, removeLink } from "./lib/links";
+import {
+  initRelevanceState,
+  markIrrelevant as markIrrelevantState,
+  unmarkIrrelevant as unmarkIrrelevantState,
+  isMarkedIrrelevant,
+  avoidListForSubject,
+  tasteAvoidList,
+} from "./lib/relevance";
 
 const SEARCH_MODES = [
   { mode: "technique", label: "Técnicas" },
@@ -69,6 +77,7 @@ export default function App() {
   const [suggestionsError, setSuggestionsError] = useState(null);
   const [prefetchDetailsEnabled, setPrefetchDetailsEnabled] = useState(true);
   const [showHistorySuggestions, setShowHistorySuggestions] = useState(false);
+  const [relevance, setRelevance] = useState(initRelevanceState());
 
   useEffect(() => {
     (async () => {
@@ -81,6 +90,7 @@ export default function App() {
       setCollections(await getJSON(KEYS.collections, {}));
       setSuggestions((await getJSON(KEYS.suggestions, null))?.items || []);
       setPrefetchDetailsEnabled(await getJSON(KEYS.prefetchDetails, true));
+      setRelevance(await getJSON(KEYS.irrelevantItems, initRelevanceState()));
       const savedTab = await getJSON(KEYS.lastTab, "search");
       if (savedTab === "search" || savedTab === "dex") {
         setLastTab(savedTab);
@@ -173,6 +183,11 @@ export default function App() {
     } catch (e) {
       console.error("Falha ao salvar o guia", e);
     }
+  }
+
+  function hasDetail(subjectDisplay, technique) {
+    const techId = technique.id || slug(technique.name);
+    return !!detailCache[`${slug(subjectDisplay)}:${techId}`];
   }
 
   function isSaved(mode, subjectDisplay, itemId) {
@@ -407,6 +422,10 @@ export default function App() {
     updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, note }));
   }
 
+  function updateItemImages(subjectKey, itemId, _kind, images) {
+    updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, images }));
+  }
+
   function linkItems(a, b) {
     setSaved((prev) => {
       const next = addLink(prev, a, b);
@@ -572,6 +591,28 @@ export default function App() {
     }
   }
 
+  function markItemIrrelevant(subjectDisplay, mode, item) {
+    const subjectSlug = slug(subjectDisplay);
+    const itemId = slug(item.name || item.term);
+    const name = item.name || item.term;
+    setRelevance((prev) => {
+      const next = markIrrelevantState(prev, { subjectSlug, itemId, name, mode, subjectDisplay });
+      setJSON(KEYS.irrelevantItems, next).catch(() => {});
+      return next;
+    });
+    showToast(`"${name}" marcado(a) como pouco relevante.`, () => {
+      setRelevance((prev) => {
+        const next = unmarkIrrelevantState(prev, subjectSlug, itemId);
+        setJSON(KEYS.irrelevantItems, next).catch(() => {});
+        return next;
+      });
+    });
+  }
+
+  function isItemIrrelevant(subjectDisplay, itemName) {
+    return isMarkedIrrelevant(relevance, slug(subjectDisplay), slug(itemName));
+  }
+
   function enqueueOfflineSearch(mode, term) {
     setOfflineQueue((prev) => {
       const next = [...prev.filter((q) => !(q.mode === mode && q.term.toLowerCase() === term.toLowerCase())), { mode, term }];
@@ -605,9 +646,10 @@ export default function App() {
     setNeedsKey(false);
     try {
       let data;
-      if (mode === "definition") data = await fetchDefinition(term);
-      else if (mode === "list") data = await fetchList(term);
-      else data = await fetchTechniques(term);
+      const avoid = [...avoidListForSubject(relevance, slug(term)), ...tasteAvoidList(relevance)];
+      if (mode === "definition") data = await fetchDefinition(term, avoid);
+      else if (mode === "list") data = await fetchList(term, avoid);
+      else data = await fetchTechniques(term, avoid);
       setResult({ mode, data });
       setScanCount((c) => c + 1);
       addToHistory(mode, term);
@@ -679,8 +721,17 @@ export default function App() {
     setDetailCache(mergedDetails);
     persistSaved(mergedSaved);
     persistDetails(mergedDetails);
+
+    let collectionStats = { newCollections: 0, updatedCollections: 0 };
+    if (payload.collections) {
+      const { collections: mergedCollections, stats: cStats } = mergeCollections(collections, payload.collections);
+      setCollections(mergedCollections);
+      persistCollections(mergedCollections);
+      collectionStats = cStats;
+    }
+
     showToast("Dados importados!");
-    return stats;
+    return { ...stats, ...collectionStats };
   }
 
   function goTab(tab) {
@@ -913,6 +964,9 @@ export default function App() {
                 onRunHistoryTerm={runHistoryTerm}
                 onGoSettings={() => openScreen("settings")}
                 onSearchRelated={searchRelated}
+                hasDetail={hasDetail}
+                isIrrelevant={isItemIrrelevant}
+                onMarkIrrelevant={markItemIrrelevant}
               />
             )}
 
@@ -923,10 +977,12 @@ export default function App() {
                 storageLoaded={storageLoaded}
                 onToggleSave={toggleSave}
                 onOpenDetail={openDetail}
+                hasDetail={hasDetail}
                 onOpenImport={() => openScreen("import")}
                 onRemoveGroup={removeGroup}
                 onUpdateTags={updateItemTags}
                 onUpdateNote={updateItemNote}
+                onUpdateImages={updateItemImages}
                 onLinkItems={linkItems}
                 onUnlinkItems={unlinkItems}
                 onSearchRelated={searchRelated}
@@ -972,7 +1028,7 @@ export default function App() {
             )}
 
             {!detailTarget && view === "import" && (
-              <ImportView onBack={backToTab} onImport={applyImport} saved={saved} detailCache={detailCache} />
+              <ImportView onBack={backToTab} onImport={applyImport} saved={saved} detailCache={detailCache} collections={collections} />
             )}
           </div>
 

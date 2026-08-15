@@ -131,6 +131,7 @@ export const KEYS = {
   collections: "collections",
   suggestions: "related-suggestions",
   prefetchDetails: "prefetch-details-enabled",
+  irrelevantItems: "irrelevant-items",
 };
 
 export default { get, set, delete: remove, list, getJSON, setJSON, KEYS };

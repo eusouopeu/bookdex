@@ -1,7 +1,9 @@
+import { useEffect, useState } from "react";
 import { Search, RefreshCw, KeyRound, History } from "lucide-react";
 import { COLORS, slug, primaryButtonStyle } from "../theme";
 import { PLACEHOLDER_BY_MODE } from "../lib/searchQuery";
 import { useProgressiveMessage } from "../lib/hooks";
+import { fetchDefinition } from "../lib/anthropic";
 import TechCard from "../components/TechCard";
 import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
@@ -23,7 +25,53 @@ export default function SearchView({
   onGoSettings,
   onRunHistoryTerm,
   onSearchRelated,
+  hasDetail,
+  isIrrelevant,
+  onMarkIrrelevant,
 }) {
+  // Cards extras criados ao clicar num relacionado da mini-lista ("..."), encadeados
+  // abaixo do card que os originou. Reseta a cada novo escaneamento.
+  const [extraCards, setExtraCards] = useState([]);
+  useEffect(() => {
+    setExtraCards([]);
+  }, [scanCount]);
+
+  function addExtraCard(parentKey, definition) {
+    const childKey = `${parentKey}::${slug(definition.term)}`;
+    setExtraCards((prev) => (prev.some((c) => c.key === childKey) ? prev : [...prev, { key: childKey, parentKey, definition }]));
+  }
+
+  async function expandRelated(parentKey, name) {
+    const def = await fetchDefinition(name);
+    addExtraCard(parentKey, def);
+  }
+
+  function renderChildren(parentKey) {
+    return extraCards
+      .filter((c) => c.parentKey === parentKey)
+      .map((c) => (
+        <div
+          key={c.key}
+          style={{
+            marginTop: "10px",
+            marginBottom: "10px",
+            paddingLeft: "10px",
+            borderLeft: `2px dashed ${COLORS.screenBorder}`,
+            animation: "flicker 0.4s ease-out",
+          }}
+        >
+          <DefinitionCard
+            definition={c.definition}
+            saved={isSaved("definition", c.definition.term, slug(c.definition.term))}
+            onToggle={() => onToggleSave("definition", c.definition.term, { definition: c.definition })}
+            onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
+            onAddRelatedCard={(name) => expandRelated(c.key, name)}
+          />
+          {renderChildren(c.key)}
+        </div>
+      ));
+  }
+
   const loadingMsg = useProgressiveMessage(loading, [
     `ESCANEANDO "${query}"...`,
     "AINDA ESCANEANDO...",
@@ -200,7 +248,9 @@ export default function SearchView({
           saved={isSaved("definition", data.term, slug(data.term))}
           onToggle={() => onToggleSave("definition", data.term, { definition: data })}
           onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
+          onAddRelatedCard={(name) => expandRelated("root", name)}
         />
+        {renderChildren("root")}
       </div>
     );
   }
@@ -214,16 +264,24 @@ export default function SearchView({
         <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>
           {data.subjectIntro}
         </p>
-        {data.items.map((item, i) => (
-          <ListItemCard
-            key={item.name + i}
-            index={i}
-            subjectDisplay={data.subject}
-            item={item}
-            saved={isSaved("list", data.subject, slug(item.name))}
-            onToggle={() => onToggleSave("list", data.subject, { item })}
-          />
-        ))}
+        {data.items.map((item, i) => {
+          const itemKey = `list-${i}`;
+          return (
+            <div key={item.name + i}>
+              <ListItemCard
+                index={i}
+                subjectDisplay={data.subject}
+                item={item}
+                saved={isSaved("list", data.subject, slug(item.name))}
+                onToggle={() => onToggleSave("list", data.subject, { item })}
+                onAddRelatedCard={(name) => expandRelated(itemKey, name)}
+                irrelevant={isIrrelevant ? isIrrelevant(data.subject, item.name) : false}
+                onMarkIrrelevant={onMarkIrrelevant ? () => onMarkIrrelevant(data.subject, "list", item) : undefined}
+              />
+              {renderChildren(itemKey)}
+            </div>
+          );
+        })}
       </div>
     );
   }
@@ -246,6 +304,9 @@ export default function SearchView({
           saved={isSaved("technique", data.subject, slug(t.name))}
           onToggle={() => onToggleSave("technique", data.subject, { technique: t, statLabels: data.statLabels })}
           onOpenDetail={() => onOpenDetail(data.subject, { ...t, statLabels: data.statLabels })}
+          hasDetail={hasDetail ? hasDetail(data.subject, t) : false}
+          irrelevant={isIrrelevant ? isIrrelevant(data.subject, t.name) : false}
+          onMarkIrrelevant={onMarkIrrelevant ? () => onMarkIrrelevant(data.subject, "technique", t) : undefined}
         />
       ))}
     </div>
