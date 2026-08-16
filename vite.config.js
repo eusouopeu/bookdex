@@ -9,6 +9,9 @@ const BASE = process.env.GH_PAGES === "true" ? "/bookdex/" : "/";
 
 export default defineConfig({
   base: BASE,
+  server: {
+    port: Number(process.env.PORT) || 5173,
+  },
   plugins: [
     react(),
     VitePWA({
