@@ -3,19 +3,21 @@ import { Plus, Minus, MoreHorizontal, Loader2, ArrowRight } from "lucide-react";
 import { COLORS } from "../theme";
 import { fetchConceptDeepDive, fetchRelatedConceptNames, MissingApiKeyError } from "../lib/anthropic";
 
-const iconBtnStyle = {
+// Mesmo visual do botão "Aprofundar" do TechCard, pra ficar igual em todos os cards.
+const bigBtnStyle = {
+  flex: 1,
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: "4px",
+  gap: "6px",
+  minHeight: "40px",
   background: "transparent",
-  border: `1.5px solid ${COLORS.screenBorder}`,
-  borderRadius: "999px",
+  border: `2px solid ${COLORS.screenBorder}`,
+  borderRadius: "8px",
   color: COLORS.ink,
-  fontFamily: '"JetBrains Mono", monospace',
-  fontSize: "10.5px",
-  padding: "3px 9px",
-  minHeight: "26px",
+  fontFamily: '"Baloo 2", sans-serif',
+  fontWeight: 700,
+  fontSize: "12px",
   cursor: "pointer",
 };
 
@@ -93,20 +95,20 @@ export default function ConceptExpand({ term, category, summary, onAddRelatedCar
 
   return (
     <div onClick={(e) => e.stopPropagation()} style={{ marginTop: "10px" }}>
-      <div className="flex items-center" style={{ gap: "6px", flexWrap: "wrap" }}>
-        <button onClick={toggleDeepDive} aria-label="Aprofundar explicação" title="Aprofundar explicação" style={iconBtnStyle}>
+      <div className="flex items-center" style={{ gap: "8px" }}>
+        <button onClick={toggleDeepDive} aria-label="Aprofundar explicação" title="Aprofundar explicação" style={bigBtnStyle}>
           {deepDiveLoading ? (
-            <Loader2 size={11} style={{ animation: "spin 0.9s linear infinite" }} />
+            <Loader2 size={14} style={{ animation: "spin 0.9s linear infinite" }} />
           ) : deepDive && deepDiveOpen ? (
-            <Minus size={11} />
+            <Minus size={14} />
           ) : (
-            <Plus size={11} />
+            <Plus size={14} />
           )}
           Aprofundar
         </button>
         {onAddRelatedCard && (
-          <button onClick={toggleRelated} aria-label="Ver relacionados" title="Ver relacionados" style={iconBtnStyle}>
-            {relatedLoading ? <Loader2 size={11} style={{ animation: "spin 0.9s linear infinite" }} /> : <MoreHorizontal size={11} />}
+          <button onClick={toggleRelated} aria-label="Ver relacionados" title="Ver relacionados" style={bigBtnStyle}>
+            {relatedLoading ? <Loader2 size={14} style={{ animation: "spin 0.9s linear infinite" }} /> : <MoreHorizontal size={14} />}
             Relacionados
           </button>
         )}

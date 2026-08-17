@@ -156,13 +156,27 @@ export async function sendMessageJSON(opts) {
 
 /* Prompts ----------------------------------------------------------------- */
 
-export const SEARCH_SYSTEM_PROMPT = `Você gera conteúdo para um app estilo Pokédex sobre técnicas de estudo/saúde/habilidades.
+/**
+ * Monta o prompt de sistema da busca de técnicas. Se `criteria` vier vazio,
+ * a comparação por critérios (statLabels/stats) some inteiramente — nada é
+ * inventado só pra preencher os cards. Se vier preenchido, os critérios
+ * usados são EXATAMENTE os informados pelo usuário, na ordem dada.
+ */
+export function buildSearchSystemPrompt(criteria) {
+  const clean = [...new Set((criteria || []).map((c) => c.trim()).filter(Boolean))];
+  const statsRule = clean.length
+    ? `- Use EXATAMENTE estas ${clean.length} categoria(s) de comparação (statLabels), nesta ordem, sem adicionar nem remover nenhuma: ${clean
+        .map((c) => `"${c}"`)
+        .join(", ")}.
+- Para cada técnica, dê notas de 1 a 5 em cada categoria, de forma COMPARATIVA entre as 6 técnicas: use toda a escala (a melhor da lista naquele quesito recebe 5, a pior recebe 1 ou 2). Não repita a mesma nota para todas as técnicas.`
+    : `- NÃO defina categorias de comparação e NÃO invente nenhum critério. "statLabels" deve ser um array vazio [] e "stats" de cada técnica também deve ser um array vazio [].`;
+
+  return `Você gera conteúdo para um app estilo Pokédex sobre técnicas de estudo/saúde/habilidades.
 Dado um assunto em português, retorne EXATAMENTE 6 técnicas ou tipos relacionados a esse assunto, comparados entre si.
 
 Regras obrigatórias:
 - Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
-- Defina exatamente 4 categorias de comparação (statLabels), curtas (1-2 palavras cada), relevantes ao assunto.
-- Para cada técnica, dê notas de 1 a 5 nas 4 categorias, de forma COMPARATIVA entre as 6 técnicas: use toda a escala (a melhor da lista naquele quesito recebe 5, a pior recebe 1 ou 2). Não repita a mesma nota para todas as técnicas.
+${statsRule}
 - "description": no máximo 20 palavras, em português, direto.
 - "bestFor": no máximo 8 palavras, situação ideal de uso.
 - "type": 1 a 2 palavras, categoria/estilo da técnica (como um "tipo" de Pokémon).
@@ -170,7 +184,8 @@ Regras obrigatórias:
 - "subjectIntro": 1 frase, no máximo 15 palavras.
 
 Formato exato (sem campos extras):
-{"subject":"Nome do Assunto","subjectIntro":"...","statLabels":["a","b","c","d"],"techniques":[{"name":"...","type":"...","description":"...","bestFor":"...","stats":[1,2,3,4]}]}`;
+{"subject":"Nome do Assunto","subjectIntro":"...","statLabels":[...],"techniques":[{"name":"...","type":"...","description":"...","bestFor":"...","stats":[...]}]}`;
+}
 
 export const DETAIL_SYSTEM_PROMPT = `Você escreve guias práticos, curtos e aplicáveis para um app estilo Pokédex de técnicas.
 Dado o nome de uma técnica e o assunto a que ela pertence, produza um guia passo a passo em português.
@@ -222,9 +237,9 @@ function avoidNote(avoid) {
   return `\n\n[Preferências do usuário: ele já marcou os itens a seguir como pouco relevantes em buscas anteriores — evite repeti-los ou sugerir variações muito parecidas: ${clean.join(", ")}.]`;
 }
 
-export async function fetchTechniques(subject, avoid) {
+export async function fetchTechniques(subject, avoid, criteria) {
   const parsed = await sendMessageJSON({
-    system: SEARCH_SYSTEM_PROMPT,
+    system: buildSearchSystemPrompt(criteria),
     user: subject + avoidNote(avoid),
     maxTokens: 1000,
   });

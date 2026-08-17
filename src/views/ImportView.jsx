@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, FileJson, ClipboardPaste, Download, BookOpenText, Layers, FileText } from "lucide-react";
+import { ArrowLeft, FileJson, ClipboardPaste, Download, BookOpenText, Layers, FileText, QrCode } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { COLORS, primaryButtonStyle } from "../theme";
@@ -9,6 +9,7 @@ import { buildPokedexPdf } from "../lib/pdfExport";
 import { buildAnkiCsv, countAnkiRows } from "../lib/ankiExport";
 import { buildPokedexMarkdown, countMarkdownItems } from "../lib/markdownExport";
 import { shareOrDownloadFile } from "../lib/share";
+import QRScanner from "../components/QRScanner";
 
 export default function ImportView({ onBack, onImport, saved, detailCache, collections }) {
   const [text, setText] = useState("");
@@ -22,6 +23,7 @@ export default function ImportView({ onBack, onImport, saved, detailCache, colle
   const [generatingAnki, setGeneratingAnki] = useState(false);
   const [mdMsg, setMdMsg] = useState(null);
   const [generatingMd, setGeneratingMd] = useState(false);
+  const [scanning, setScanning] = useState(false);
   const fileInput = useRef(null);
   const hasSaved = Object.keys(saved || {}).length > 0;
 
@@ -63,6 +65,12 @@ export default function ImportView({ onBack, onImport, saved, detailCache, colle
     reader.onerror = () => setError("Não foi possível ler o arquivo selecionado.");
     reader.readAsText(file);
     e.target.value = "";
+  }
+
+  function onQrScanned(decodedText) {
+    setScanning(false);
+    setText(decodedText);
+    preview(decodedText);
   }
 
   async function pasteFromClipboard() {
@@ -278,6 +286,22 @@ export default function ImportView({ onBack, onImport, saved, detailCache, colle
         <FileJson size={16} /> Selecionar arquivo .json
       </button>
       <input ref={fileInput} type="file" accept="application/json,.json" onChange={onFilePicked} style={{ display: "none" }} />
+
+      <button
+        onClick={() => setScanning(true)}
+        className="flex items-center justify-center gap-1.5"
+        style={{
+          ...primaryButtonStyle,
+          width: "100%",
+          marginTop: "8px",
+          background: "transparent",
+          color: COLORS.ink,
+          border: `2px solid ${COLORS.screenBorder}`,
+        }}
+      >
+        <QrCode size={16} /> Ler QR code
+      </button>
+      {scanning && <QRScanner onScanned={onQrScanned} onClose={() => setScanning(false)} />}
 
       {error && (
         <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--danger)", marginTop: "12px", lineHeight: 1.4 }}>

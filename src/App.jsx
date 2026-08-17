@@ -18,6 +18,7 @@ import { recordVisit, recordReviewCompleted } from "./lib/gamification";
 import { scheduleReviewReminder, requestNotificationPermission, cancelReviewReminder } from "./lib/notifications";
 import { updateReviewWidget } from "./lib/reviewWidget";
 import { createCollectionId } from "./lib/collections";
+import { findSimilarItem } from "./lib/dedupe";
 import { addLink, removeLink } from "./lib/links";
 import {
   initRelevanceState,
@@ -50,6 +51,7 @@ export default function App() {
   const [compareTarget, setCompareTarget] = useState(null);
 
   const [query, setQuery] = useState("");
+  const [criteria, setCriteria] = useState("");
   const [searchMode, setSearchMode] = useState("technique");
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
@@ -78,6 +80,7 @@ export default function App() {
   const [prefetchDetailsEnabled, setPrefetchDetailsEnabled] = useState(true);
   const [showHistorySuggestions, setShowHistorySuggestions] = useState(false);
   const [relevance, setRelevance] = useState(initRelevanceState());
+  const [dexCategory, setDexCategory] = useState("technique"); // "technique" | "knowledge" | "collections"
 
   useEffect(() => {
     (async () => {
@@ -245,7 +248,12 @@ export default function App() {
         persistSaved(prevSaved);
       });
     } else {
-      showToast(`${technique.name} capturado(a)!`);
+      const dup = findSimilarItem(prevSaved, technique.name);
+      showToast(
+        dup
+          ? `${technique.name} capturado(a)! Você já tem algo parecido: "${dup.name}" em "${dup.subjectDisplay}".`
+          : `${technique.name} capturado(a)!`
+      );
       prefetchDetail(subjectDisplay, { ...technique, id: techId });
     }
   }
@@ -334,7 +342,12 @@ export default function App() {
         persistSaved(prevSaved);
       });
     } else {
-      showToast(`${itemName} capturado(a)!`);
+      const dup = findSimilarItem(prevSaved, itemName);
+      showToast(
+        dup
+          ? `${itemName} capturado(a)! Você já tem algo parecido: "${dup.name}" em "${dup.subjectDisplay}".`
+          : `${itemName} capturado(a)!`
+      );
     }
   }
 
@@ -649,7 +662,7 @@ export default function App() {
       const avoid = [...avoidListForSubject(relevance, slug(term)), ...tasteAvoidList(relevance)];
       if (mode === "definition") data = await fetchDefinition(term, avoid);
       else if (mode === "list") data = await fetchList(term, avoid);
-      else data = await fetchTechniques(term, avoid);
+      else data = await fetchTechniques(term, avoid, criteria.split(",").map((c) => c.trim()).filter(Boolean));
       setResult({ mode, data });
       setScanCount((c) => c + 1);
       addToHistory(mode, term);
@@ -758,9 +771,19 @@ export default function App() {
     (sum, g) => sum + (g.kind === "definition" || g.kind === "list" ? g.items.length : g.techniques.length),
     0
   );
+  const techniqueCount = Object.values(saved).reduce(
+    (sum, g) => sum + ((!g.kind || g.kind === "technique") ? g.techniques.length : 0),
+    0
+  );
+  const knowledgeCount = Object.values(saved).reduce(
+    (sum, g) => sum + (g.kind === "definition" || g.kind === "list" ? g.items.length : 0),
+    0
+  );
+  const collectionsCount = Object.keys(collections || {}).length;
   const dueCount = countDue(saved);
   const isTab = view === "search" || view === "dex";
   const showSearchBar = view === "search" && !detailTarget && !compareTarget;
+  const showDexNav = view === "dex" && !detailTarget && !compareTarget;
   const matchingHistory = query.trim()
     ? history.filter((h) => h.term.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 5)
     : [];
@@ -975,6 +998,8 @@ export default function App() {
                 saved={saved}
                 detailCache={detailCache}
                 storageLoaded={storageLoaded}
+                category={dexCategory}
+                onCategoryChange={setDexCategory}
                 onToggleSave={toggleSave}
                 onOpenDetail={openDetail}
                 hasDetail={hasDetail}
@@ -1237,6 +1262,40 @@ export default function App() {
                   {loading ? "..." : "ESCANEAR"}
                 </button>
               </div>
+              {searchMode === "technique" && (
+                <input
+                  value={criteria}
+                  onChange={(e) => setCriteria(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSearch();
+                  }}
+                  placeholder="Critérios de comparação (opcional) — ex.: custo, dificuldade, tempo"
+                  style={{
+                    width: "100%",
+                    marginTop: "8px",
+                    borderRadius: "8px",
+                    border: "none",
+                    padding: "10px 12px",
+                    minHeight: "38px",
+                    fontFamily: "Inter, sans-serif",
+                    fontSize: "12.5px",
+                    outline: "none",
+                    background: "rgba(255,255,255,0.85)",
+                  }}
+                />
+              )}
+            </div>
+          ) : showDexNav ? (
+            <div className="flex gap-2">
+              <button onClick={() => setDexCategory("technique")} style={tabStyle(dexCategory === "technique")}>
+                TÉCNICAS ({techniqueCount})
+              </button>
+              <button onClick={() => setDexCategory("knowledge")} style={tabStyle(dexCategory === "knowledge")}>
+                CONCEITOS &amp; TIPOS ({knowledgeCount})
+              </button>
+              <button onClick={() => setDexCategory("collections")} style={tabStyle(dexCategory === "collections")}>
+                COLEÇÕES ({collectionsCount})
+              </button>
             </div>
           ) : (
             <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", color: "rgba(255,255,255,0.75)", textAlign: "center" }}>

@@ -116,22 +116,14 @@ export default function TechCard({
           </div>
         )}
       </div>
-      <span
-        style={{
-          display: "inline-block",
-          background: color.bg,
-          color: color.text,
-          fontSize: "10px",
-          fontWeight: 700,
-          padding: "2px 9px",
-          borderRadius: "999px",
-          textTransform: "uppercase",
-          letterSpacing: "0.03em",
-          marginBottom: "8px",
-        }}
-      >
-        {technique.type}
-      </span>
+      {(onTagsChange || onOpenLinkPicker) && (
+        <div style={{ marginBottom: "4px" }}>
+          {onTagsChange && <TagEditor tags={technique.tags || []} onChange={onTagsChange} />}
+          {onOpenLinkPicker && (
+            <LinksEditor links={links || []} onOpenPicker={onOpenLinkPicker} onRemove={onRemoveLink} onJump={onJumpLink} />
+          )}
+        </div>
+      )}
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.4, marginBottom: "9px" }}>
         {technique.description}
       </p>
@@ -143,14 +135,10 @@ export default function TechCard({
       <div style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", fontStyle: "italic" }}>
         Ideal para: {technique.bestFor}
       </div>
-      {onTagsChange && <TagEditor tags={technique.tags || []} onChange={onTagsChange} />}
       <div className="flex items-center" style={{ flexWrap: "wrap" }}>
         {onNoteChange && <NoteEditor note={technique.note} onChange={onNoteChange} />}
         {onImagesChange && <ImageEditor images={technique.images} onChange={onImagesChange} />}
       </div>
-      {onOpenLinkPicker && (
-        <LinksEditor links={links || []} onOpenPicker={onOpenLinkPicker} onRemove={onRemoveLink} onJump={onJumpLink} />
-      )}
       {onOpenDetail && (
         <button
           onClick={onOpenDetail}

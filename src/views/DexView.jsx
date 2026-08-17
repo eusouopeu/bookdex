@@ -16,7 +16,6 @@ import {
   CheckSquare,
   Check,
   FolderPlus,
-  Folder,
 } from "lucide-react";
 import { COLORS, slug } from "../theme";
 import { getJSON, KEYS } from "../lib/storage";
@@ -61,6 +60,8 @@ export default function DexView({
   saved,
   detailCache,
   storageLoaded,
+  category,
+  onCategoryChange,
   onToggleSave,
   onOpenDetail,
   hasDetail,
@@ -87,7 +88,6 @@ export default function DexView({
   onGenerateSuggestions,
 }) {
   const [collapsed, setCollapsed] = useState({});
-  const [category, setCategory] = useState("technique"); // "technique" | "knowledge" | "collections"
   const [filterText, setFilterText] = useState("");
   const [activeTag, setActiveTag] = useState(null);
   const [sortBy, setSortBy] = useState("recent"); // "recent" | "name" | "review"
@@ -108,6 +108,12 @@ export default function DexView({
       setLastBackup(await getJSON(KEYS.lastBackup, null));
     })();
   }, []);
+
+  useEffect(() => {
+    exitCompareMode();
+    exitSelectMode();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category]);
 
   const entries = Object.entries(saved);
   const techniqueEntries = useMemo(
@@ -434,83 +440,52 @@ export default function DexView({
         />
       )}
 
-      <div className="flex gap-2" style={{ marginBottom: "10px", flexWrap: "wrap" }}>
-        <button
-          onClick={() => {
-            setCategory("technique");
-            exitCompareMode();
-            exitSelectMode();
-          }}
-          style={badgeStyle(category === "technique")}
-        >
-          Técnicas ({techniqueEntries.reduce((s, [, g]) => s + g.techniques.length, 0)})
-        </button>
-        <button
-          onClick={() => {
-            setCategory("knowledge");
-            exitCompareMode();
-            exitSelectMode();
-          }}
-          style={badgeStyle(category === "knowledge")}
-        >
-          Conceitos &amp; Tipos ({knowledgeEntries.reduce((s, [, g]) => s + g.items.length, 0)})
-        </button>
-        {onCreateCollection && (
-          <button
-            onClick={() => {
-              setCategory("collections");
-              exitCompareMode();
-              exitSelectMode();
-            }}
-            className="flex items-center justify-center gap-1"
-            style={badgeStyle(category === "collections")}
-          >
-            <Folder size={12} /> Coleções ({Object.keys(collections || {}).length})
-          </button>
-        )}
-        {category === "technique" && onOpenCompare && (
-          <button
-            onClick={() => {
-              exitSelectMode();
-              compareMode ? exitCompareMode() : setCompareMode(true);
-            }}
-            aria-label="Comparar técnicas salvas"
-            title="Comparar técnicas salvas"
-            style={{
-              ...badgeStyle(compareMode),
-              flex: "none",
-              width: "38px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-            }}
-          >
-            <Scale size={15} />
-          </button>
-        )}
-        {category !== "collections" && onBulkRemoveItems && (
-          <button
-            onClick={() => {
-              exitCompareMode();
-              selectMode ? exitSelectMode() : setSelectMode(true);
-            }}
-            aria-label="Selecionar vários itens"
-            title="Selecionar vários itens"
-            style={{
-              ...badgeStyle(selectMode),
-              flex: "none",
-              width: "38px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              padding: 0,
-            }}
-          >
-            <CheckSquare size={15} />
-          </button>
-        )}
-      </div>
+      {((category === "technique" && onOpenCompare) || (category !== "collections" && onBulkRemoveItems)) && (
+        <div className="flex gap-2" style={{ marginBottom: "10px", justifyContent: "flex-end" }}>
+          {category === "technique" && onOpenCompare && (
+            <button
+              onClick={() => {
+                exitSelectMode();
+                compareMode ? exitCompareMode() : setCompareMode(true);
+              }}
+              aria-label="Comparar técnicas salvas"
+              title="Comparar técnicas salvas"
+              style={{
+                ...badgeStyle(compareMode),
+                flex: "none",
+                width: "38px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+              }}
+            >
+              <Scale size={15} />
+            </button>
+          )}
+          {category !== "collections" && onBulkRemoveItems && (
+            <button
+              onClick={() => {
+                exitCompareMode();
+                selectMode ? exitSelectMode() : setSelectMode(true);
+              }}
+              aria-label="Selecionar vários itens"
+              title="Selecionar vários itens"
+              style={{
+                ...badgeStyle(selectMode),
+                flex: "none",
+                width: "38px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+              }}
+            >
+              <CheckSquare size={15} />
+            </button>
+          )}
+        </div>
+      )}
 
       {category === "collections" ? (
         <CollectionsSection

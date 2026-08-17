@@ -1,12 +1,14 @@
 import { useState } from "react";
-import { ChevronDown, ChevronRight, Folder, FolderPlus, Share2, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Folder, FolderPlus, QrCode, Share2, Trash2, X } from "lucide-react";
 import { COLORS, slug } from "../theme";
 import { resolveCollectionItems, refKey } from "../lib/collections";
 import { buildCollectionExportPayload } from "../lib/importer";
 import { shareOrDownloadFile } from "../lib/share";
+import { fitsInQr, generateQrDataUrl } from "../lib/qr";
 import TechCard from "./TechCard";
 import DefinitionCard from "./DefinitionCard";
 import ListItemCard from "./ListItemCard";
+import QRCodeModal from "./QRCodeModal";
 
 const CONFIRM_THRESHOLD = 3;
 
@@ -36,6 +38,7 @@ export default function CollectionsSection({
   const [name, setName] = useState("");
   const [confirmingDelete, setConfirmingDelete] = useState(null);
   const [exportMsg, setExportMsg] = useState(null);
+  const [qrModal, setQrModal] = useState(null); // { title, dataUrl }
 
   const list = Object.values(collections || {}).sort((a, b) => b.createdAt - a.createdAt);
 
@@ -45,6 +48,18 @@ export default function CollectionsSection({
     const outcome = await shareOrDownloadFile(fileName, JSON.stringify(payload, null, 2), "application/json", `Bookdex — ${col.name}`);
     setExportMsg(outcome === "shared" ? `"${col.name}" compartilhada.` : `"${col.name}" exportada — envie o arquivo pra quem quiser importar.`);
     setTimeout(() => setExportMsg((m) => (m ? null : m)), 3200);
+  }
+
+  async function showCollectionQr(col) {
+    const payload = buildCollectionExportPayload(col.id, col, saved, detailCache);
+    const text = JSON.stringify(payload);
+    if (!fitsInQr(text)) {
+      setExportMsg(`"${col.name}" tem itens demais pra caber num QR code — use o botão de compartilhar acima.`);
+      setTimeout(() => setExportMsg((m) => (m ? null : m)), 3600);
+      return;
+    }
+    const dataUrl = await generateQrDataUrl(text);
+    setQrModal({ title: col.name, dataUrl });
   }
 
   function submitNew() {
@@ -269,14 +284,24 @@ export default function CollectionsSection({
                 </h3>
               </button>
               {!confirming && resolvedItems.length > 0 && (
-                <button
-                  onClick={() => exportCollection(col)}
-                  aria-label={`Compartilhar coleção "${col.name}"`}
-                  title="Compartilhar/exportar coleção"
-                  style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, padding: "9px 4px", flexShrink: 0 }}
-                >
-                  <Share2 size={15} />
-                </button>
+                <>
+                  <button
+                    onClick={() => showCollectionQr(col)}
+                    aria-label={`Mostrar QR code da coleção "${col.name}"`}
+                    title="Sincronizar por QR code"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, padding: "9px 4px", flexShrink: 0 }}
+                  >
+                    <QrCode size={15} />
+                  </button>
+                  <button
+                    onClick={() => exportCollection(col)}
+                    aria-label={`Compartilhar coleção "${col.name}"`}
+                    title="Compartilhar/exportar coleção"
+                    style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, padding: "9px 4px", flexShrink: 0 }}
+                  >
+                    <Share2 size={15} />
+                  </button>
+                </>
               )}
               {confirming ? (
                 <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
@@ -317,6 +342,8 @@ export default function CollectionsSection({
           </div>
         );
       })}
+
+      {qrModal && <QRCodeModal title={qrModal.title} dataUrl={qrModal.dataUrl} onClose={() => setQrModal(null)} />}
     </div>
   );
 }
