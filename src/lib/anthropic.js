@@ -13,10 +13,28 @@
  */
 import { get, set, getJSON, setJSON, KEYS } from "./storage";
 
-// Sempre Sonnet, esforço médio, com thinking adaptativo ligado.
+// Sempre Sonnet, com thinking adaptativo ligado. O esforço de saída das buscas
+// (técnicas/conceito/tipos/comparação) é configurável pelo usuário; o resto das
+// chamadas (guias, aprofundamentos, sugestões) permanece fixo em "medium".
 export const MODEL = "claude-sonnet-5";
-const EFFORT = "medium";
+const DEFAULT_EFFORT = "medium";
 const API_URL = "https://api.anthropic.com/v1/messages";
+
+export const SEARCH_EFFORT_OPTIONS = [
+  { value: "low", label: "Baixo", hint: "mais rápido e barato — bom para explorar" },
+  { value: "medium", label: "Médio", hint: "equilíbrio padrão" },
+  { value: "high", label: "Alto", hint: "mais caprichado — bom para se aprofundar" },
+];
+
+export async function getSearchEffort() {
+  const res = await get(KEYS.searchEffort);
+  const value = res && res.value ? res.value : DEFAULT_EFFORT;
+  return SEARCH_EFFORT_OPTIONS.some((o) => o.value === value) ? value : DEFAULT_EFFORT;
+}
+
+export async function setSearchEffort(effort) {
+  await set(KEYS.searchEffort, effort);
+}
 
 export class MissingApiKeyError extends Error {
   constructor() {
@@ -83,7 +101,7 @@ function extractJson(text) {
 /**
  * Envia uma mensagem e devolve o texto concatenado dos blocos de resposta.
  */
-export async function sendMessage({ system, user, maxTokens = 1000 }) {
+export async function sendMessage({ system, user, maxTokens = 1000, effort = DEFAULT_EFFORT }) {
   const [apiKey, proxyUrl] = await Promise.all([getApiKey(), getProxyUrl()]);
   if (!apiKey && !proxyUrl) throw new MissingApiKeyError();
 
@@ -110,7 +128,7 @@ export async function sendMessage({ system, user, maxTokens = 1000 }) {
         max_tokens: maxTokens,
         system,
         thinking: { type: "adaptive" },
-        output_config: { effort: EFFORT },
+        output_config: { effort },
         messages: [{ role: "user", content: user }],
       }),
     });
@@ -237,11 +255,12 @@ function avoidNote(avoid) {
   return `\n\n[Preferências do usuário: ele já marcou os itens a seguir como pouco relevantes em buscas anteriores — evite repeti-los ou sugerir variações muito parecidas: ${clean.join(", ")}.]`;
 }
 
-export async function fetchTechniques(subject, avoid, criteria) {
+export async function fetchTechniques(subject, avoid, criteria, effort) {
   const parsed = await sendMessageJSON({
     system: buildSearchSystemPrompt(criteria),
     user: subject + avoidNote(avoid),
     maxTokens: 1000,
+    effort,
   });
   if (!parsed.subject || !Array.isArray(parsed.statLabels) || !Array.isArray(parsed.techniques)) {
     throw new Error("Formato inesperado na resposta");
@@ -249,11 +268,12 @@ export async function fetchTechniques(subject, avoid, criteria) {
   return parsed;
 }
 
-export async function fetchDefinition(term, avoid) {
+export async function fetchDefinition(term, avoid, effort) {
   const parsed = await sendMessageJSON({
     system: DEFINITION_SYSTEM_PROMPT,
     user: term + avoidNote(avoid),
     maxTokens: 900,
+    effort,
   });
   if (!parsed.term || !parsed.definition) {
     throw new Error("Formato inesperado na resposta");
@@ -261,13 +281,60 @@ export async function fetchDefinition(term, avoid) {
   return parsed;
 }
 
-export async function fetchList(subject, avoid) {
+export async function fetchList(subject, avoid, effort) {
   const parsed = await sendMessageJSON({
     system: LIST_SYSTEM_PROMPT,
     user: subject + avoidNote(avoid),
     maxTokens: 1000,
+    effort,
   });
   if (!parsed.subject || !Array.isArray(parsed.items)) {
+    throw new Error("Formato inesperado na resposta");
+  }
+  return parsed;
+}
+
+/**
+ * Monta o prompt de sistema do modo "cmp:": compara EXATAMENTE os itens nomeados
+ * pelo usuário entre si (ao contrário do modo "tec:", que gera 6 técnicas a partir
+ * de um assunto). Reaproveita o mesmo formato de saída (statLabels/stats) para
+ * reusar TechCard/StatBar na exibição.
+ */
+export function buildCompareSystemPrompt(names, criteria) {
+  const clean = [...new Set((criteria || []).map((c) => c.trim()).filter(Boolean))];
+  const statsRule = clean.length
+    ? `- Use EXATAMENTE estas ${clean.length} categoria(s) de comparação (statLabels), nesta ordem, sem adicionar nem remover nenhuma: ${clean
+        .map((c) => `"${c}"`)
+        .join(", ")}.
+- Dê notas de 1 a 5 em cada categoria, de forma COMPARATIVA entre os itens: use toda a escala (o melhor da lista naquele quesito recebe 5, o pior recebe 1 ou 2). Não repita a mesma nota para todos os itens.`
+    : `- Escolha de 2 a 4 categorias de comparação (statLabels) relevantes para comparar esses itens especificamente, e dê notas de 1 a 5 em cada uma, de forma COMPARATIVA (não repita a mesma nota para todos os itens).`;
+
+  return `Você gera uma comparação direta entre itens específicos nomeados pelo usuário, para um app estilo Pokédex.
+Dada uma lista de ${names.length} itens (podem ser técnicas, suplementos, ferramentas, conceitos práticos etc.), compare-os EXATAMENTE entre si — não invente itens adicionais nem troque nenhum dos citados.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- Retorne EXATAMENTE ${names.length} entradas em "techniques", uma para cada item, na mesma ordem em que foram citados: ${names.map((n) => `"${n}"`).join(", ")}.
+${statsRule}
+- "description": no máximo 20 palavras, em português, direto.
+- "bestFor": no máximo 8 palavras, situação ideal de uso desse item específico.
+- "type": 1 a 2 palavras, categoria/estilo do item (como um "tipo" de Pokémon).
+- "name": nome do item EXATAMENTE como foi citado (correção ortográfica leve é aceitável).
+- "subject": um título curto para a comparação, ex.: "Nome1 vs Nome2".
+- "subjectIntro": 1 frase, no máximo 15 palavras, contextualizando a comparação.
+
+Formato exato (sem campos extras):
+{"subject":"...","subjectIntro":"...","statLabels":[...],"techniques":[{"name":"...","type":"...","description":"...","bestFor":"...","stats":[...]}]}`;
+}
+
+export async function fetchCompare(names, avoid, criteria, effort) {
+  const parsed = await sendMessageJSON({
+    system: buildCompareSystemPrompt(names, criteria),
+    user: names.join(" vs ") + avoidNote(avoid),
+    maxTokens: 1000,
+    effort,
+  });
+  if (!parsed.subject || !Array.isArray(parsed.statLabels) || !Array.isArray(parsed.techniques)) {
     throw new Error("Formato inesperado na resposta");
   }
   return parsed;

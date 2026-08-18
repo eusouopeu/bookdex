@@ -47,6 +47,7 @@ export function getDueQueue(saved, now = Date.now()) {
   for (const [subjectKey, group] of Object.entries(saved || {})) {
     const kind = itemKind(group);
     for (const item of groupItems(group)) {
+      if (item.archived) continue;
       if (isDue(item, now)) {
         queue.push({ subjectKey, subjectDisplay: group.displayName, kind, item, name: itemName(kind, item) });
       }

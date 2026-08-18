@@ -3,11 +3,13 @@ import { COLORS, getTypeColor } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import StatBar from "./StatBar";
 import ShareButton from "./ShareButton";
+import ShareImageButton from "./ShareImageButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
 import ImageEditor from "./ImageEditor";
 import LinksEditor from "./LinksEditor";
 import { techniqueShareText } from "../lib/share";
+import { renderTechniqueCardImage } from "../lib/cardImage";
 
 export default function TechCard({
   index,
@@ -76,7 +78,7 @@ export default function TechCard({
           </div>
         </div>
         {!selectable && (
-          <div className="flex items-center" style={{ flexShrink: 0 }}>
+          <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
             {onMarkIrrelevant && (
               <button
                 onClick={(e) => {
@@ -99,6 +101,10 @@ export default function TechCard({
               </button>
             )}
             <ShareButton title={technique.name} text={techniqueShareText(subjectDisplay || "", technique, statLabels)} />
+            <ShareImageButton
+              title={technique.name}
+              render={() => renderTechniqueCardImage(subjectDisplay || "", technique, statLabels)}
+            />
             <button
               onClick={onToggle}
               aria-label={saved ? "Soltar da Pokédex" : "Capturar técnica"}

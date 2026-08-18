@@ -16,6 +16,8 @@ import {
   CheckSquare,
   Check,
   FolderPlus,
+  Archive,
+  ArchiveRestore,
 } from "lucide-react";
 import { COLORS, slug } from "../theme";
 import { getJSON, KEYS } from "../lib/storage";
@@ -78,6 +80,9 @@ export default function DexView({
   onOpenCompare,
   onBulkRemoveItems,
   onBulkAddTag,
+  onArchiveItems,
+  showArchived,
+  onToggleShowArchived,
   collections,
   onCreateCollection,
   onDeleteCollection,
@@ -169,6 +174,21 @@ export default function DexView({
       .join(" ");
   }
 
+  /** Texto livre de um item salvo (nota + descrição/definição + exemplo), pra busca full-text. */
+  function itemFreeText(kind, it) {
+    return [
+      it.note,
+      it.description,
+      it.definition,
+      it.example,
+      ...(it.keyPoints || []),
+      ...(it.relatedTerms || []),
+      it.bestFor,
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
   function filterEntries(list) {
     const q = slug(filterText.trim());
     const bySubjectAllowsAll = (group) => !q || slug(group.displayName).includes(q);
@@ -178,9 +198,12 @@ export default function DexView({
         const items = isKnowledge ? group.items : group.techniques;
         const subjectMatches = bySubjectAllowsAll(group);
         const finalItems = items.filter((it) => {
+          if (!showArchived && it.archived) return false;
+          if (showArchived && !it.archived) return false;
           if (activeTag && !(it.tags || []).includes(activeTag)) return false;
           if (!q || subjectMatches) return true;
           if (slug(itemLabel(group.kind, it)).includes(q)) return true;
+          if (slug(itemFreeText(group.kind, it)).includes(q)) return true;
           if (!isKnowledge && slug(guideText(group.displayName, it)).includes(q)) return true;
           return false;
         });
@@ -296,6 +319,12 @@ export default function DexView({
     exitSelectMode();
   }
 
+  function applyBulkArchive() {
+    if (bulkSelection.length === 0) return;
+    onArchiveItems(bulkSelection, !showArchived);
+    exitSelectMode();
+  }
+
   function applyBulkDelete() {
     if (bulkSelection.length === 0) return;
     if (!confirmingBulkDelete) {
@@ -328,7 +357,7 @@ export default function DexView({
   }
 
   function jumpToLink(link) {
-    setCategory(link.kind === "definition" || link.kind === "list" ? "knowledge" : "technique");
+    onCategoryChange(link.kind === "definition" || link.kind === "list" ? "knowledge" : "technique");
     setFilterText(link.label);
     setActiveTag(null);
     setCollapsed((c) => ({ ...c, [link.subjectKey]: false }));
@@ -451,8 +480,27 @@ export default function DexView({
         />
       )}
 
-      {((category === "technique" && onOpenCompare) || (category !== "collections" && onBulkRemoveItems)) && (
+      {((category === "technique" || category === "knowledge") &&
+        ((category === "technique" && onOpenCompare) || onBulkRemoveItems || onToggleShowArchived)) && (
         <div className="flex gap-2" style={{ marginBottom: "10px", justifyContent: "flex-end" }}>
+          {onToggleShowArchived && (
+            <button
+              onClick={onToggleShowArchived}
+              aria-label={showArchived ? "Ver itens ativos" : "Ver itens arquivados"}
+              title={showArchived ? "Ver itens ativos" : "Ver itens arquivados"}
+              style={{
+                ...badgeStyle(showArchived),
+                flex: "none",
+                width: "38px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: 0,
+              }}
+            >
+              {showArchived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
+            </button>
+          )}
           {category === "technique" && onOpenCompare && (
             <button
               onClick={() => {
@@ -530,6 +578,24 @@ export default function DexView({
         />
       ) : (
         <>
+      {showArchived && (
+        <div
+          style={{
+            background: "rgba(92,107,82,0.15)",
+            border: `2px solid ${COLORS.screenBorder}`,
+            borderRadius: "10px",
+            padding: "8px 10px",
+            marginBottom: "10px",
+            fontFamily: "Inter, sans-serif",
+            fontSize: "11.5px",
+            color: COLORS.ink,
+          }}
+        >
+          Mostrando itens arquivados — eles não aparecem na Pokédex ativa nem contam pra revisão, mas continuam no
+          backup/export.
+        </div>
+      )}
+
       {compareMode && (
         <div
           style={{
@@ -694,7 +760,11 @@ export default function DexView({
         >
           <Search size={28} strokeWidth={1.5} style={{ marginBottom: "8px" }} />
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", maxWidth: "220px" }}>
-            Nada encontrado para "{filterText}".
+            {filterText
+              ? `Nada encontrado para "${filterText}".`
+              : showArchived
+                ? "Nenhum item arquivado."
+                : "Nenhum item ativo (tudo arquivado ou filtrado)."}
           </p>
         </div>
       )}
@@ -987,6 +1057,28 @@ export default function DexView({
                 }}
               >
                 <FolderPlus size={12} /> Coleção
+              </button>
+            )}
+            {onArchiveItems && (
+              <button
+                onClick={applyBulkArchive}
+                disabled={bulkSelection.length === 0}
+                className="flex items-center gap-1"
+                style={{
+                  background: "transparent",
+                  color: COLORS.ink,
+                  border: `1.5px solid ${COLORS.screenBorder}`,
+                  borderRadius: "999px",
+                  padding: "7px 12px",
+                  fontFamily: '"Baloo 2", sans-serif',
+                  fontWeight: 700,
+                  fontSize: "11.5px",
+                  cursor: "pointer",
+                  opacity: bulkSelection.length === 0 ? 0.5 : 1,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {showArchived ? <ArchiveRestore size={12} /> : <Archive size={12} />} {showArchived ? "Desarquivar" : "Arquivar"}
               </button>
             )}
             <button

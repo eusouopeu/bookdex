@@ -10,6 +10,7 @@ import {
   MODEL,
   getUsageStats,
   resetUsageStats,
+  SEARCH_EFFORT_OPTIONS,
 } from "../lib/anthropic";
 import { ACHIEVEMENTS, computeUnlocked } from "../lib/gamification";
 
@@ -55,6 +56,8 @@ export default function SettingsView({
   totalSavedCount,
   prefetchDetailsEnabled,
   onPrefetchDetailsChange,
+  searchEffort,
+  onSearchEffortChange,
 }) {
   const [key, setKey] = useState("");
   const [proxy, setProxy] = useState("");
@@ -273,6 +276,37 @@ export default function SettingsView({
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.4 }}>
         Baixa o guia "Aprofundar" em segundo plano assim que você captura uma técnica, pra ele já estar disponível
         offline depois. Gasta uma chamada extra à API por técnica capturada.
+      </p>
+
+      <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, marginBottom: "8px" }}>
+        Esforço de busca
+      </h3>
+      <div className="flex gap-2" style={{ marginBottom: "6px" }}>
+        {SEARCH_EFFORT_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => onSearchEffortChange && onSearchEffortChange(opt.value)}
+            className="flex items-center justify-center"
+            style={{
+              flex: 1,
+              minHeight: "40px",
+              borderRadius: "8px",
+              border: `2px solid ${COLORS.screenBorder}`,
+              background: searchEffort === opt.value ? COLORS.screenBorder : "transparent",
+              color: searchEffort === opt.value ? COLORS.white : COLORS.ink,
+              fontFamily: '"Baloo 2", sans-serif',
+              fontWeight: 700,
+              fontSize: "12.5px",
+              cursor: "pointer",
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.4 }}>
+        Controla o capricho das buscas (Técnicas, Conceito, Tipos e Comparar) — {SEARCH_EFFORT_OPTIONS.find((o) => o.value === searchEffort)?.hint}.
+        Guias ("Aprofundar") continuam sempre no esforço padrão.
       </p>
 
       {gamification && (

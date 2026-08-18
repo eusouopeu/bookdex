@@ -178,7 +178,7 @@ export default function SearchView({
           {PLACEHOLDER_BY_MODE[searchMode]}
         </p>
         <p style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", color: "var(--text-muted)", marginTop: "10px" }}>
-          tec: técnicas &nbsp;·&nbsp; def: conceitos &nbsp;·&nbsp; list: tipos
+          tec: técnicas &nbsp;·&nbsp; def: conceitos &nbsp;·&nbsp; list: tipos &nbsp;·&nbsp; cmp: comparar
         </p>
 
         {!!(history && history.length) && (
@@ -218,7 +218,7 @@ export default function SearchView({
   const { mode, data } = result;
   const isEmpty =
     (mode === "list" && (!data.items || data.items.length === 0)) ||
-    (mode === "technique" && (!data.techniques || data.techniques.length === 0));
+    ((mode === "technique" || mode === "compare") && (!data.techniques || data.techniques.length === 0));
 
   if (isEmpty) {
     return (
@@ -294,21 +294,26 @@ export default function SearchView({
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px" }}>
         {data.subjectIntro}
       </p>
-      {data.techniques.map((t, i) => (
-        <TechCard
-          key={t.name + i}
-          index={i}
-          subjectDisplay={data.subject}
-          technique={t}
-          statLabels={data.statLabels}
-          saved={isSaved("technique", data.subject, slug(t.name))}
-          onToggle={() => onToggleSave("technique", data.subject, { technique: t, statLabels: data.statLabels })}
-          onOpenDetail={() => onOpenDetail(data.subject, { ...t, statLabels: data.statLabels })}
-          hasDetail={hasDetail ? hasDetail(data.subject, t) : false}
-          irrelevant={isIrrelevant ? isIrrelevant(data.subject, t.name) : false}
-          onMarkIrrelevant={onMarkIrrelevant ? () => onMarkIrrelevant(data.subject, "technique", t) : undefined}
-        />
-      ))}
+      {data.techniques.map((t, i) => {
+        // No modo "cmp:" cada item é seu próprio assunto (não "X vs Y"), pra
+        // ficar no mesmo lugar que uma captura via "tec:" desse mesmo item.
+        const subjectDisplay = mode === "compare" ? t.name : data.subject;
+        return (
+          <TechCard
+            key={t.name + i}
+            index={i}
+            subjectDisplay={subjectDisplay}
+            technique={t}
+            statLabels={data.statLabels}
+            saved={isSaved("technique", subjectDisplay, slug(t.name))}
+            onToggle={() => onToggleSave("technique", subjectDisplay, { technique: t, statLabels: data.statLabels })}
+            onOpenDetail={() => onOpenDetail(subjectDisplay, { ...t, statLabels: data.statLabels })}
+            hasDetail={hasDetail ? hasDetail(subjectDisplay, t) : false}
+            irrelevant={isIrrelevant ? isIrrelevant(subjectDisplay, t.name) : false}
+            onMarkIrrelevant={onMarkIrrelevant ? () => onMarkIrrelevant(subjectDisplay, "technique", t) : undefined}
+          />
+        );
+      })}
     </div>
   );
 }

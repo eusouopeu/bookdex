@@ -2,12 +2,14 @@ import { ThumbsDown } from "lucide-react";
 import { COLORS } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
+import ShareImageButton from "./ShareImageButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
 import ImageEditor from "./ImageEditor";
 import LinksEditor from "./LinksEditor";
 import ConceptExpand from "./ConceptExpand";
 import { listItemShareText } from "../lib/share";
+import { renderListItemCardImage } from "../lib/cardImage";
 
 /**
  * Card de um item de enumeração/tipo (modo "list:"). Como TechCard, mas sem
@@ -58,7 +60,7 @@ export default function ListItemCard({
             {item.name}
           </h3>
         </div>
-        <div className="flex items-center" style={{ flexShrink: 0 }}>
+        <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
           {onMarkIrrelevant && (
             <button
               onClick={(e) => {
@@ -81,6 +83,7 @@ export default function ListItemCard({
             </button>
           )}
           <ShareButton title={item.name} text={listItemShareText(subjectDisplay || "", item)} />
+          <ShareImageButton title={item.name} render={() => renderListItemCardImage(subjectDisplay || "", item)} />
           <button
             onClick={onToggle}
             aria-label={saved ? "Soltar da Pokédex" : "Capturar item"}

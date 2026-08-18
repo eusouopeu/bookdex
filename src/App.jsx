@@ -6,12 +6,15 @@ import {
   fetchTechniques,
   fetchDefinition,
   fetchList,
+  fetchCompare,
   fetchDetail,
   fetchRelatedSuggestions,
   hasCredentials,
+  getSearchEffort,
+  setSearchEffort as persistSearchEffort,
   MissingApiKeyError,
 } from "./lib/anthropic";
-import { parseSearchQuery, hasExplicitPrefix, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
+import { parseSearchQuery, hasExplicitPrefix, splitCompareTerms, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
 import { mergeData, mergeCollections } from "./lib/importer";
 import { initReviewState, gradeReviewState, countDue, getDueQueue } from "./lib/review";
 import { recordVisit, recordReviewCompleted } from "./lib/gamification";
@@ -34,9 +37,10 @@ const SEARCH_MODES = [
   { mode: "technique", label: "Técnicas" },
   { mode: "definition", label: "Conceito" },
   { mode: "list", label: "Tipos" },
+  { mode: "compare", label: "Comparar" },
 ];
 const MAX_HISTORY = 8;
-const MODE_LABELS_SHORT = { technique: "téc", definition: "def", list: "list" };
+const MODE_LABELS_SHORT = { technique: "téc", definition: "def", list: "list", compare: "cmp" };
 import SearchView from "./views/SearchView";
 import DexView from "./views/DexView";
 import DetailPage from "./views/DetailPage";
@@ -83,6 +87,8 @@ export default function App() {
   const [relevance, setRelevance] = useState(initRelevanceState());
   const [dexCategory, setDexCategory] = useState("technique"); // "technique" | "knowledge" | "collections" | "effects"
   const [effectProfiles, setEffectProfiles] = useState(initEffectProfiles());
+  const [searchEffort, setSearchEffortState] = useState("medium");
+  const [showArchived, setShowArchived] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -97,6 +103,7 @@ export default function App() {
       setSuggestions((await getJSON(KEYS.suggestions, null))?.items || []);
       setPrefetchDetailsEnabled(await getJSON(KEYS.prefetchDetails, true));
       setRelevance(await getJSON(KEYS.irrelevantItems, initRelevanceState()));
+      setSearchEffortState(await getSearchEffort());
       const savedTab = await getJSON(KEYS.lastTab, "search");
       if (savedTab === "search" || savedTab === "dex") {
         setLastTab(savedTab);
@@ -442,6 +449,28 @@ export default function App() {
     updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, images }));
   }
 
+  function archiveItems(items, archived) {
+    const prevSaved = saved;
+    let next = saved;
+    for (const { subjectKey, itemId } of items) {
+      const group = next[subjectKey];
+      if (!group) continue;
+      const isKnowledge = group.kind === "definition" || group.kind === "list";
+      const list = isKnowledge ? group.items : group.techniques;
+      const idx = list.findIndex((it) => it.id === itemId);
+      if (idx === -1) continue;
+      const nextList = [...list];
+      nextList[idx] = { ...nextList[idx], archived };
+      next = { ...next, [subjectKey]: isKnowledge ? { ...group, items: nextList } : { ...group, techniques: nextList } };
+    }
+    setSaved(next);
+    persistSaved(next);
+    showToast(archived ? `${items.length} item(ns) arquivado(s).` : `${items.length} item(ns) desarquivado(s).`, () => {
+      setSaved(prevSaved);
+      persistSaved(prevSaved);
+    });
+  }
+
   function linkItems(a, b) {
     setSaved((prev) => {
       const next = addLink(prev, a, b);
@@ -681,6 +710,11 @@ export default function App() {
     setJSON(KEYS.prefetchDetails, enabled).catch(() => {});
   }
 
+  function changeSearchEffort(effort) {
+    setSearchEffortState(effort);
+    persistSearchEffort(effort).catch(() => {});
+  }
+
   function gradeReviewItem(subjectKey, itemId, _kind, correct) {
     updateItemInGroup(subjectKey, itemId, (item) => ({
       ...item,
@@ -786,9 +820,15 @@ export default function App() {
     try {
       let data;
       const avoid = [...avoidListForSubject(relevance, slug(term)), ...tasteAvoidList(relevance)];
-      if (mode === "definition") data = await fetchDefinition(term, avoid);
-      else if (mode === "list") data = await fetchList(term, avoid);
-      else data = await fetchTechniques(term, avoid, criteria.split(",").map((c) => c.trim()).filter(Boolean));
+      const critList = criteria.split(",").map((c) => c.trim()).filter(Boolean);
+      if (mode === "definition") data = await fetchDefinition(term, avoid, searchEffort);
+      else if (mode === "list") data = await fetchList(term, avoid, searchEffort);
+      else if (mode === "compare") {
+        const names = splitCompareTerms(term);
+        if (names.length < 2) throw new Error('Informe pelo menos 2 itens separados por vírgula, ex.: "melatonina, magnésio".');
+        if (names.length > 3) throw new Error("No máximo 3 itens por comparação.");
+        data = await fetchCompare(names, avoid, critList, searchEffort);
+      } else data = await fetchTechniques(term, avoid, critList, searchEffort);
       setResult({ mode, data });
       setScanCount((c) => c + 1);
       addToHistory(mode, term);
@@ -893,16 +933,17 @@ export default function App() {
     setView(lastTab);
   }
 
+  const activeCount = (list) => (list || []).filter((it) => !it.archived).length;
   const totalSavedCount = Object.values(saved).reduce(
-    (sum, g) => sum + (g.kind === "definition" || g.kind === "list" ? g.items.length : g.techniques.length),
+    (sum, g) => sum + activeCount(g.kind === "definition" || g.kind === "list" ? g.items : g.techniques),
     0
   );
   const techniqueCount = Object.values(saved).reduce(
-    (sum, g) => sum + ((!g.kind || g.kind === "technique") ? g.techniques.length : 0),
+    (sum, g) => sum + ((!g.kind || g.kind === "technique") ? activeCount(g.techniques) : 0),
     0
   );
   const knowledgeCount = Object.values(saved).reduce(
-    (sum, g) => sum + (g.kind === "definition" || g.kind === "list" ? g.items.length : 0),
+    (sum, g) => sum + (g.kind === "definition" || g.kind === "list" ? activeCount(g.items) : 0),
     0
   );
   const collectionsCount = Object.keys(collections || {}).length;
@@ -1030,7 +1071,7 @@ export default function App() {
             </button>
           </div>
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "10.5px", color: "rgba(255,255,255,0.8)", marginBottom: "12px", marginLeft: "2px" }}>
-            tec: técnicas · def: conceitos · list: tipos
+            tec: técnicas · def: conceitos · list: tipos · cmp: comparar
           </p>
           <div className="flex gap-2">
             <button onClick={() => goTab("search")} style={tabStyle(view === "search")}>
@@ -1142,6 +1183,9 @@ export default function App() {
                 onOpenCompare={openCompare}
                 onBulkRemoveItems={bulkRemoveItems}
                 onBulkAddTag={bulkAddTag}
+                onArchiveItems={archiveItems}
+                showArchived={showArchived}
+                onToggleShowArchived={() => setShowArchived((v) => !v)}
                 collections={collections}
                 onCreateCollection={createCollection}
                 onDeleteCollection={deleteCollection}
@@ -1186,6 +1230,8 @@ export default function App() {
                 totalSavedCount={totalSavedCount}
                 prefetchDetailsEnabled={prefetchDetailsEnabled}
                 onPrefetchDetailsChange={changePrefetchDetails}
+                searchEffort={searchEffort}
+                onSearchEffortChange={changeSearchEffort}
               />
             )}
 
@@ -1399,7 +1445,7 @@ export default function App() {
                   {loading ? "..." : "ESCANEAR"}
                 </button>
               </div>
-              {searchMode === "technique" && (
+              {(searchMode === "technique" || searchMode === "compare") && (
                 <input
                   value={criteria}
                   onChange={(e) => setCriteria(e.target.value)}

@@ -1,5 +1,19 @@
-import { useState } from "react";
-import { ChevronDown, ChevronRight, Folder, FolderPlus, QrCode, Share2, Trash2, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  FolderPlus,
+  QrCode,
+  Share2,
+  Trash2,
+  X,
+  Search,
+  Tag,
+  ArrowDownAZ,
+  Clock,
+  CalendarClock,
+} from "lucide-react";
 import { COLORS, slug } from "../theme";
 import { resolveCollectionItems, refKey } from "../lib/collections";
 import { buildCollectionExportPayload } from "../lib/importer";
@@ -41,8 +55,46 @@ export default function CollectionsSection({
   const [confirmingDelete, setConfirmingDelete] = useState(null);
   const [exportMsg, setExportMsg] = useState(null);
   const [qrModal, setQrModal] = useState(null); // { title, dataUrl }
+  const [filterText, setFilterText] = useState("");
+  const [activeTag, setActiveTag] = useState(null);
+  const [sortBy, setSortBy] = useState("recent"); // "recent" | "name" | "review"
 
   const list = Object.values(collections || {}).sort((a, b) => b.createdAt - a.createdAt);
+
+  const allResolvedByCollection = useMemo(() => {
+    const map = {};
+    for (const col of list) map[col.id] = resolveCollectionItems(saved, col.refs);
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [collections, saved]);
+
+  const allTags = useMemo(() => {
+    const set = new Set();
+    for (const items of Object.values(allResolvedByCollection)) {
+      for (const { item } of items) for (const t of item.tags || []) set.add(t);
+    }
+    return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [allResolvedByCollection]);
+
+  function filterAndSort(resolvedItems) {
+    const q = slug(filterText.trim());
+    const filtered = resolvedItems.filter(({ item }) => {
+      if (activeTag && !(item.tags || []).includes(activeTag)) return false;
+      if (!q) return true;
+      const label = slug(item.term || item.name || "");
+      const extra = slug([item.note, item.description, item.definition].filter(Boolean).join(" "));
+      return label.includes(q) || extra.includes(q);
+    });
+    const copy = [...filtered];
+    if (sortBy === "name") {
+      copy.sort((a, b) => (a.item.term || a.item.name || "").localeCompare(b.item.term || b.item.name || "", "pt-BR"));
+    } else if (sortBy === "review") {
+      copy.sort((a, b) => (a.item.reviewState?.nextReviewAt || 0) - (b.item.reviewState?.nextReviewAt || 0));
+    } else {
+      copy.sort((a, b) => (b.item.savedAt || 0) - (a.item.savedAt || 0));
+    }
+    return copy;
+  }
 
   async function exportCollection(col) {
     const payload = buildCollectionExportPayload(col.id, col, saved, detailCache);
@@ -240,6 +292,119 @@ export default function CollectionsSection({
         </div>
       )}
 
+      {list.length > 0 && (
+        <>
+          <div className="flex items-center gap-2" style={{ marginBottom: "10px", position: "relative" }}>
+            <Search size={14} style={{ position: "absolute", left: "11px", color: COLORS.screenBorder, pointerEvents: "none" }} />
+            <input
+              value={filterText}
+              onChange={(e) => setFilterText(e.target.value)}
+              placeholder="Buscar dentro das coleções..."
+              style={{
+                width: "100%",
+                borderRadius: "8px",
+                border: `2px solid ${COLORS.screenBorder}`,
+                padding: "9px 12px 9px 32px",
+                minHeight: "38px",
+                fontFamily: "Inter, sans-serif",
+                fontSize: "12.5px",
+                background: COLORS.surface,
+                color: COLORS.ink,
+                outline: "none",
+              }}
+            />
+            {filterText && (
+              <button
+                onClick={() => setFilterText("")}
+                aria-label="Limpar busca"
+                style={{ position: "absolute", right: "8px", background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, padding: "4px" }}
+              >
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          {allTags.length > 0 && (
+            <div className="flex items-center" style={{ flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+              <Tag size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+              {allTags.map((tag) => (
+                <button
+                  key={tag}
+                  onClick={() => setActiveTag((t) => (t === tag ? null : tag))}
+                  style={{
+                    fontFamily: '"JetBrains Mono", monospace',
+                    fontSize: "10.5px",
+                    padding: "3px 9px",
+                    borderRadius: "999px",
+                    border: `1.5px solid ${COLORS.lensBlue}`,
+                    background: activeTag === tag ? COLORS.lensBlue : "transparent",
+                    color: activeTag === tag ? COLORS.white : COLORS.lensBlue,
+                    cursor: "pointer",
+                  }}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <div className="flex items-center gap-1.5" style={{ marginBottom: "16px" }}>
+            <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginRight: "2px" }}>Ordenar:</span>
+            <button
+              onClick={() => setSortBy("recent")}
+              className="flex items-center gap-1"
+              style={{
+                padding: "5px 10px",
+                borderRadius: "999px",
+                border: `1.5px solid ${COLORS.screenBorder}`,
+                background: sortBy === "recent" ? COLORS.screenBorder : "transparent",
+                color: sortBy === "recent" ? COLORS.white : COLORS.screenBorder,
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "10.5px",
+                cursor: "pointer",
+              }}
+            >
+              <Clock size={11} /> Recentes
+            </button>
+            <button
+              onClick={() => setSortBy("name")}
+              className="flex items-center gap-1"
+              style={{
+                padding: "5px 10px",
+                borderRadius: "999px",
+                border: `1.5px solid ${COLORS.screenBorder}`,
+                background: sortBy === "name" ? COLORS.screenBorder : "transparent",
+                color: sortBy === "name" ? COLORS.white : COLORS.screenBorder,
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "10.5px",
+                cursor: "pointer",
+              }}
+            >
+              <ArrowDownAZ size={11} /> Nome
+            </button>
+            <button
+              onClick={() => setSortBy("review")}
+              className="flex items-center gap-1"
+              style={{
+                padding: "5px 10px",
+                borderRadius: "999px",
+                border: `1.5px solid ${COLORS.screenBorder}`,
+                background: sortBy === "review" ? COLORS.screenBorder : "transparent",
+                color: sortBy === "review" ? COLORS.white : COLORS.screenBorder,
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "10.5px",
+                cursor: "pointer",
+              }}
+            >
+              <CalendarClock size={11} /> Próxima revisão
+            </button>
+          </div>
+        </>
+      )}
+
       {list.length === 0 && (
         <div className="flex flex-col items-center justify-center text-center" style={{ minHeight: "220px", color: COLORS.screenBorder }}>
           <Folder size={32} strokeWidth={1.5} style={{ marginBottom: "10px" }} />
@@ -251,7 +416,8 @@ export default function CollectionsSection({
       )}
 
       {list.map((col) => {
-        const resolvedItems = resolveCollectionItems(saved, col.refs);
+        const resolvedItems = allResolvedByCollection[col.id] || [];
+        const visibleItems = filterAndSort(resolvedItems);
         const open = !collapsed[col.id];
         const confirming = confirmingDelete === col.id;
         return (
@@ -346,6 +512,11 @@ export default function CollectionsSection({
                 Coleção vazia. Use o modo de seleção na Pokédex para adicionar itens.
               </p>
             )}
+            {open && resolvedItems.length > 0 && visibleItems.length === 0 && (
+              <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
+                Nada nesta coleção corresponde ao filtro atual.
+              </p>
+            )}
             {open && onAddToCollection && (
               <GoalSuggestions
                 areaName={col.name}
@@ -353,7 +524,7 @@ export default function CollectionsSection({
                 onAddSuggestion={(suggestion) => addGoalSuggestion(col, suggestion)}
               />
             )}
-            {open && resolvedItems.map((r) => renderCard(col.id, r))}
+            {open && visibleItems.map((r) => renderCard(col.id, r))}
           </div>
         );
       })}
