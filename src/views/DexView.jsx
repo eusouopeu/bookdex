@@ -25,6 +25,7 @@ import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
 import CollectionPicker from "../components/CollectionPicker";
 import CollectionsSection from "../components/CollectionsSection";
+import EffectsSection from "../components/EffectsSection";
 import RelatedSuggestions from "../components/RelatedSuggestions";
 import LinkPicker from "../components/LinkPicker";
 
@@ -86,6 +87,16 @@ export default function DexView({
   suggestionsLoading,
   suggestionsError,
   onGenerateSuggestions,
+  effectProfiles,
+  onCreateEffectProfile,
+  onDeleteEffectProfile,
+  onAddEffectCriterion,
+  onRemoveEffectCriterion,
+  onAddEffectItem,
+  onRemoveEffectItem,
+  onToggleEffectItemActive,
+  onUpdateEffectItemRating,
+  onUpdateEffectItemNote,
 }) {
   const [collapsed, setCollapsed] = useState({});
   const [filterText, setFilterText] = useState("");
@@ -495,6 +506,7 @@ export default function DexView({
           onCreateCollection={onCreateCollection}
           onDeleteCollection={onDeleteCollection}
           onRemoveFromCollection={onRemoveFromCollection}
+          onAddToCollection={onAddToCollection}
           onToggleSave={onToggleSave}
           onOpenDetail={onOpenDetail}
           hasDetail={hasDetail}
@@ -502,6 +514,19 @@ export default function DexView({
           onUpdateNote={onUpdateNote}
           onUpdateImages={onUpdateImages}
           onSearchRelated={onSearchRelated}
+        />
+      ) : category === "effects" ? (
+        <EffectsSection
+          profiles={effectProfiles}
+          onCreateProfile={onCreateEffectProfile}
+          onDeleteProfile={onDeleteEffectProfile}
+          onAddCriterion={onAddEffectCriterion}
+          onRemoveCriterion={onRemoveEffectCriterion}
+          onAddItem={onAddEffectItem}
+          onRemoveItem={onRemoveEffectItem}
+          onToggleItemActive={onToggleEffectItemActive}
+          onUpdateItemRating={onUpdateEffectItemRating}
+          onUpdateItemNote={onUpdateEffectItemNote}
         />
       ) : (
         <>

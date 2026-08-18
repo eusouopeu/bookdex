@@ -19,6 +19,7 @@ import { scheduleReviewReminder, requestNotificationPermission, cancelReviewRemi
 import { updateReviewWidget } from "./lib/reviewWidget";
 import { createCollectionId } from "./lib/collections";
 import { findSimilarItem } from "./lib/dedupe";
+import { initEffectProfiles, createProfileId, createCriterionId, createItemId, clampRating } from "./lib/effectProfiles";
 import { addLink, removeLink } from "./lib/links";
 import {
   initRelevanceState,
@@ -80,7 +81,8 @@ export default function App() {
   const [prefetchDetailsEnabled, setPrefetchDetailsEnabled] = useState(true);
   const [showHistorySuggestions, setShowHistorySuggestions] = useState(false);
   const [relevance, setRelevance] = useState(initRelevanceState());
-  const [dexCategory, setDexCategory] = useState("technique"); // "technique" | "knowledge" | "collections"
+  const [dexCategory, setDexCategory] = useState("technique"); // "technique" | "knowledge" | "collections" | "effects"
+  const [effectProfiles, setEffectProfiles] = useState(initEffectProfiles());
 
   useEffect(() => {
     (async () => {
@@ -91,6 +93,7 @@ export default function App() {
       setOfflineQueue(await getJSON(KEYS.offlineQueue, []));
       setNotificationsEnabled(await getJSON(KEYS.notificationsEnabled, false));
       setCollections(await getJSON(KEYS.collections, {}));
+      setEffectProfiles(await getJSON(KEYS.effectProfiles, initEffectProfiles()));
       setSuggestions((await getJSON(KEYS.suggestions, null))?.items || []);
       setPrefetchDetailsEnabled(await getJSON(KEYS.prefetchDetails, true));
       setRelevance(await getJSON(KEYS.irrelevantItems, initRelevanceState()));
@@ -525,6 +528,129 @@ export default function App() {
     });
   }
 
+  function persistEffectProfiles(next) {
+    setJSON(KEYS.effectProfiles, next).catch(() => {});
+  }
+
+  function createEffectProfile(name) {
+    const clean = (name || "").trim();
+    if (!clean) return null;
+    const id = createProfileId();
+    setEffectProfiles((prev) => {
+      const next = { ...prev, [id]: { id, name: clean, createdAt: Date.now(), criteria: [], items: [] } };
+      persistEffectProfiles(next);
+      return next;
+    });
+    showToast(`Perfil "${clean}" criado.`);
+    return id;
+  }
+
+  function deleteEffectProfile(id) {
+    setEffectProfiles((prev) => {
+      const profile = prev[id];
+      if (!profile) return prev;
+      const next = { ...prev };
+      delete next[id];
+      persistEffectProfiles(next);
+      showToast(`Perfil "${profile.name}" excluído.`);
+      return next;
+    });
+  }
+
+  function addEffectCriterion(profileId, label) {
+    const clean = (label || "").trim();
+    if (!clean) return;
+    setEffectProfiles((prev) => {
+      const profile = prev[profileId];
+      if (!profile) return prev;
+      const existingIds = profile.criteria.map((c) => c.id);
+      if (profile.criteria.some((c) => c.label.toLowerCase() === clean.toLowerCase())) return prev;
+      const id = createCriterionId(existingIds, clean);
+      const next = { ...prev, [profileId]: { ...profile, criteria: [...profile.criteria, { id, label: clean }] } };
+      persistEffectProfiles(next);
+      return next;
+    });
+  }
+
+  function removeEffectCriterion(profileId, criterionId) {
+    setEffectProfiles((prev) => {
+      const profile = prev[profileId];
+      if (!profile) return prev;
+      const criteria = profile.criteria.filter((c) => c.id !== criterionId);
+      const items = profile.items.map((it) => {
+        const ratings = { ...it.ratings };
+        const reasons = { ...(it.reasons || {}) };
+        delete ratings[criterionId];
+        delete reasons[criterionId];
+        return { ...it, ratings, reasons };
+      });
+      const next = { ...prev, [profileId]: { ...profile, criteria, items } };
+      persistEffectProfiles(next);
+      return next;
+    });
+  }
+
+  function addEffectItem(profileId, { name, ratings, reasons, note }) {
+    const clean = (name || "").trim();
+    if (!clean) return;
+    setEffectProfiles((prev) => {
+      const profile = prev[profileId];
+      if (!profile) return prev;
+      const existingIds = profile.items.map((it) => it.id);
+      const id = createItemId(existingIds, clean);
+      const item = { id, name: clean, active: true, ratings: ratings || {}, reasons: reasons || {}, note: note || "" };
+      const next = { ...prev, [profileId]: { ...profile, items: [...profile.items, item] } };
+      persistEffectProfiles(next);
+      return next;
+    });
+    showToast(`"${clean}" adicionado(a) ao perfil.`);
+  }
+
+  function removeEffectItem(profileId, itemId) {
+    setEffectProfiles((prev) => {
+      const profile = prev[profileId];
+      if (!profile) return prev;
+      const next = { ...prev, [profileId]: { ...profile, items: profile.items.filter((it) => it.id !== itemId) } };
+      persistEffectProfiles(next);
+      return next;
+    });
+  }
+
+  function toggleEffectItemActive(profileId, itemId) {
+    setEffectProfiles((prev) => {
+      const profile = prev[profileId];
+      if (!profile) return prev;
+      const items = profile.items.map((it) => (it.id === itemId ? { ...it, active: !it.active } : it));
+      const next = { ...prev, [profileId]: { ...profile, items } };
+      persistEffectProfiles(next);
+      return next;
+    });
+  }
+
+  function updateEffectItemRating(profileId, itemId, criterionId, value) {
+    setEffectProfiles((prev) => {
+      const profile = prev[profileId];
+      if (!profile) return prev;
+      const items = profile.items.map((it) =>
+        it.id === itemId ? { ...it, ratings: { ...it.ratings, [criterionId]: clampRating(value) } } : it
+      );
+      const next = { ...prev, [profileId]: { ...profile, items } };
+      persistEffectProfiles(next);
+      return next;
+    });
+  }
+
+  function updateEffectItemNote(profileId, itemId, note) {
+    setEffectProfiles((prev) => {
+      const profile = prev[profileId];
+      if (!profile) return prev;
+      const items = profile.items.map((it) => (it.id === itemId ? { ...it, note } : it));
+      const next = { ...prev, [profileId]: { ...profile, items } };
+      persistEffectProfiles(next);
+      return next;
+    });
+  }
+
   async function generateSuggestions() {
     setSuggestionsLoading(true);
     setSuggestionsError(null);
@@ -780,6 +906,7 @@ export default function App() {
     0
   );
   const collectionsCount = Object.keys(collections || {}).length;
+  const effectProfilesCount = Object.keys(effectProfiles || {}).length;
   const dueCount = countDue(saved);
   const isTab = view === "search" || view === "dex";
   const showSearchBar = view === "search" && !detailTarget && !compareTarget;
@@ -1024,6 +1151,16 @@ export default function App() {
                 suggestionsLoading={suggestionsLoading}
                 suggestionsError={suggestionsError}
                 onGenerateSuggestions={generateSuggestions}
+                effectProfiles={effectProfiles}
+                onCreateEffectProfile={createEffectProfile}
+                onDeleteEffectProfile={deleteEffectProfile}
+                onAddEffectCriterion={addEffectCriterion}
+                onRemoveEffectCriterion={removeEffectCriterion}
+                onAddEffectItem={addEffectItem}
+                onRemoveEffectItem={removeEffectItem}
+                onToggleEffectItemActive={toggleEffectItemActive}
+                onUpdateEffectItemRating={updateEffectItemRating}
+                onUpdateEffectItemNote={updateEffectItemNote}
               />
             )}
 
@@ -1286,7 +1423,7 @@ export default function App() {
               )}
             </div>
           ) : showDexNav ? (
-            <div className="flex gap-2">
+            <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
               <button onClick={() => setDexCategory("technique")} style={tabStyle(dexCategory === "technique")}>
                 TÉCNICAS ({techniqueCount})
               </button>
@@ -1295,6 +1432,9 @@ export default function App() {
               </button>
               <button onClick={() => setDexCategory("collections")} style={tabStyle(dexCategory === "collections")}>
                 COLEÇÕES ({collectionsCount})
+              </button>
+              <button onClick={() => setDexCategory("effects")} style={tabStyle(dexCategory === "effects")}>
+                EFEITOS ({effectProfilesCount})
               </button>
             </div>
           ) : (

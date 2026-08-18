@@ -9,6 +9,7 @@ import TechCard from "./TechCard";
 import DefinitionCard from "./DefinitionCard";
 import ListItemCard from "./ListItemCard";
 import QRCodeModal from "./QRCodeModal";
+import GoalSuggestions from "./GoalSuggestions";
 
 const CONFIRM_THRESHOLD = 3;
 
@@ -25,6 +26,7 @@ export default function CollectionsSection({
   onCreateCollection,
   onDeleteCollection,
   onRemoveFromCollection,
+  onAddToCollection,
   onToggleSave,
   onOpenDetail,
   hasDetail,
@@ -48,6 +50,12 @@ export default function CollectionsSection({
     const outcome = await shareOrDownloadFile(fileName, JSON.stringify(payload, null, 2), "application/json", `Bookdex — ${col.name}`);
     setExportMsg(outcome === "shared" ? `"${col.name}" compartilhada.` : `"${col.name}" exportada — envie o arquivo pra quem quiser importar.`);
     setTimeout(() => setExportMsg((m) => (m ? null : m)), 3200);
+  }
+
+  async function addGoalSuggestion(col, suggestion) {
+    const item = { name: suggestion.name, category: "Sugestão", description: suggestion.description };
+    onToggleSave("list", col.name, { item });
+    onAddToCollection(col.id, [{ subjectKey: `kn:${slug(col.name)}`, itemId: slug(suggestion.name) }]);
   }
 
   async function showCollectionQr(col) {
@@ -337,6 +345,13 @@ export default function CollectionsSection({
               <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
                 Coleção vazia. Use o modo de seleção na Pokédex para adicionar itens.
               </p>
+            )}
+            {open && onAddToCollection && (
+              <GoalSuggestions
+                areaName={col.name}
+                existingItemNames={resolvedItems.map((r) => r.item.term || r.item.name)}
+                onAddSuggestion={(suggestion) => addGoalSuggestion(col, suggestion)}
+              />
             )}
             {open && resolvedItems.map((r) => renderCard(col.id, r))}
           </div>

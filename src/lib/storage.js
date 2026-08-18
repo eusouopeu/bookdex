@@ -132,6 +132,7 @@ export const KEYS = {
   suggestions: "related-suggestions",
   prefetchDetails: "prefetch-details-enabled",
   irrelevantItems: "irrelevant-items",
+  effectProfiles: "effect-profiles",
 };
 
 export default { get, set, delete: remove, list, getJSON, setJSON, KEYS };
