@@ -1,17 +1,18 @@
 import { useState } from "react";
-import { Search, Languages, ChevronDown, ChevronRight, Trash2, X, RefreshCw, Type } from "lucide-react";
-import { COLORS, slug, primaryButtonStyle } from "../theme";
+import { Languages, ChevronDown, ChevronRight, Trash2, X, RefreshCw, Type, BookmarkCheck } from "lucide-react";
+import { COLORS, primaryButtonStyle } from "../theme";
 import { fetchWord, MissingApiKeyError } from "../lib/anthropic";
+import { findSavedWord, wordLangKey } from "../lib/words";
 import WordCard from "../components/WordCard";
 import SkeletonList from "../components/Skeleton";
 
 const CONFIRM_THRESHOLD = 3;
 
 /**
- * Aba "Palavras", separada da Pokédex: pesquisa de palavras em qualquer
- * idioma (significado sempre em português, radical, e componentes
- * semântico/fonético no caso do mandarim) com etimologia sob demanda.
- * Palavras capturadas ficam organizadas em pastas por idioma.
+ * Aba "Palavras", separada da Pokédex: um único campo de busca que primeiro
+ * checa se a palavra (ou uma variação próxima — plural, gênero) já está
+ * salva e, só se não achar nada, pergunta pra API. Palavras capturadas ficam
+ * organizadas em pastas por idioma.
  */
 export default function WordsView({
   words,
@@ -27,15 +28,24 @@ export default function WordsView({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [result, setResult] = useState(null);
-  const [filterText, setFilterText] = useState("");
+  const [foundMatch, setFoundMatch] = useState(null); // { exact } quando o resultado veio das palavras já salvas
   const [collapsed, setCollapsed] = useState({});
   const [confirmingRemove, setConfirmingRemove] = useState(null);
 
   async function handleSearch() {
     const term = query.trim();
     if (!term || loading) return;
-    setLoading(true);
     setError(null);
+
+    const match = findSavedWord(words, term);
+    if (match) {
+      setResult(match.item);
+      setFoundMatch({ exact: match.exact });
+      return;
+    }
+
+    setFoundMatch(null);
+    setLoading(true);
     try {
       const data = await fetchWord(term, [], searchEffort);
       setResult(data);
@@ -59,20 +69,9 @@ export default function WordsView({
     }
   }
 
-  const groups = Object.entries(words || {})
-    .map(([key, group]) => {
-      if (!filterText.trim()) return [key, group];
-      const q = slug(filterText.trim());
-      const subjectMatches = slug(group.displayName).includes(q);
-      const finalWords = group.words.filter(
-        (w) => subjectMatches || slug(w.word).includes(q) || slug(w.meaning || "").includes(q) || slug(w.radical || "").includes(q)
-      );
-      return finalWords.length ? [key, { ...group, words: finalWords }] : null;
-    })
-    .filter(Boolean)
-    .sort((a, b) => a[1].displayName.localeCompare(b[1].displayName, "pt-BR"));
-
+  const groups = Object.entries(words || {}).sort((a, b) => a[1].displayName.localeCompare(b[1].displayName, "pt-BR"));
   const totalWords = Object.values(words || {}).reduce((sum, g) => sum + g.words.length, 0);
+  const resultLangKey = result ? wordLangKey(result.languageCode, result.language) : null;
 
   return (
     <div>
@@ -80,7 +79,7 @@ export default function WordsView({
         Palavras
       </h2>
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px", lineHeight: 1.4 }}>
-        Pesquise uma palavra em qualquer idioma — significado (sempre em português), radical e etimologia.
+        Pesquise uma palavra em qualquer idioma — significado (sempre em português), formação e etimologia.
       </p>
 
       <div className="flex gap-2" style={{ marginBottom: "14px" }}>
@@ -133,10 +132,20 @@ export default function WordsView({
 
       {result && !loading && !error && (
         <div style={{ marginBottom: "18px", animation: "flicker 0.4s ease-out" }}>
+          {foundMatch && (
+            <div className="flex items-center gap-1.5" style={{ marginBottom: "8px", color: "var(--text-muted)" }}>
+              <BookmarkCheck size={13} style={{ flexShrink: 0 }} />
+              <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px" }}>
+                {foundMatch.exact ? "Já está na sua lista de palavras." : `Você já tem uma palavra parecida salva: "${result.word}".`}
+              </span>
+            </div>
+          )}
           <WordCard
             data={result}
             saved={isWordSaved(result.languageCode, result.language, result.word)}
             onToggle={() => onToggleWord(result)}
+            onTagsChange={foundMatch ? (tags) => onUpdateTags(resultLangKey, result.id, tags) : undefined}
+            onNoteChange={foundMatch ? (note) => onUpdateNote(resultLangKey, result.id, note) : undefined}
           />
         </div>
       )}
@@ -150,131 +159,92 @@ export default function WordsView({
         </div>
       )}
 
-      {totalWords > 0 && (
-        <>
-          <div className="flex items-center gap-2" style={{ marginBottom: "12px", position: "relative" }}>
-            <Search size={14} style={{ position: "absolute", left: "11px", color: COLORS.screenBorder, pointerEvents: "none" }} />
-            <input
-              value={filterText}
-              onChange={(e) => setFilterText(e.target.value)}
-              placeholder="Buscar nas palavras salvas..."
-              style={{
-                width: "100%",
-                borderRadius: "8px",
-                border: `2px solid ${COLORS.screenBorder}`,
-                padding: "9px 12px 9px 32px",
-                minHeight: "38px",
-                fontFamily: "Inter, sans-serif",
-                fontSize: "12.5px",
-                background: COLORS.surface,
-                color: COLORS.ink,
-                outline: "none",
-              }}
-            />
-            {filterText && (
-              <button
-                onClick={() => setFilterText("")}
-                aria-label="Limpar busca"
-                style={{ position: "absolute", right: "8px", background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, padding: "4px" }}
-              >
-                <X size={14} />
-              </button>
-            )}
-          </div>
-
-          {groups.length === 0 && (
-            <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text-muted)", textAlign: "center", marginTop: "20px" }}>
-              Nada encontrado para "{filterText}".
-            </p>
-          )}
-
-          {groups.map(([key, group]) => {
-            const open = !collapsed[key];
-            const confirming = confirmingRemove === key;
-            return (
-              <div key={key} style={{ marginBottom: "18px" }}>
-                <div className="flex items-center gap-1.5" style={{ borderBottom: `2px solid ${COLORS.screenBorder}`, marginBottom: "9px" }}>
-                  <button
-                    onClick={() => setCollapsed((c) => ({ ...c, [key]: !c[key] }))}
-                    className="flex items-center gap-1.5"
+      {totalWords > 0 &&
+        groups.map(([key, group]) => {
+          const open = !collapsed[key];
+          const confirming = confirmingRemove === key;
+          return (
+            <div key={key} style={{ marginBottom: "18px" }}>
+              <div className="flex items-center gap-1.5" style={{ borderBottom: `2px solid ${COLORS.screenBorder}`, marginBottom: "9px" }}>
+                <button
+                  onClick={() => setCollapsed((c) => ({ ...c, [key]: !c[key] }))}
+                  className="flex items-center gap-1.5"
+                  style={{
+                    flex: 1,
+                    minWidth: 0,
+                    background: "none",
+                    border: "none",
+                    padding: "6px 0 5px",
+                    minHeight: "40px",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    color: COLORS.ink,
+                  }}
+                >
+                  {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  <Languages size={14} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
+                  <h3
                     style={{
-                      flex: 1,
-                      minWidth: 0,
-                      background: "none",
-                      border: "none",
-                      padding: "6px 0 5px",
-                      minHeight: "40px",
-                      cursor: "pointer",
-                      textAlign: "left",
+                      fontFamily: '"Baloo 2", sans-serif',
+                      fontWeight: 800,
+                      fontSize: "15px",
                       color: COLORS.ink,
+                      margin: 0,
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      whiteSpace: "nowrap",
                     }}
                   >
-                    {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                    <Languages size={14} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
-                    <h3
-                      style={{
-                        fontFamily: '"Baloo 2", sans-serif',
-                        fontWeight: 800,
-                        fontSize: "15px",
-                        color: COLORS.ink,
-                        margin: 0,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {group.displayName}{" "}
-                      <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", fontWeight: 400 }}>
-                        ({group.words.length})
-                      </span>
-                    </h3>
-                  </button>
-                  {confirming ? (
-                    <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
-                      <span style={{ fontFamily: "Inter, sans-serif", fontSize: "10.5px", color: "var(--danger)", whiteSpace: "nowrap" }}>
-                        Remover {group.words.length}?
-                      </span>
-                      <button
-                        onClick={() => requestRemoveGroup(key, group.words.length)}
-                        aria-label={`Confirmar remoção de "${group.displayName}"`}
-                        style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", padding: "9px 4px" }}
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                      <button
-                        onClick={() => setConfirmingRemove(null)}
-                        aria-label="Cancelar remoção"
-                        style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, padding: "9px 4px" }}
-                      >
-                        <X size={15} />
-                      </button>
-                    </div>
-                  ) : (
+                    {group.displayName}{" "}
+                    <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", fontWeight: 400 }}>
+                      ({group.words.length})
+                    </span>
+                  </h3>
+                </button>
+                {confirming ? (
+                  <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
+                    <span style={{ fontFamily: "Inter, sans-serif", fontSize: "10.5px", color: "var(--danger)", whiteSpace: "nowrap" }}>
+                      Remover {group.words.length}?
+                    </span>
                     <button
                       onClick={() => requestRemoveGroup(key, group.words.length)}
-                      aria-label={`Remover idioma "${group.displayName}" inteiro`}
-                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", padding: "9px 4px", flexShrink: 0 }}
+                      aria-label={`Confirmar remoção de "${group.displayName}"`}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", padding: "9px 4px" }}
                     >
                       <Trash2 size={15} />
                     </button>
-                  )}
-                </div>
-                {open &&
-                  group.words.map((w) => (
-                    <WordCard
-                      key={w.id}
-                      data={w}
-                      saved={true}
-                      onToggle={() => onToggleWord(w)}
-                      onTagsChange={(tags) => onUpdateTags(key, w.id, tags)}
-                      onNoteChange={(note) => onUpdateNote(key, w.id, note)}
-                    />
-                  ))}
+                    <button
+                      onClick={() => setConfirmingRemove(null)}
+                      aria-label="Cancelar remoção"
+                      style={{ background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, padding: "9px 4px" }}
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => requestRemoveGroup(key, group.words.length)}
+                    aria-label={`Remover idioma "${group.displayName}" inteiro`}
+                    style={{ background: "none", border: "none", cursor: "pointer", color: "var(--danger)", padding: "9px 4px", flexShrink: 0 }}
+                  >
+                    <Trash2 size={15} />
+                  </button>
+                )}
               </div>
-            );
-          })}
-        </>
-      )}
+              {open &&
+                group.words.map((w) => (
+                  <WordCard
+                    key={w.id}
+                    data={w}
+                    saved={true}
+                    onToggle={() => onToggleWord(w)}
+                    onTagsChange={(tags) => onUpdateTags(key, w.id, tags)}
+                    onNoteChange={(note) => onUpdateNote(key, w.id, note)}
+                  />
+                ))}
+            </div>
+          );
+        })}
     </div>
   );
 }

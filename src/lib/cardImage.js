@@ -218,8 +218,11 @@ export async function renderDefinitionCardImage(definition) {
 }
 
 export async function renderWordCardImage(data) {
-  const extraLines = [data.semanticComponent, data.phoneticComponent].filter(Boolean).length;
-  const height = 260 + (data.radical ? 30 : 0) + extraLines * 26;
+  const isZh = (data.languageCode || "").toLowerCase() === "zh";
+  const characters = isZh ? data.characters || [] : [];
+  const isCompound = characters.length > 1;
+  const extraLines = isZh && !isCompound ? [data.semanticComponent, data.phoneticComponent].filter(Boolean).length : 0;
+  const height = 260 + (!isZh && data.radical ? 30 : 0) + extraLines * 26 + characters.length * 46;
   const { canvas, ctx } = newCanvas(height);
   let y = PAD;
 
@@ -231,18 +234,34 @@ export async function renderWordCardImage(data) {
   ctx.font = "800 34px Arial";
   ctx.fillStyle = PALETTE.ink;
   ctx.fillText(data.word, PAD, y + 28);
+  if (isZh && data.pinyin) {
+    const wordWidth = ctx.measureText(data.word).width;
+    ctx.font = "400 18px 'Courier New', monospace";
+    ctx.fillStyle = PALETTE.textMuted;
+    ctx.fillText(data.pinyin, PAD + wordWidth + 16, y + 28);
+  }
   y += 50;
 
   y = drawWrapped(ctx, data.meaning || "", PAD, y, WIDTH - PAD * 2, 26, "400 18px Arial", PALETTE.text) + 10;
 
-  if (data.radical) {
+  if (!isZh && data.radical) {
     y = drawWrapped(ctx, `Radical: ${data.radical}`, PAD, y, WIDTH - PAD * 2, 22, "italic 400 15px Arial", PALETTE.textMuted) + 6;
   }
-  if (data.semanticComponent) {
+  if (isZh && !isCompound && data.semanticComponent) {
     y = drawWrapped(ctx, `Componente semântico: ${data.semanticComponent}`, PAD, y, WIDTH - PAD * 2, 22, "italic 400 15px Arial", PALETTE.textMuted) + 6;
   }
-  if (data.phoneticComponent) {
+  if (isZh && !isCompound && data.phoneticComponent) {
     y = drawWrapped(ctx, `Componente fonético: ${data.phoneticComponent}`, PAD, y, WIDTH - PAD * 2, 22, "italic 400 15px Arial", PALETTE.textMuted) + 6;
+  }
+  if (isZh && isCompound) {
+    y += 6;
+    for (const c of characters) {
+      ctx.font = "700 18px Arial";
+      ctx.fillStyle = PALETTE.ink;
+      ctx.fillText(`${c.hanzi} (${c.pinyin || ""})`, PAD, y + 16);
+      y += 24;
+      y = drawWrapped(ctx, c.meaning || "", PAD, y, WIDTH - PAD * 2, 20, "400 14px Arial", PALETTE.textMuted) + 12;
+    }
   }
 
   drawFooter(ctx, height);

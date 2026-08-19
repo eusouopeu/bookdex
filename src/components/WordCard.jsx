@@ -9,13 +9,41 @@ import WordEtymology from "./WordEtymology";
 import { wordShareText } from "../lib/share";
 import { renderWordCardImage } from "../lib/cardImage";
 
+function componentTag(label, value, color) {
+  if (!value) return null;
+  return (
+    <span
+      style={{
+        fontFamily: "Inter, sans-serif",
+        fontSize: "10.5px",
+        color: COLORS.ink,
+        background: color.bg,
+        border: `1.5px solid ${color.border}`,
+        borderRadius: "8px",
+        padding: "3px 8px",
+        lineHeight: 1.35,
+      }}
+    >
+      <strong style={{ fontFamily: '"Baloo 2", sans-serif' }}>{label}:</strong> {value}
+    </span>
+  );
+}
+
+const SEMANTIC_COLOR = { bg: "rgba(106,153,85,0.15)", border: "#6A9955" };
+const PHONETIC_COLOR = { bg: "rgba(142,124,195,0.15)", border: "#8E7CC3" };
+
 /**
  * Card de uma palavra pesquisada/salva na aba "Palavras" — significado (sempre
- * em português), radical e, no caso do mandarim, componentes semântico e
- * fonético. Em vez de "Aprofundar", tem o botão "Etimologia" (WordEtymology).
+ * em português), radical (não-mandarim) ou pinyin + decomposição por hanzi
+ * (mandarim). Em palavra composta (2+ hanzi), cada caractere aparece com seu
+ * próprio significado e componentes semântico/fonético, agrupados por hanzi.
+ * Em vez de "Aprofundar", tem o botão "Etimologia" (WordEtymology).
  */
 export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteChange }) {
   const mandarin = isMandarin(data.languageCode);
+  const characters = mandarin ? data.characters || [] : [];
+  const isCompound = characters.length > 1;
+
   return (
     <div
       style={{
@@ -42,6 +70,11 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
           >
             {data.word}
           </h3>
+          {mandarin && data.pinyin && (
+            <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "13px", color: "var(--text-muted)", marginTop: "2px" }}>
+              {data.pinyin}
+            </div>
+          )}
         </div>
         <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
           <ShareButton title={data.word} text={wordShareText(data)} />
@@ -75,56 +108,55 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
         {data.meaning}
       </p>
 
-      {(data.radical || (mandarin && (data.semanticComponent || data.phoneticComponent))) && (
+      {!mandarin && data.radical && (
+        <div style={{ marginBottom: "6px" }}>
+          {componentTag("Radical", data.radical, { bg: "rgba(46,134,222,0.1)", border: COLORS.lensBlue })}
+        </div>
+      )}
+
+      {mandarin && !isCompound && (data.semanticComponent || data.phoneticComponent) && (
         <div className="flex" style={{ flexWrap: "wrap", gap: "6px", marginBottom: "6px" }}>
-          {data.radical && (
-            <span
-              style={{
-                fontFamily: "Inter, sans-serif",
-                fontSize: "11px",
-                color: COLORS.ink,
-                background: "rgba(46,134,222,0.1)",
-                border: `1.5px solid ${COLORS.lensBlue}`,
-                borderRadius: "8px",
-                padding: "4px 9px",
-                lineHeight: 1.35,
-              }}
-            >
-              <strong style={{ fontFamily: '"Baloo 2", sans-serif' }}>Radical:</strong> {data.radical}
-            </span>
-          )}
-          {mandarin && data.semanticComponent && (
-            <span
-              style={{
-                fontFamily: "Inter, sans-serif",
-                fontSize: "11px",
-                color: COLORS.ink,
-                background: "rgba(106,153,85,0.15)",
-                border: "1.5px solid #6A9955",
-                borderRadius: "8px",
-                padding: "4px 9px",
-                lineHeight: 1.35,
-              }}
-            >
-              <strong style={{ fontFamily: '"Baloo 2", sans-serif' }}>Componente semântico:</strong> {data.semanticComponent}
-            </span>
-          )}
-          {mandarin && data.phoneticComponent && (
-            <span
-              style={{
-                fontFamily: "Inter, sans-serif",
-                fontSize: "11px",
-                color: COLORS.ink,
-                background: "rgba(142,124,195,0.15)",
-                border: "1.5px solid #8E7CC3",
-                borderRadius: "8px",
-                padding: "4px 9px",
-                lineHeight: 1.35,
-              }}
-            >
-              <strong style={{ fontFamily: '"Baloo 2", sans-serif' }}>Componente fonético:</strong> {data.phoneticComponent}
-            </span>
-          )}
+          {componentTag("Componente semântico", data.semanticComponent, SEMANTIC_COLOR)}
+          {componentTag("Componente fonético", data.phoneticComponent, PHONETIC_COLOR)}
+        </div>
+      )}
+
+      {mandarin && isCompound && (
+        <div style={{ marginBottom: "8px" }}>
+          <div style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "11px", color: COLORS.ink, marginBottom: "6px" }}>
+            Por caractere
+          </div>
+          <div className="flex flex-col" style={{ gap: "6px" }}>
+            {characters.map((c, i) => (
+              <div
+                key={i}
+                style={{
+                  border: `1.5px solid ${COLORS.screenBorder}`,
+                  borderRadius: "8px",
+                  padding: "8px 10px",
+                  background: "rgba(0,0,0,0.02)",
+                }}
+              >
+                <div className="flex items-baseline gap-2" style={{ marginBottom: "4px" }}>
+                  <span style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "16px", color: COLORS.ink }}>
+                    {c.hanzi}
+                  </span>
+                  {c.pinyin && (
+                    <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11.5px", color: "var(--text-muted)" }}>
+                      {c.pinyin}
+                    </span>
+                  )}
+                  {c.meaning && (
+                    <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text)" }}>— {c.meaning}</span>
+                  )}
+                </div>
+                <div className="flex" style={{ flexWrap: "wrap", gap: "6px" }}>
+                  {componentTag("Semântico", c.semanticComponent, SEMANTIC_COLOR)}
+                  {componentTag("Fonético", c.phoneticComponent, PHONETIC_COLOR)}
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
       )}
 

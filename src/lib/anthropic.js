@@ -539,22 +539,23 @@ Dada uma palavra em QUALQUER idioma (português, inglês, mandarim, japonês, et
 
 Regras obrigatórias:
 - Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
-- "word": a palavra pesquisada, exatamente como foi digitada (correção ortográfica leve é aceitável).
+- "word": a palavra pesquisada, exatamente como foi digitada (correção ortográfica leve é aceitável). Se for mandarim, use os caracteres em hanzi (nunca pinyin no lugar do hanzi).
 - "language": nome do idioma da palavra, por extenso e em português (ex.: "Português", "Inglês", "Mandarim", "Japonês", "Espanhol", "Francês").
 - "languageCode": código curto do idioma (ISO 639-1 quando existir: "pt", "en", "zh", "ja", "es", "fr", "de", "it", "ru", "ar", "ko" etc.).
 - "meaning": o significado da palavra, SEMPRE em português, claro e direto (1-2 frases), mesmo que a palavra não seja portuguesa.
-- "radical": o radical, raiz ou morfema base da palavra (no idioma original), com breve explicação de até 14 palavras.
-- "semanticComponent": APENAS se o idioma for mandarim ("languageCode" "zh"): o componente semântico (radical gráfico que indica campo de significado) do caractere e o que ele indica. Nos demais idiomas, string vazia "".
-- "phoneticComponent": APENAS se o idioma for mandarim ("languageCode" "zh"): o componente fonético do caractere e a pronúncia que ele sugere. Nos demais idiomas, string vazia "".
+- "pinyin": OBRIGATÓRIO se o idioma for mandarim ("languageCode" "zh") — a romanização pinyin completa da palavra, com marcação de tom (ex.: "míngbái"). Nos demais idiomas, string vazia "".
+- "radical": APENAS se o idioma NÃO for mandarim: o radical, raiz ou morfema base da palavra, com breve explicação de até 14 palavras. Mandarim NUNCA usa este campo (string vazia "") — use "characters"/"semanticComponent"/"phoneticComponent" abaixo em vez disso.
+- "semanticComponent" e "phoneticComponent": APENAS se o idioma for mandarim E a palavra tiver UM ÚNICO hanzi: o componente semântico (indica o campo de significado) e o componente fonético (sugere a pronúncia) desse caractere. Em qualquer outro caso — idioma não-mandarim, ou palavra composta por 2+ hanzi —, string vazia "" nos dois.
+- "characters": APENAS se o idioma for mandarim E a palavra tiver 2 OU MAIS hanzi (palavra composta): um array com UMA entrada por hanzi, na mesma ordem em que aparecem na palavra, cada uma com "hanzi" (o caractere), "pinyin" (pinyin desse caractere isolado, com tom), "meaning" (significado desse caractere isolado, em português), "semanticComponent" e "phoneticComponent" (os componentes desse caractere). Em qualquer outro caso, array vazio [].
 
 Formato exato (sem campos extras):
-{"word":"...","language":"...","languageCode":"...","meaning":"...","radical":"...","semanticComponent":"","phoneticComponent":""}`;
+{"word":"...","language":"...","languageCode":"...","meaning":"...","pinyin":"","radical":"","semanticComponent":"","phoneticComponent":"","characters":[]}`;
 
 export async function fetchWord(word, avoid, effort) {
   const parsed = await sendMessageJSON({
     system: WORD_SYSTEM_PROMPT,
     user: word + avoidNote(avoid),
-    maxTokens: 700,
+    maxTokens: 900,
     effort,
   });
   if (!parsed.word || !parsed.language || !parsed.meaning) {

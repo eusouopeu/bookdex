@@ -87,12 +87,15 @@ export function listItemShareText(subjectDisplay, item) {
 }
 
 export function wordShareText(data) {
+  const isZh = (data.languageCode || "").toLowerCase() === "zh";
+  const characters = isZh ? data.characters || [] : [];
   return [
-    `${data.word} (${data.language})`,
+    `${data.word}${isZh && data.pinyin ? ` (${data.pinyin})` : ""} — ${data.language}`,
     data.meaning,
-    data.radical ? `Radical: ${data.radical}` : "",
-    data.semanticComponent ? `Componente semântico: ${data.semanticComponent}` : "",
-    data.phoneticComponent ? `Componente fonético: ${data.phoneticComponent}` : "",
+    !isZh && data.radical ? `Radical: ${data.radical}` : "",
+    isZh && !characters.length && data.semanticComponent ? `Componente semântico: ${data.semanticComponent}` : "",
+    isZh && !characters.length && data.phoneticComponent ? `Componente fonético: ${data.phoneticComponent}` : "",
+    ...characters.map((c) => `${c.hanzi} (${c.pinyin}) — ${c.meaning}`),
     "",
     "via Bookdex",
   ]

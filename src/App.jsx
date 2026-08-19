@@ -15,7 +15,7 @@ import {
   MissingApiKeyError,
 } from "./lib/anthropic";
 import { parseSearchQuery, hasExplicitPrefix, splitCompareTerms, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
-import { wordLangKey } from "./lib/words";
+import { wordLangKey, wordItemId } from "./lib/words";
 import { mergeData, mergeCollections } from "./lib/importer";
 import { initReviewState, gradeReviewState, countDue, getDueQueue } from "./lib/review";
 import { recordVisit, recordReviewCompleted } from "./lib/gamification";
@@ -212,13 +212,13 @@ export default function App() {
 
   function isWordSaved(languageCode, language, word) {
     const group = words[wordLangKey(languageCode, language)];
-    return !!(group && group.words.some((w) => w.id === slug(word)));
+    return !!(group && group.words.some((w) => w.id === wordItemId(word)));
   }
 
   function toggleWordSave(data) {
     const prevWords = words;
     const langKey = wordLangKey(data.languageCode, data.language);
-    const wordId = slug(data.word);
+    const wordId = wordItemId(data.word);
     const nextWords = { ...words };
     const existing = nextWords[langKey];
     const group = existing
@@ -237,9 +237,11 @@ export default function App() {
         language: data.language,
         languageCode: data.languageCode || "",
         meaning: data.meaning,
+        pinyin: data.pinyin || "",
         radical: data.radical || "",
         semanticComponent: data.semanticComponent || "",
         phoneticComponent: data.phoneticComponent || "",
+        characters: data.characters || [],
         savedAt: Date.now(),
         tags: [],
         note: "",
