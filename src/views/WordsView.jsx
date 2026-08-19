@@ -9,7 +9,7 @@ import SkeletonList from "../components/Skeleton";
 const CONFIRM_THRESHOLD = 3;
 
 /**
- * Aba "Palavras", separada da Pokédex: um único campo de busca que primeiro
+ * Categoria "Palavras" dentro da Pokédex: um único campo de busca que primeiro
  * checa se a palavra (ou uma variação próxima — plural, gênero) já está
  * salva e, só se não achar nada, pergunta pra API. Palavras capturadas ficam
  * organizadas em pastas por idioma.
@@ -23,6 +23,7 @@ export default function WordsView({
   onRemoveGroup,
   onUpdateTags,
   onUpdateNote,
+  onUpdateCharacterComponent,
 }) {
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
@@ -75,11 +76,8 @@ export default function WordsView({
 
   return (
     <div>
-      <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "18px", color: COLORS.ink, marginBottom: "4px" }}>
-        Palavras
-      </h2>
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px", lineHeight: 1.4 }}>
-        Pesquise uma palavra em qualquer idioma — significado (sempre em português), formação e etimologia.
+        Pesquise uma palavra em qualquer idioma — significado (sempre em português) e formação.
       </p>
 
       <div className="flex gap-2" style={{ marginBottom: "14px" }}>
@@ -143,9 +141,12 @@ export default function WordsView({
           <WordCard
             data={result}
             saved={isWordSaved(result.languageCode, result.language, result.word)}
-            onToggle={() => onToggleWord(result)}
+            onToggle={onToggleWord}
             onTagsChange={foundMatch ? (tags) => onUpdateTags(resultLangKey, result.id, tags) : undefined}
             onNoteChange={foundMatch ? (note) => onUpdateNote(resultLangKey, result.id, note) : undefined}
+            onUpdateCharacterComponent={
+              foundMatch ? (index, kind, value) => onUpdateCharacterComponent(resultLangKey, result.id, index, kind, value) : undefined
+            }
           />
         </div>
       )}
@@ -237,9 +238,10 @@ export default function WordsView({
                     key={w.id}
                     data={w}
                     saved={true}
-                    onToggle={() => onToggleWord(w)}
+                    onToggle={onToggleWord}
                     onTagsChange={(tags) => onUpdateTags(key, w.id, tags)}
                     onNoteChange={(note) => onUpdateNote(key, w.id, note)}
+                    onUpdateCharacterComponent={(index, kind, value) => onUpdateCharacterComponent(key, w.id, index, kind, value)}
                   />
                 ))}
             </div>

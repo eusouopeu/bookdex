@@ -25,9 +25,9 @@ import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
 import CollectionPicker from "../components/CollectionPicker";
 import CollectionsSection from "../components/CollectionsSection";
-import EffectsSection from "../components/EffectsSection";
 import RelatedSuggestions from "../components/RelatedSuggestions";
 import LinkPicker from "../components/LinkPicker";
+import WordsView from "./WordsView";
 
 const BACKUP_REMINDER_DAYS = 14;
 const CONFIRM_THRESHOLD = 3; // grupos com mais itens do que isso pedem confirmação antes de apagar
@@ -90,16 +90,14 @@ export default function DexView({
   suggestionsLoading,
   suggestionsError,
   onGenerateSuggestions,
-  effectProfiles,
-  onCreateEffectProfile,
-  onDeleteEffectProfile,
-  onAddEffectCriterion,
-  onRemoveEffectCriterion,
-  onAddEffectItem,
-  onRemoveEffectItem,
-  onToggleEffectItemActive,
-  onUpdateEffectItemRating,
-  onUpdateEffectItemNote,
+  words,
+  onToggleWord,
+  isWordSaved,
+  onRemoveWordGroup,
+  onUpdateWordTags,
+  onUpdateWordNote,
+  onUpdateWordCharacterComponent,
+  searchEffort,
 }) {
   const [collapsed, setCollapsed] = useState({});
   const [filterText, setFilterText] = useState("");
@@ -370,7 +368,7 @@ export default function DexView({
     !bannerDismissed &&
     (lastBackup === null || (daysSinceBackup !== null && daysSinceBackup >= BACKUP_REMINDER_DAYS));
 
-  if (storageLoaded && entries.length === 0) {
+  if (storageLoaded && entries.length === 0 && (category === "technique" || category === "knowledge")) {
     return (
       <div
         className="flex flex-col items-center justify-center text-center"
@@ -495,18 +493,17 @@ export default function DexView({
           onUpdateImages={onUpdateImages}
           onSearchRelated={onSearchRelated}
         />
-      ) : category === "effects" ? (
-        <EffectsSection
-          profiles={effectProfiles}
-          onCreateProfile={onCreateEffectProfile}
-          onDeleteProfile={onDeleteEffectProfile}
-          onAddCriterion={onAddEffectCriterion}
-          onRemoveCriterion={onRemoveEffectCriterion}
-          onAddItem={onAddEffectItem}
-          onRemoveItem={onRemoveEffectItem}
-          onToggleItemActive={onToggleEffectItemActive}
-          onUpdateItemRating={onUpdateEffectItemRating}
-          onUpdateItemNote={onUpdateEffectItemNote}
+      ) : category === "words" ? (
+        <WordsView
+          words={words}
+          storageLoaded={storageLoaded}
+          searchEffort={searchEffort}
+          onToggleWord={onToggleWord}
+          isWordSaved={isWordSaved}
+          onRemoveGroup={onRemoveWordGroup}
+          onUpdateTags={onUpdateWordTags}
+          onUpdateNote={onUpdateWordNote}
+          onUpdateCharacterComponent={onUpdateWordCharacterComponent}
         />
       ) : (
         <>

@@ -49,7 +49,7 @@ import SettingsView from "./views/SettingsView";
 import ImportView from "./views/ImportView";
 import CompareView from "./views/CompareView";
 import ReviewView from "./views/ReviewView";
-import WordsView from "./views/WordsView";
+import EffectsSection from "./components/EffectsSection";
 
 export default function App() {
   const [view, setView] = useState("search");
@@ -87,7 +87,7 @@ export default function App() {
   const [prefetchDetailsEnabled, setPrefetchDetailsEnabled] = useState(true);
   const [showHistorySuggestions, setShowHistorySuggestions] = useState(false);
   const [relevance, setRelevance] = useState(initRelevanceState());
-  const [dexCategory, setDexCategory] = useState("technique"); // "technique" | "knowledge" | "collections" | "effects"
+  const [dexCategory, setDexCategory] = useState("technique"); // "technique" | "knowledge" | "words" | "collections"
   const [effectProfiles, setEffectProfiles] = useState(initEffectProfiles());
   const [searchEffort, setSearchEffortState] = useState("medium");
   const [showArchived, setShowArchived] = useState(false);
@@ -109,7 +109,7 @@ export default function App() {
       setSearchEffortState(await getSearchEffort());
       setWords(await getJSON(KEYS.words, {}));
       const savedTab = await getJSON(KEYS.lastTab, "search");
-      if (savedTab === "search" || savedTab === "dex" || savedTab === "words") {
+      if (savedTab === "search" || savedTab === "dex" || savedTab === "effects") {
         setLastTab(savedTab);
         setView(savedTab);
       }
@@ -239,8 +239,6 @@ export default function App() {
         meaning: data.meaning,
         pinyin: data.pinyin || "",
         radical: data.radical || "",
-        semanticComponent: data.semanticComponent || "",
-        phoneticComponent: data.phoneticComponent || "",
         characters: data.characters || [],
         savedAt: Date.now(),
         tags: [],
@@ -293,6 +291,21 @@ export default function App() {
 
   function updateWordNote(langKey, wordId, note) {
     updateWordInGroup(langKey, wordId, (w) => ({ ...w, note }));
+  }
+
+  /** Persiste o componente semântico/fonético identificado sob demanda pra UM hanzi de uma palavra salva. */
+  function updateWordCharacterComponent(langKey, wordId, charIndex, kind, result) {
+    updateWordInGroup(langKey, wordId, (w) => {
+      const characters = [...(w.characters || [])];
+      if (!characters[charIndex]) return w;
+      characters[charIndex] = {
+        ...characters[charIndex],
+        ...(kind === "semantic"
+          ? { semanticComponent: result.component || "—" }
+          : { phoneticComponent: result.component || "—", phoneticComponentPinyin: result.pinyin || "" }),
+      };
+      return { ...w, characters };
+    });
   }
 
   function hasDetail(subjectDisplay, technique) {
@@ -1047,7 +1060,7 @@ export default function App() {
   const effectProfilesCount = Object.keys(effectProfiles || {}).length;
   const totalWordsCount = Object.values(words || {}).reduce((sum, g) => sum + g.words.length, 0);
   const dueCount = countDue(saved);
-  const isTab = view === "search" || view === "dex" || view === "words";
+  const isTab = view === "search" || view === "dex" || view === "effects";
   const showSearchBar = view === "search" && !detailTarget && !compareTarget;
   const showDexNav = view === "dex" && !detailTarget && !compareTarget;
   const matchingHistory = query.trim()
@@ -1178,8 +1191,8 @@ export default function App() {
             <button onClick={() => goTab("dex")} style={tabStyle(view === "dex")}>
               POKÉDEX ({totalSavedCount})
             </button>
-            <button onClick={() => goTab("words")} style={tabStyle(view === "words")}>
-              PALAVRAS ({totalWordsCount})
+            <button onClick={() => goTab("effects")} style={tabStyle(view === "effects")}>
+              EFEITOS ({effectProfilesCount})
             </button>
           </div>
         </div>
@@ -1296,16 +1309,14 @@ export default function App() {
                 suggestionsLoading={suggestionsLoading}
                 suggestionsError={suggestionsError}
                 onGenerateSuggestions={generateSuggestions}
-                effectProfiles={effectProfiles}
-                onCreateEffectProfile={createEffectProfile}
-                onDeleteEffectProfile={deleteEffectProfile}
-                onAddEffectCriterion={addEffectCriterion}
-                onRemoveEffectCriterion={removeEffectCriterion}
-                onAddEffectItem={addEffectItem}
-                onRemoveEffectItem={removeEffectItem}
-                onToggleEffectItemActive={toggleEffectItemActive}
-                onUpdateEffectItemRating={updateEffectItemRating}
-                onUpdateEffectItemNote={updateEffectItemNote}
+                words={words}
+                onToggleWord={toggleWordSave}
+                isWordSaved={isWordSaved}
+                onRemoveWordGroup={removeWordGroup}
+                onUpdateWordTags={updateWordTags}
+                onUpdateWordNote={updateWordNote}
+                onUpdateWordCharacterComponent={updateWordCharacterComponent}
+                searchEffort={searchEffort}
               />
             )}
 
@@ -1313,6 +1324,21 @@ export default function App() {
 
             {!detailTarget && !compareTarget && view === "review" && (
               <ReviewView saved={saved} onBack={backToTab} onGrade={gradeReviewItem} />
+            )}
+
+            {!detailTarget && !compareTarget && view === "effects" && (
+              <EffectsSection
+                profiles={effectProfiles}
+                onCreateProfile={createEffectProfile}
+                onDeleteProfile={deleteEffectProfile}
+                onAddCriterion={addEffectCriterion}
+                onRemoveCriterion={removeEffectCriterion}
+                onAddItem={addEffectItem}
+                onRemoveItem={removeEffectItem}
+                onToggleItemActive={toggleEffectItemActive}
+                onUpdateItemRating={updateEffectItemRating}
+                onUpdateItemNote={updateEffectItemNote}
+              />
             )}
 
             {!detailTarget && view === "settings" && (
@@ -1338,19 +1364,6 @@ export default function App() {
 
             {!detailTarget && view === "import" && (
               <ImportView onBack={backToTab} onImport={applyImport} saved={saved} detailCache={detailCache} collections={collections} />
-            )}
-
-            {!detailTarget && !compareTarget && view === "words" && (
-              <WordsView
-                words={words}
-                storageLoaded={storageLoaded}
-                searchEffort={searchEffort}
-                onToggleWord={toggleWordSave}
-                isWordSaved={isWordSaved}
-                onRemoveGroup={removeWordGroup}
-                onUpdateTags={updateWordTags}
-                onUpdateNote={updateWordNote}
-              />
             )}
           </div>
 
@@ -1590,17 +1603,17 @@ export default function App() {
               <button onClick={() => setDexCategory("knowledge")} style={tabStyle(dexCategory === "knowledge")}>
                 CONCEITOS &amp; TIPOS ({knowledgeCount})
               </button>
+              <button onClick={() => setDexCategory("words")} style={tabStyle(dexCategory === "words")}>
+                PALAVRAS ({totalWordsCount})
+              </button>
               <button onClick={() => setDexCategory("collections")} style={tabStyle(dexCategory === "collections")}>
                 COLEÇÕES ({collectionsCount})
-              </button>
-              <button onClick={() => setDexCategory("effects")} style={tabStyle(dexCategory === "effects")}>
-                EFEITOS ({effectProfilesCount})
               </button>
             </div>
           ) : (
             <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", color: "rgba(255,255,255,0.75)", textAlign: "center" }}>
-              {view === "words"
-                ? `${totalWordsCount} palavra(s) em ${Object.keys(words).length} idioma(s)`
+              {view === "effects"
+                ? `${effectProfilesCount} perfil(is) de efeito`
                 : isTab || detailTarget
                   ? `${totalSavedCount} item(ns) registrado(s) em ${Object.keys(saved).length} assunto(s)`
                   : "Bookdex"}

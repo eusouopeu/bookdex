@@ -93,9 +93,12 @@ export function wordShareText(data) {
     `${data.word}${isZh && data.pinyin ? ` (${data.pinyin})` : ""} — ${data.language}`,
     data.meaning,
     !isZh && data.radical ? `Radical: ${data.radical}` : "",
-    isZh && !characters.length && data.semanticComponent ? `Componente semântico: ${data.semanticComponent}` : "",
-    isZh && !characters.length && data.phoneticComponent ? `Componente fonético: ${data.phoneticComponent}` : "",
-    ...characters.map((c) => `${c.hanzi} (${c.pinyin}) — ${c.meaning}`),
+    ...characters.map((c) => {
+      const comps = [c.semanticComponent && `S: ${c.semanticComponent}`, c.phoneticComponent && `F: ${c.phoneticComponent}`]
+        .filter(Boolean)
+        .join(" · ");
+      return `${c.hanzi} (${c.pinyin})${c.meaning ? ` — ${c.meaning}` : ""}${comps ? ` [${comps}]` : ""}`;
+    }),
     "",
     "via Bookdex",
   ]

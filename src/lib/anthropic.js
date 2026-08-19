@@ -544,12 +544,11 @@ Regras obrigatórias:
 - "languageCode": código curto do idioma (ISO 639-1 quando existir: "pt", "en", "zh", "ja", "es", "fr", "de", "it", "ru", "ar", "ko" etc.).
 - "meaning": o significado da palavra, SEMPRE em português, claro e direto (1-2 frases), mesmo que a palavra não seja portuguesa.
 - "pinyin": OBRIGATÓRIO se o idioma for mandarim ("languageCode" "zh") — a romanização pinyin completa da palavra, com marcação de tom (ex.: "míngbái"). Nos demais idiomas, string vazia "".
-- "radical": APENAS se o idioma NÃO for mandarim: o radical, raiz ou morfema base da palavra, com breve explicação de até 14 palavras. Mandarim NUNCA usa este campo (string vazia "") — use "characters"/"semanticComponent"/"phoneticComponent" abaixo em vez disso.
-- "semanticComponent" e "phoneticComponent": APENAS se o idioma for mandarim E a palavra tiver UM ÚNICO hanzi: o componente semântico (indica o campo de significado) e o componente fonético (sugere a pronúncia) desse caractere. Em qualquer outro caso — idioma não-mandarim, ou palavra composta por 2+ hanzi —, string vazia "" nos dois.
-- "characters": APENAS se o idioma for mandarim E a palavra tiver 2 OU MAIS hanzi (palavra composta): um array com UMA entrada por hanzi, na mesma ordem em que aparecem na palavra, cada uma com "hanzi" (o caractere), "pinyin" (pinyin desse caractere isolado, com tom), "meaning" (significado desse caractere isolado, em português), "semanticComponent" e "phoneticComponent" (os componentes desse caractere). Em qualquer outro caso, array vazio [].
+- "radical": APENAS se o idioma NÃO for mandarim: o radical, raiz ou morfema base da palavra, incluindo OBRIGATORIAMENTE a língua de origem, a forma original e o significado original dessa forma, neste formato: "<radical> — do <idioma de origem> <forma original>, que significa \"<significado original>\"" (ex.: "gat- — do latim cattus, que significa \"gato\""). Mandarim NUNCA usa este campo (string vazia "").
+- "characters": OBRIGATÓRIO se o idioma for mandarim, mesmo com um hanzi só — um array com UMA entrada por hanzi, na mesma ordem em que aparecem na palavra, cada uma com "hanzi" (o caractere), "pinyin" (pinyin desse caractere isolado, com tom) e "meaning" (significado desse caractere isolado, em português). NÃO inclua componente semântico nem fonético aqui — eles são identificados sob demanda, separadamente, quando o usuário pedir. Nos demais idiomas, array vazio [].
 
 Formato exato (sem campos extras):
-{"word":"...","language":"...","languageCode":"...","meaning":"...","pinyin":"","radical":"","semanticComponent":"","phoneticComponent":"","characters":[]}`;
+{"word":"...","language":"...","languageCode":"...","meaning":"...","pinyin":"","radical":"","characters":[]}`;
 
 export async function fetchWord(word, avoid, effort) {
   const parsed = await sendMessageJSON({
@@ -559,6 +558,30 @@ export async function fetchWord(word, avoid, effort) {
     effort,
   });
   if (!parsed.word || !parsed.language || !parsed.meaning) {
+    throw new Error("Formato inesperado na resposta");
+  }
+  return parsed;
+}
+
+export const HANZI_COMPONENT_SYSTEM_PROMPT = `Você identifica o componente semântico ou o componente fonético de UM caractere chinês (hanzi) específico, para um app de vocabulário de mandarim.
+Dado o caractere, a palavra em que ele aparece (contexto) e o tipo de componente pedido ("semantic" ou "phonetic"), identifique APENAS esse componente — nada além dele.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- Se o tipo pedido for "semantic": "component" é SOMENTE o caractere do componente semântico (o radical gráfico que indica o campo de significado) — sem explicação, sem tradução, só o caractere. "pinyin" fica string vazia "".
+- Se o tipo pedido for "phonetic": "component" é SOMENTE o caractere do componente fonético, e "pinyin" é o pinyin (com tom) desse componente isolado — a pronúncia que ele sugere.
+- Se o caractere não tiver um componente desse tipo claramente identificável (ex.: ele mesmo já é um radical/pictograma puro), retorne "component" como string vazia "".
+
+Formato exato (sem campos extras):
+{"component":"...","pinyin":"..."}`;
+
+export async function fetchHanziComponent(hanzi, kind, wordContext) {
+  const parsed = await sendMessageJSON({
+    system: HANZI_COMPONENT_SYSTEM_PROMPT,
+    user: `Caractere: ${hanzi}\nPalavra (contexto): ${wordContext || hanzi}\nTipo pedido: ${kind}`,
+    maxTokens: 200,
+  });
+  if (typeof parsed.component !== "string") {
     throw new Error("Formato inesperado na resposta");
   }
   return parsed;

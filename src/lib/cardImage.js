@@ -220,9 +220,8 @@ export async function renderDefinitionCardImage(definition) {
 export async function renderWordCardImage(data) {
   const isZh = (data.languageCode || "").toLowerCase() === "zh";
   const characters = isZh ? data.characters || [] : [];
-  const isCompound = characters.length > 1;
-  const extraLines = isZh && !isCompound ? [data.semanticComponent, data.phoneticComponent].filter(Boolean).length : 0;
-  const height = 260 + (!isZh && data.radical ? 30 : 0) + extraLines * 26 + characters.length * 46;
+  const compLine = (c) => [c.semanticComponent && `S: ${c.semanticComponent}`, c.phoneticComponent && `F: ${c.phoneticComponent}`].filter(Boolean).length;
+  const height = 260 + (!isZh && data.radical ? 30 : 0) + characters.reduce((sum, c) => sum + 46 + (compLine(c) ? 24 : 0), 0);
   const { canvas, ctx } = newCanvas(height);
   let y = PAD;
 
@@ -247,20 +246,19 @@ export async function renderWordCardImage(data) {
   if (!isZh && data.radical) {
     y = drawWrapped(ctx, `Radical: ${data.radical}`, PAD, y, WIDTH - PAD * 2, 22, "italic 400 15px Arial", PALETTE.textMuted) + 6;
   }
-  if (isZh && !isCompound && data.semanticComponent) {
-    y = drawWrapped(ctx, `Componente semântico: ${data.semanticComponent}`, PAD, y, WIDTH - PAD * 2, 22, "italic 400 15px Arial", PALETTE.textMuted) + 6;
-  }
-  if (isZh && !isCompound && data.phoneticComponent) {
-    y = drawWrapped(ctx, `Componente fonético: ${data.phoneticComponent}`, PAD, y, WIDTH - PAD * 2, 22, "italic 400 15px Arial", PALETTE.textMuted) + 6;
-  }
-  if (isZh && isCompound) {
+  if (isZh && characters.length) {
     y += 6;
     for (const c of characters) {
       ctx.font = "700 18px Arial";
       ctx.fillStyle = PALETTE.ink;
       ctx.fillText(`${c.hanzi} (${c.pinyin || ""})`, PAD, y + 16);
       y += 24;
-      y = drawWrapped(ctx, c.meaning || "", PAD, y, WIDTH - PAD * 2, 20, "400 14px Arial", PALETTE.textMuted) + 12;
+      y = drawWrapped(ctx, c.meaning || "", PAD, y, WIDTH - PAD * 2, 20, "400 14px Arial", PALETTE.textMuted) + 6;
+      const comps = [c.semanticComponent && `S: ${c.semanticComponent}`, c.phoneticComponent && `F: ${c.phoneticComponent}`].filter(Boolean);
+      if (comps.length) {
+        y = drawWrapped(ctx, comps.join("   "), PAD, y, WIDTH - PAD * 2, 20, "400 15px Arial", PALETTE.textMuted) + 6;
+      }
+      y += 6;
     }
   }
 
