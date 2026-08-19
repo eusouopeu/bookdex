@@ -15,6 +15,7 @@ import {
   MissingApiKeyError,
 } from "./lib/anthropic";
 import { parseSearchQuery, hasExplicitPrefix, splitCompareTerms, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
+import { wordLangKey } from "./lib/words";
 import { mergeData, mergeCollections } from "./lib/importer";
 import { initReviewState, gradeReviewState, countDue, getDueQueue } from "./lib/review";
 import { recordVisit, recordReviewCompleted } from "./lib/gamification";
@@ -48,6 +49,7 @@ import SettingsView from "./views/SettingsView";
 import ImportView from "./views/ImportView";
 import CompareView from "./views/CompareView";
 import ReviewView from "./views/ReviewView";
+import WordsView from "./views/WordsView";
 
 export default function App() {
   const [view, setView] = useState("search");
@@ -89,6 +91,7 @@ export default function App() {
   const [effectProfiles, setEffectProfiles] = useState(initEffectProfiles());
   const [searchEffort, setSearchEffortState] = useState("medium");
   const [showArchived, setShowArchived] = useState(false);
+  const [words, setWords] = useState({});
 
   useEffect(() => {
     (async () => {
@@ -104,8 +107,9 @@ export default function App() {
       setPrefetchDetailsEnabled(await getJSON(KEYS.prefetchDetails, true));
       setRelevance(await getJSON(KEYS.irrelevantItems, initRelevanceState()));
       setSearchEffortState(await getSearchEffort());
+      setWords(await getJSON(KEYS.words, {}));
       const savedTab = await getJSON(KEYS.lastTab, "search");
-      if (savedTab === "search" || savedTab === "dex") {
+      if (savedTab === "search" || savedTab === "dex" || savedTab === "words") {
         setLastTab(savedTab);
         setView(savedTab);
       }
@@ -196,6 +200,97 @@ export default function App() {
     } catch (e) {
       console.error("Falha ao salvar o guia", e);
     }
+  }
+
+  async function persistWords(newWords) {
+    try {
+      await setJSON(KEYS.words, newWords);
+    } catch (e) {
+      console.error("Falha ao salvar palavra", e);
+    }
+  }
+
+  function isWordSaved(languageCode, language, word) {
+    const group = words[wordLangKey(languageCode, language)];
+    return !!(group && group.words.some((w) => w.id === slug(word)));
+  }
+
+  function toggleWordSave(data) {
+    const prevWords = words;
+    const langKey = wordLangKey(data.languageCode, data.language);
+    const wordId = slug(data.word);
+    const nextWords = { ...words };
+    const existing = nextWords[langKey];
+    const group = existing
+      ? { displayName: existing.displayName, words: [...existing.words] }
+      : { displayName: data.language, words: [] };
+
+    const idx = group.words.findIndex((w) => w.id === wordId);
+    let removed = false;
+    if (idx >= 0) {
+      group.words.splice(idx, 1);
+      removed = true;
+    } else {
+      group.words.push({
+        id: wordId,
+        word: data.word,
+        language: data.language,
+        languageCode: data.languageCode || "",
+        meaning: data.meaning,
+        radical: data.radical || "",
+        semanticComponent: data.semanticComponent || "",
+        phoneticComponent: data.phoneticComponent || "",
+        savedAt: Date.now(),
+        tags: [],
+        note: "",
+      });
+    }
+
+    if (group.words.length === 0) delete nextWords[langKey];
+    else nextWords[langKey] = group;
+
+    setWords(nextWords);
+    persistWords(nextWords);
+    showToast(removed ? `"${data.word}" solta(o) das Palavras.` : `"${data.word}" capturada(o)!`, () => {
+      setWords(prevWords);
+      persistWords(prevWords);
+    });
+  }
+
+  function removeWordGroup(langKey) {
+    const prevWords = words;
+    const group = words[langKey];
+    if (!group) return;
+    const nextWords = { ...words };
+    delete nextWords[langKey];
+    setWords(nextWords);
+    persistWords(nextWords);
+    showToast(`"${group.displayName}" removido(a) das Palavras.`, () => {
+      setWords(prevWords);
+      persistWords(prevWords);
+    });
+  }
+
+  function updateWordInGroup(langKey, wordId, mutate) {
+    setWords((prev) => {
+      const group = prev[langKey];
+      if (!group) return prev;
+      const idx = group.words.findIndex((w) => w.id === wordId);
+      if (idx === -1) return prev;
+      const nextList = [...group.words];
+      nextList[idx] = mutate(nextList[idx]);
+      const next = { ...prev, [langKey]: { ...group, words: nextList } };
+      persistWords(next);
+      return next;
+    });
+  }
+
+  function updateWordTags(langKey, wordId, tags) {
+    updateWordInGroup(langKey, wordId, (w) => ({ ...w, tags }));
+  }
+
+  function updateWordNote(langKey, wordId, note) {
+    updateWordInGroup(langKey, wordId, (w) => ({ ...w, note }));
   }
 
   function hasDetail(subjectDisplay, technique) {
@@ -948,8 +1043,9 @@ export default function App() {
   );
   const collectionsCount = Object.keys(collections || {}).length;
   const effectProfilesCount = Object.keys(effectProfiles || {}).length;
+  const totalWordsCount = Object.values(words || {}).reduce((sum, g) => sum + g.words.length, 0);
   const dueCount = countDue(saved);
-  const isTab = view === "search" || view === "dex";
+  const isTab = view === "search" || view === "dex" || view === "words";
   const showSearchBar = view === "search" && !detailTarget && !compareTarget;
   const showDexNav = view === "dex" && !detailTarget && !compareTarget;
   const matchingHistory = query.trim()
@@ -1078,7 +1174,10 @@ export default function App() {
               BUSCAR
             </button>
             <button onClick={() => goTab("dex")} style={tabStyle(view === "dex")}>
-              MINHA POKÉDEX ({totalSavedCount})
+              POKÉDEX ({totalSavedCount})
+            </button>
+            <button onClick={() => goTab("words")} style={tabStyle(view === "words")}>
+              PALAVRAS ({totalWordsCount})
             </button>
           </div>
         </div>
@@ -1237,6 +1336,19 @@ export default function App() {
 
             {!detailTarget && view === "import" && (
               <ImportView onBack={backToTab} onImport={applyImport} saved={saved} detailCache={detailCache} collections={collections} />
+            )}
+
+            {!detailTarget && !compareTarget && view === "words" && (
+              <WordsView
+                words={words}
+                storageLoaded={storageLoaded}
+                searchEffort={searchEffort}
+                onToggleWord={toggleWordSave}
+                isWordSaved={isWordSaved}
+                onRemoveGroup={removeWordGroup}
+                onUpdateTags={updateWordTags}
+                onUpdateNote={updateWordNote}
+              />
             )}
           </div>
 
@@ -1485,9 +1597,11 @@ export default function App() {
             </div>
           ) : (
             <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", color: "rgba(255,255,255,0.75)", textAlign: "center" }}>
-              {isTab || detailTarget
-                ? `${totalSavedCount} item(ns) registrado(s) em ${Object.keys(saved).length} assunto(s)`
-                : "Bookdex"}
+              {view === "words"
+                ? `${totalWordsCount} palavra(s) em ${Object.keys(words).length} idioma(s)`
+                : isTab || detailTarget
+                  ? `${totalSavedCount} item(ns) registrado(s) em ${Object.keys(saved).length} assunto(s)`
+                  : "Bookdex"}
             </div>
           )}
         </div>

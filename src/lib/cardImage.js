@@ -217,6 +217,38 @@ export async function renderDefinitionCardImage(definition) {
   return toPngBlob(canvas);
 }
 
+export async function renderWordCardImage(data) {
+  const extraLines = [data.semanticComponent, data.phoneticComponent].filter(Boolean).length;
+  const height = 260 + (data.radical ? 30 : 0) + extraLines * 26;
+  const { canvas, ctx } = newCanvas(height);
+  let y = PAD;
+
+  ctx.font = "700 15px 'Courier New', monospace";
+  ctx.fillStyle = PALETTE.textMuted;
+  ctx.fillText((data.language || "").toUpperCase(), PAD, y + 12);
+  y += 30;
+
+  ctx.font = "800 34px Arial";
+  ctx.fillStyle = PALETTE.ink;
+  ctx.fillText(data.word, PAD, y + 28);
+  y += 50;
+
+  y = drawWrapped(ctx, data.meaning || "", PAD, y, WIDTH - PAD * 2, 26, "400 18px Arial", PALETTE.text) + 10;
+
+  if (data.radical) {
+    y = drawWrapped(ctx, `Radical: ${data.radical}`, PAD, y, WIDTH - PAD * 2, 22, "italic 400 15px Arial", PALETTE.textMuted) + 6;
+  }
+  if (data.semanticComponent) {
+    y = drawWrapped(ctx, `Componente semântico: ${data.semanticComponent}`, PAD, y, WIDTH - PAD * 2, 22, "italic 400 15px Arial", PALETTE.textMuted) + 6;
+  }
+  if (data.phoneticComponent) {
+    y = drawWrapped(ctx, `Componente fonético: ${data.phoneticComponent}`, PAD, y, WIDTH - PAD * 2, 22, "italic 400 15px Arial", PALETTE.textMuted) + 6;
+  }
+
+  drawFooter(ctx, height);
+  return toPngBlob(canvas);
+}
+
 export async function renderListItemCardImage(subjectDisplay, item) {
   const height = 260;
   const { canvas, ctx } = newCanvas(height);

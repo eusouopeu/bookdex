@@ -8,9 +8,7 @@ import {
   X,
   Download,
   Trash2,
-  ArrowDownAZ,
-  Clock,
-  CalendarClock,
+  ArrowUpDown,
   Scale,
   Tag,
   CheckSquare,
@@ -480,72 +478,6 @@ export default function DexView({
         />
       )}
 
-      {((category === "technique" || category === "knowledge") &&
-        ((category === "technique" && onOpenCompare) || onBulkRemoveItems || onToggleShowArchived)) && (
-        <div className="flex gap-2" style={{ marginBottom: "10px", justifyContent: "flex-end" }}>
-          {onToggleShowArchived && (
-            <button
-              onClick={onToggleShowArchived}
-              aria-label={showArchived ? "Ver itens ativos" : "Ver itens arquivados"}
-              title={showArchived ? "Ver itens ativos" : "Ver itens arquivados"}
-              style={{
-                ...badgeStyle(showArchived),
-                flex: "none",
-                width: "38px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 0,
-              }}
-            >
-              {showArchived ? <ArchiveRestore size={15} /> : <Archive size={15} />}
-            </button>
-          )}
-          {category === "technique" && onOpenCompare && (
-            <button
-              onClick={() => {
-                exitSelectMode();
-                compareMode ? exitCompareMode() : setCompareMode(true);
-              }}
-              aria-label="Comparar técnicas salvas"
-              title="Comparar técnicas salvas"
-              style={{
-                ...badgeStyle(compareMode),
-                flex: "none",
-                width: "38px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 0,
-              }}
-            >
-              <Scale size={15} />
-            </button>
-          )}
-          {category !== "collections" && onBulkRemoveItems && (
-            <button
-              onClick={() => {
-                exitCompareMode();
-                selectMode ? exitSelectMode() : setSelectMode(true);
-              }}
-              aria-label="Selecionar vários itens"
-              title="Selecionar vários itens"
-              style={{
-                ...badgeStyle(selectMode),
-                flex: "none",
-                width: "38px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                padding: 0,
-              }}
-            >
-              <CheckSquare size={15} />
-            </button>
-          )}
-        </div>
-      )}
-
       {category === "collections" ? (
         <CollectionsSection
           collections={collections}
@@ -684,59 +616,97 @@ export default function DexView({
         </div>
       )}
 
-      <div className="flex items-center gap-1.5" style={{ marginBottom: "16px" }}>
-        <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginRight: "2px" }}>Ordenar:</span>
-        <button
-          onClick={() => setSortBy("recent")}
-          className="flex items-center gap-1"
-          style={{
-            padding: "5px 10px",
-            borderRadius: "999px",
-            border: `1.5px solid ${COLORS.screenBorder}`,
-            background: sortBy === "recent" ? COLORS.screenBorder : "transparent",
-            color: sortBy === "recent" ? COLORS.white : COLORS.screenBorder,
-            fontFamily: '"Baloo 2", sans-serif',
-            fontWeight: 700,
-            fontSize: "10.5px",
-            cursor: "pointer",
-          }}
-        >
-          <Clock size={11} /> Recentes
-        </button>
-        <button
-          onClick={() => setSortBy("name")}
-          className="flex items-center gap-1"
-          style={{
-            padding: "5px 10px",
-            borderRadius: "999px",
-            border: `1.5px solid ${COLORS.screenBorder}`,
-            background: sortBy === "name" ? COLORS.screenBorder : "transparent",
-            color: sortBy === "name" ? COLORS.white : COLORS.screenBorder,
-            fontFamily: '"Baloo 2", sans-serif',
-            fontWeight: 700,
-            fontSize: "10.5px",
-            cursor: "pointer",
-          }}
-        >
-          <ArrowDownAZ size={11} /> Nome
-        </button>
-        <button
-          onClick={() => setSortBy("review")}
-          className="flex items-center gap-1"
-          style={{
-            padding: "5px 10px",
-            borderRadius: "999px",
-            border: `1.5px solid ${COLORS.screenBorder}`,
-            background: sortBy === "review" ? COLORS.screenBorder : "transparent",
-            color: sortBy === "review" ? COLORS.white : COLORS.screenBorder,
-            fontFamily: '"Baloo 2", sans-serif',
-            fontWeight: 700,
-            fontSize: "10.5px",
-            cursor: "pointer",
-          }}
-        >
-          <CalendarClock size={11} /> Próxima revisão
-        </button>
+      <div className="flex items-center gap-2" style={{ marginBottom: "16px", justifyContent: "space-between" }}>
+        <div className="flex items-center gap-1.5" style={{ minWidth: 0 }}>
+          <ArrowUpDown size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            aria-label="Ordenar por"
+            style={{
+              borderRadius: "999px",
+              border: `1.5px solid ${COLORS.screenBorder}`,
+              background: COLORS.surface,
+              color: COLORS.ink,
+              fontFamily: '"Baloo 2", sans-serif',
+              fontWeight: 700,
+              fontSize: "11px",
+              padding: "6px 10px",
+              minHeight: "30px",
+              cursor: "pointer",
+              outline: "none",
+            }}
+          >
+            <option value="recent">Recentes</option>
+            <option value="name">Nome</option>
+            <option value="review">Próxima revisão</option>
+          </select>
+        </div>
+
+        {((category === "technique" && onOpenCompare) || onBulkRemoveItems || onToggleShowArchived) && (
+          <div className="flex gap-2" style={{ flexShrink: 0 }}>
+            {onToggleShowArchived && (
+              <button
+                onClick={onToggleShowArchived}
+                aria-label={showArchived ? "Ver itens ativos" : "Ver itens arquivados"}
+                title={showArchived ? "Ver itens ativos" : "Ver itens arquivados"}
+                style={{
+                  ...badgeStyle(showArchived),
+                  flex: "none",
+                  width: "34px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                }}
+              >
+                {showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
+              </button>
+            )}
+            {category === "technique" && onOpenCompare && (
+              <button
+                onClick={() => {
+                  exitSelectMode();
+                  compareMode ? exitCompareMode() : setCompareMode(true);
+                }}
+                aria-label="Comparar técnicas salvas"
+                title="Comparar técnicas salvas"
+                style={{
+                  ...badgeStyle(compareMode),
+                  flex: "none",
+                  width: "34px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                }}
+              >
+                <Scale size={14} />
+              </button>
+            )}
+            {onBulkRemoveItems && (
+              <button
+                onClick={() => {
+                  exitCompareMode();
+                  selectMode ? exitSelectMode() : setSelectMode(true);
+                }}
+                aria-label="Selecionar vários itens"
+                title="Selecionar vários itens"
+                style={{
+                  ...badgeStyle(selectMode),
+                  flex: "none",
+                  width: "34px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  padding: 0,
+                }}
+              >
+                <CheckSquare size={14} />
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {activeEntries.length === 0 && (

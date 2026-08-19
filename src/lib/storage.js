@@ -134,6 +134,7 @@ export const KEYS = {
   irrelevantItems: "irrelevant-items",
   effectProfiles: "effect-profiles",
   searchEffort: "search-effort",
+  words: "saved-words",
 };
 
 export default { get, set, delete: remove, list, getJSON, setJSON, KEYS };

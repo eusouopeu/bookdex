@@ -533,3 +533,57 @@ export async function fetchEffectSuggestions(domainContext, activeItems, targetC
   }
   return parsed.suggestions;
 }
+
+export const WORD_SYSTEM_PROMPT = `Você é um dicionário morfológico para um app estilo Pokédex de palavras.
+Dada uma palavra em QUALQUER idioma (português, inglês, mandarim, japonês, etc.), identifique o idioma dela e explique seu significado e formação.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "word": a palavra pesquisada, exatamente como foi digitada (correção ortográfica leve é aceitável).
+- "language": nome do idioma da palavra, por extenso e em português (ex.: "Português", "Inglês", "Mandarim", "Japonês", "Espanhol", "Francês").
+- "languageCode": código curto do idioma (ISO 639-1 quando existir: "pt", "en", "zh", "ja", "es", "fr", "de", "it", "ru", "ar", "ko" etc.).
+- "meaning": o significado da palavra, SEMPRE em português, claro e direto (1-2 frases), mesmo que a palavra não seja portuguesa.
+- "radical": o radical, raiz ou morfema base da palavra (no idioma original), com breve explicação de até 14 palavras.
+- "semanticComponent": APENAS se o idioma for mandarim ("languageCode" "zh"): o componente semântico (radical gráfico que indica campo de significado) do caractere e o que ele indica. Nos demais idiomas, string vazia "".
+- "phoneticComponent": APENAS se o idioma for mandarim ("languageCode" "zh"): o componente fonético do caractere e a pronúncia que ele sugere. Nos demais idiomas, string vazia "".
+
+Formato exato (sem campos extras):
+{"word":"...","language":"...","languageCode":"...","meaning":"...","radical":"...","semanticComponent":"","phoneticComponent":""}`;
+
+export async function fetchWord(word, avoid, effort) {
+  const parsed = await sendMessageJSON({
+    system: WORD_SYSTEM_PROMPT,
+    user: word + avoidNote(avoid),
+    maxTokens: 700,
+    effort,
+  });
+  if (!parsed.word || !parsed.language || !parsed.meaning) {
+    throw new Error("Formato inesperado na resposta");
+  }
+  return parsed;
+}
+
+export const WORD_ETYMOLOGY_SYSTEM_PROMPT = `Você é um especialista em etimologia, escrevendo para um app estilo Pokédex de palavras.
+Dada uma palavra e o idioma dela, explique a ORIGEM ETIMOLÓGICA: de onde ela veio, por quais formas/idiomas passou, e COMO o significado mudou ao longo do tempo (se mudou) — incluindo, quando fizer sentido, comparações com outras línguas que preservam um sentido mais antigo (ex.: "sinistro" em português perdeu o significado de "esquerda" que o italiano ainda conserva).
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "originLanguage": o idioma de origem mais antigo identificável (ex.: "Latim", "Grego Antigo", "Proto-indo-europeu", "Chinês Clássico").
+- "summary": 2-3 frases em português resumindo a trajetória da palavra e as mudanças de significado, se houver.
+- "lineage": de 2 a 5 etapas, da mais antiga pra mais recente, cada uma com "language" (idioma/período), "form" (a forma da palavra nessa etapa) e "meaning" (o significado dela nessa etapa, em português).
+- Seja específico: cite formas e significados reais, não genéricos.
+
+Formato exato (sem campos extras):
+{"originLanguage":"...","summary":"...","lineage":[{"language":"...","form":"...","meaning":"..."}]}`;
+
+export async function fetchWordEtymology(word, language) {
+  const parsed = await sendMessageJSON({
+    system: WORD_ETYMOLOGY_SYSTEM_PROMPT,
+    user: `Palavra: ${word}\nIdioma: ${language || ""}`,
+    maxTokens: 700,
+  });
+  if (!parsed.summary || !Array.isArray(parsed.lineage)) {
+    throw new Error("Formato inesperado na resposta");
+  }
+  return parsed;
+}

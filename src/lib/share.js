@@ -86,6 +86,20 @@ export function listItemShareText(subjectDisplay, item) {
     .join("\n");
 }
 
+export function wordShareText(data) {
+  return [
+    `${data.word} (${data.language})`,
+    data.meaning,
+    data.radical ? `Radical: ${data.radical}` : "",
+    data.semanticComponent ? `Componente semântico: ${data.semanticComponent}` : "",
+    data.phoneticComponent ? `Componente fonético: ${data.phoneticComponent}` : "",
+    "",
+    "via Bookdex",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 export function guideMarkdown(subjectDisplay, technique, detail) {
   const lines = [
     `# ${technique.name}`,
