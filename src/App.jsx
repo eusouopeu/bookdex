@@ -36,8 +36,8 @@ import {
 
 const SEARCH_MODES = [
   { mode: "technique", label: "Técnicas" },
-  { mode: "definition", label: "Conceito" },
   { mode: "list", label: "Tipos" },
+  { mode: "definition", label: "Conceito" },
   { mode: "compare", label: "Comparar" },
 ];
 const MAX_HISTORY = 8;
@@ -932,7 +932,7 @@ export default function App() {
       const avoid = [...avoidListForSubject(relevance, slug(term)), ...tasteAvoidList(relevance)];
       const critList = criteria.split(",").map((c) => c.trim()).filter(Boolean);
       if (mode === "definition") data = await fetchDefinition(term, avoid, searchEffort);
-      else if (mode === "list") data = await fetchList(term, avoid, searchEffort);
+      else if (mode === "list") data = await fetchList(term, avoid, searchEffort, critList);
       else if (mode === "compare") {
         const names = splitCompareTerms(term);
         if (names.length < 2) throw new Error('Informe pelo menos 2 itens separados por vírgula, ex.: "melatonina, magnésio".');
@@ -1420,21 +1420,21 @@ export default function App() {
           style={{
             background: COLORS.shellRedDark,
             padding:
-              "12px calc(16px + env(safe-area-inset-right)) calc(12px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left))",
+              "9px calc(16px + env(safe-area-inset-right)) calc(9px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left))",
             flexShrink: 0,
           }}
         >
           {showSearchBar ? (
             <div style={{ width: "100%", minWidth: 0 }}>
-              <div className="flex gap-1.5" style={{ marginBottom: "8px" }}>
+              <div className="flex gap-1.5" style={{ marginBottom: "6px" }}>
                 {SEARCH_MODES.map(({ mode, label }) => (
                   <button
                     key={mode}
                     onClick={() => setSearchMode(mode)}
                     style={{
                       flex: 1,
-                      padding: "6px 8px",
-                      minHeight: "30px",
+                      padding: "5px 8px",
+                      minHeight: "26px",
                       borderRadius: "999px",
                       border: "none",
                       cursor: "pointer",
@@ -1516,8 +1516,8 @@ export default function App() {
                     width: "100%",
                     borderRadius: "8px",
                     border: "none",
-                    padding: "12px",
-                    minHeight: "46px",
+                    padding: "10px 12px",
+                    minHeight: "40px",
                     fontFamily: "Inter, sans-serif",
                     fontSize: "16px",
                     outline: "none",
@@ -1534,8 +1534,8 @@ export default function App() {
                       color: COLORS.white,
                       border: "none",
                       borderRadius: "8px",
-                      minWidth: "46px",
-                      minHeight: "46px",
+                      minWidth: "40px",
+                      minHeight: "40px",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -1556,8 +1556,8 @@ export default function App() {
                     fontWeight: 800,
                     border: "none",
                     borderRadius: "8px",
-                    padding: "10px 14px",
-                    minHeight: "46px",
+                    padding: "9px 14px",
+                    minHeight: "40px",
                     fontFamily: '"Baloo 2", sans-serif',
                     fontSize: "13px",
                     whiteSpace: "nowrap",
@@ -1569,7 +1569,7 @@ export default function App() {
                   {loading ? "..." : "ESCANEAR"}
                 </button>
               </div>
-              {(searchMode === "technique" || searchMode === "compare") && (
+              {(searchMode === "technique" || searchMode === "list" || searchMode === "compare") && (
                 <input
                   value={criteria}
                   onChange={(e) => setCriteria(e.target.value)}
@@ -1579,11 +1579,11 @@ export default function App() {
                   placeholder="Critérios de comparação (opcional) — ex.: custo, dificuldade, tempo"
                   style={{
                     width: "100%",
-                    marginTop: "8px",
+                    marginTop: "6px",
                     borderRadius: "8px",
                     border: "none",
-                    padding: "10px 12px",
-                    minHeight: "38px",
+                    padding: "8px 12px",
+                    minHeight: "32px",
                     fontFamily: "Inter, sans-serif",
                     fontSize: "12.5px",
                     outline: "none",

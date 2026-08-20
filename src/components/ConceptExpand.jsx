@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Plus, Minus, MoreHorizontal, Loader2, ArrowRight } from "lucide-react";
+import { MoreHorizontal, Loader2, ArrowRight } from "lucide-react";
 import { COLORS } from "../theme";
-import { fetchConceptDeepDive, fetchRelatedConceptNames, MissingApiKeyError } from "../lib/anthropic";
+import { fetchRelatedConceptNames, MissingApiKeyError } from "../lib/anthropic";
 
-// Mesmo visual do botão "Aprofundar" do TechCard, pra ficar igual em todos os cards.
+// Mesmo visual do botão "Aprofundar" original, reaproveitado só pro "Relacionados" agora.
 const bigBtnStyle = {
   flex: 1,
   display: "flex",
@@ -22,17 +22,12 @@ const bigBtnStyle = {
 };
 
 /**
- * Controles de "aprofundar" (+) e "relacionados" (...) reutilizados por
- * DefinitionCard e ListItemCard. Autocontido: busca sozinho na API e só
- * delega pro card pai a criação de um NOVO card quando um relacionado
- * listado é clicado (onAddRelatedCard).
+ * "Relacionados" (...) reutilizado por DefinitionCard e ListItemCard, mais o
+ * conteúdo expandido do "aprofundar" — cujo botão-gatilho agora mora no
+ * cabeçalho do card (DeepDiveIconButton), controlado por useConceptDeepDive.
+ * `deepDive` é só leitura aqui: { data, open, error }.
  */
-export default function ConceptExpand({ term, category, summary, onAddRelatedCard }) {
-  const [deepDive, setDeepDive] = useState(null);
-  const [deepDiveOpen, setDeepDiveOpen] = useState(false);
-  const [deepDiveLoading, setDeepDiveLoading] = useState(false);
-  const [deepDiveError, setDeepDiveError] = useState(null);
-
+export default function ConceptExpand({ term, category, onAddRelatedCard, deepDive }) {
   const [related, setRelated] = useState(null);
   const [relatedOpen, setRelatedOpen] = useState(false);
   const [relatedLoading, setRelatedLoading] = useState(false);
@@ -40,25 +35,6 @@ export default function ConceptExpand({ term, category, summary, onAddRelatedCar
   const [addedNames, setAddedNames] = useState([]);
   const [loadingNames, setLoadingNames] = useState([]);
   const [pickError, setPickError] = useState(null);
-
-  async function toggleDeepDive(e) {
-    e.stopPropagation();
-    if (deepDive) {
-      setDeepDiveOpen((o) => !o);
-      return;
-    }
-    setDeepDiveLoading(true);
-    setDeepDiveError(null);
-    try {
-      const data = await fetchConceptDeepDive(term, category, summary);
-      setDeepDive(data);
-      setDeepDiveOpen(true);
-    } catch (err) {
-      setDeepDiveError(err instanceof MissingApiKeyError ? "Configure sua API key em Configurações." : err.message || "Falhou.");
-    } finally {
-      setDeepDiveLoading(false);
-    }
-  }
 
   async function toggleRelated(e) {
     e.stopPropagation();
@@ -93,34 +69,17 @@ export default function ConceptExpand({ term, category, summary, onAddRelatedCar
     }
   }
 
+  const showDeepDiveBox = deepDive && deepDive.data && deepDive.open;
+
   return (
     <div onClick={(e) => e.stopPropagation()} style={{ marginTop: "10px" }}>
-      <div className="flex items-center" style={{ gap: "8px" }}>
-        <button onClick={toggleDeepDive} aria-label="Aprofundar explicação" title="Aprofundar explicação" style={bigBtnStyle}>
-          {deepDiveLoading ? (
-            <Loader2 size={14} style={{ animation: "spin 0.9s linear infinite" }} />
-          ) : deepDive && deepDiveOpen ? (
-            <Minus size={14} />
-          ) : (
-            <Plus size={14} />
-          )}
-          Aprofundar
-        </button>
-        {onAddRelatedCard && (
-          <button onClick={toggleRelated} aria-label="Ver relacionados" title="Ver relacionados" style={bigBtnStyle}>
-            {relatedLoading ? <Loader2 size={14} style={{ animation: "spin 0.9s linear infinite" }} /> : <MoreHorizontal size={14} />}
-            Relacionados
-          </button>
-        )}
-      </div>
-
-      {deepDiveError && (
-        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--danger)", marginTop: "6px" }}>{deepDiveError}</p>
+      {deepDive?.error && (
+        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--danger)", marginBottom: "6px" }}>{deepDive.error}</p>
       )}
-      {deepDive && deepDiveOpen && (
+      {showDeepDiveBox && (
         <div
           style={{
-            marginTop: "8px",
+            marginBottom: "8px",
             background: "rgba(46,134,222,0.08)",
             border: `1.5px solid ${COLORS.lensBlue}`,
             borderRadius: "8px",
@@ -128,17 +87,26 @@ export default function ConceptExpand({ term, category, summary, onAddRelatedCar
           }}
         >
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text)", lineHeight: 1.45, margin: 0 }}>
-            {deepDive.deepDive}
+            {deepDive.data.deepDive}
           </p>
-          {!!(deepDive.extraPoints || []).length && (
+          {!!(deepDive.data.extraPoints || []).length && (
             <ul style={{ margin: "6px 0 0", paddingLeft: "16px" }}>
-              {deepDive.extraPoints.map((p, i) => (
+              {deepDive.data.extraPoints.map((p, i) => (
                 <li key={i} style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text)", lineHeight: 1.45 }}>
                   {p}
                 </li>
               ))}
             </ul>
           )}
+        </div>
+      )}
+
+      {onAddRelatedCard && (
+        <div className="flex items-center" style={{ gap: "8px" }}>
+          <button onClick={toggleRelated} aria-label="Ver relacionados" title="Ver relacionados" style={bigBtnStyle}>
+            {relatedLoading ? <Loader2 size={14} style={{ animation: "spin 0.9s linear infinite" }} /> : <MoreHorizontal size={14} />}
+            Relacionados
+          </button>
         </div>
       )}
 

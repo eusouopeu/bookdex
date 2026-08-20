@@ -6,6 +6,8 @@ import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
 import LinksEditor from "./LinksEditor";
 import ConceptExpand from "./ConceptExpand";
+import DeepDiveIconButton from "./DeepDiveIconButton";
+import { useConceptDeepDive } from "../lib/hooks";
 import { listItemCardPdfBlob } from "../lib/cardPdf";
 
 /**
@@ -28,6 +30,7 @@ export default function ListItemCard({
   irrelevant,
   onMarkIrrelevant,
 }) {
+  const deepDive = useConceptDeepDive(item.name, item.category, item.description);
   return (
     <div
       style={{
@@ -48,6 +51,7 @@ export default function ListItemCard({
               fontSize: "16px",
               color: COLORS.ink,
               lineHeight: 1.15,
+              margin: 0,
             }}
           >
             {item.name}
@@ -76,6 +80,7 @@ export default function ListItemCard({
             </button>
           )}
           <ShareButton title={item.name} render={() => listItemCardPdfBlob(subjectDisplay || "", item)} />
+          <DeepDiveIconButton hasContent={!!deepDive.data} loading={deepDive.loading} onClick={deepDive.toggle} />
           <button
             onClick={onToggle}
             aria-label={saved ? "Soltar da Pokédex" : "Capturar item"}
@@ -103,7 +108,7 @@ export default function ListItemCard({
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.4 }}>
         {item.description}
       </p>
-      <ConceptExpand term={item.name} category={item.category} summary={item.description} onAddRelatedCard={onAddRelatedCard} />
+      <ConceptExpand term={item.name} category={item.category} onAddRelatedCard={onAddRelatedCard} deepDive={deepDive} />
       <div className="flex items-center" style={{ flexWrap: "wrap" }}>
         {onNoteChange && <NoteEditor note={item.note} onChange={onNoteChange} />}
       </div>

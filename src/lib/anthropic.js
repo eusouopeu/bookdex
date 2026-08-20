@@ -244,6 +244,7 @@ Regras obrigatórias:
 - "subject": nome do assunto/categoria enumerada.
 - "subjectIntro": 1 frase, no máximo 15 palavras.
 - "items": entre 5 e 10 itens. Cada item tem "name" (1 a 4 palavras), "category" (1 a 2 palavras, como um "tipo" de Pokémon) e "description" (no máximo 20 palavras, direto).
+- Se critérios de comparação forem informados pelo usuário, leve-os em conta ao descrever cada item — a "description" de cada um deve tocar nesses critérios quando fizer sentido, sem inventar um campo novo.
 
 Formato exato (sem campos extras):
 {"subject":"...","subjectIntro":"...","items":[{"name":"...","category":"...","description":"..."}]}`;
@@ -281,10 +282,17 @@ export async function fetchDefinition(term, avoid, effort) {
   return parsed;
 }
 
-export async function fetchList(subject, avoid, effort) {
+/** Monta a nota de critérios de comparação, reaproveitada pelos modos "tec:"/"list:"/"cmp:". */
+function criteriaNote(criteria) {
+  const clean = [...new Set((criteria || []).map((c) => c.trim()).filter(Boolean))];
+  if (!clean.length) return "";
+  return `\n\n[Critérios de comparação pedidos pelo usuário: ${clean.join(", ")}.]`;
+}
+
+export async function fetchList(subject, avoid, effort, criteria) {
   const parsed = await sendMessageJSON({
     system: LIST_SYSTEM_PROMPT,
-    user: subject + avoidNote(avoid),
+    user: subject + avoidNote(avoid) + criteriaNote(criteria),
     maxTokens: 1000,
     effort,
   });

@@ -169,6 +169,7 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
               fontSize: "18px",
               color: COLORS.ink,
               lineHeight: 1.15,
+              margin: 0,
             }}
           >
             {data.word}

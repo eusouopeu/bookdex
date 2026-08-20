@@ -64,6 +64,7 @@ export default function TechCard({
                 fontSize: "16px",
                 color: COLORS.ink,
                 lineHeight: 1.15,
+                margin: 0,
               }}
             >
               {technique.name}
@@ -94,6 +95,24 @@ export default function TechCard({
               </button>
             )}
             <ShareButton title={technique.name} render={() => techniqueCardPdfBlob(subjectDisplay || "", technique, statLabels)} />
+            {onOpenDetail && (
+              <button
+                onClick={onOpenDetail}
+                aria-label={hasDetail ? "Ver guia" : "Aprofundar (gera com IA)"}
+                title={hasDetail ? "Ver guia" : "Aprofundar (gera com IA)"}
+                style={{
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: "9px",
+                  margin: "-9px",
+                  flexShrink: 0,
+                  color: COLORS.screenBorder,
+                }}
+              >
+                {hasDetail ? <BookOpen size={15} /> : <Sparkles size={15} />}
+              </button>
+            )}
             <button
               onClick={onToggle}
               aria-label={saved ? "Soltar da Pokédex" : "Capturar técnica"}
@@ -133,27 +152,6 @@ export default function TechCard({
       <div className="flex items-center" style={{ flexWrap: "wrap" }}>
         {onNoteChange && <NoteEditor note={technique.note} onChange={onNoteChange} />}
       </div>
-      {onOpenDetail && (
-        <button
-          onClick={onOpenDetail}
-          className="flex items-center justify-center gap-1.5"
-          style={{
-            width: "100%",
-            marginTop: "10px",
-            minHeight: "40px",
-            background: "transparent",
-            border: `2px solid ${COLORS.screenBorder}`,
-            borderRadius: "8px",
-            color: COLORS.ink,
-            fontFamily: '"Baloo 2", sans-serif',
-            fontWeight: 700,
-            fontSize: "12px",
-            cursor: "pointer",
-          }}
-        >
-          {hasDetail ? <BookOpen size={14} /> : <Sparkles size={14} />} Aprofundar
-        </button>
-      )}
     </div>
   );
 }

@@ -5,6 +5,8 @@ import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
 import LinksEditor from "./LinksEditor";
 import ConceptExpand from "./ConceptExpand";
+import DeepDiveIconButton from "./DeepDiveIconButton";
+import { useConceptDeepDive } from "../lib/hooks";
 import { definitionCardPdfBlob } from "../lib/cardPdf";
 
 /**
@@ -24,6 +26,7 @@ export default function DefinitionCard({
   onRemoveLink,
   onJumpLink,
 }) {
+  const deepDive = useConceptDeepDive(definition.term, definition.category, definition.definition);
   return (
     <div
       style={{
@@ -45,6 +48,7 @@ export default function DefinitionCard({
               fontSize: "18px",
               color: COLORS.ink,
               lineHeight: 1.15,
+              margin: 0,
             }}
           >
             {definition.term}
@@ -52,6 +56,7 @@ export default function DefinitionCard({
         </div>
         <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
           <ShareButton title={definition.term} render={() => definitionCardPdfBlob(definition)} />
+          <DeepDiveIconButton hasContent={!!deepDive.data} loading={deepDive.loading} onClick={deepDive.toggle} />
           <button
             onClick={onToggle}
             aria-label={saved ? "Soltar da Pokédex" : "Capturar conceito"}
@@ -166,8 +171,8 @@ export default function DefinitionCard({
       <ConceptExpand
         term={definition.term}
         category={definition.category}
-        summary={definition.definition}
         onAddRelatedCard={onAddRelatedCard}
+        deepDive={deepDive}
       />
 
       <div className="flex items-center" style={{ flexWrap: "wrap" }}>
