@@ -1181,10 +1181,7 @@ export default function App() {
               <SettingsIcon size={17} />
             </button>
           </div>
-          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "10.5px", color: "rgba(255,255,255,0.8)", marginBottom: "12px", marginLeft: "2px" }}>
-            tec: técnicas · def: conceitos · list: tipos · cmp: comparar
-          </p>
-          <div className="flex gap-2">
+          <div className="flex gap-2" style={{ marginTop: "6px" }}>
             <button onClick={() => goTab("search")} style={tabStyle(view === "search")}>
               BUSCAR
             </button>
@@ -1601,7 +1598,7 @@ export default function App() {
                 TÉCNICAS ({techniqueCount})
               </button>
               <button onClick={() => setDexCategory("knowledge")} style={tabStyle(dexCategory === "knowledge")}>
-                CONCEITOS &amp; TIPOS ({knowledgeCount})
+                CONCEITOS ({knowledgeCount})
               </button>
               <button onClick={() => setDexCategory("words")} style={tabStyle(dexCategory === "words")}>
                 PALAVRAS ({totalWordsCount})

@@ -1,14 +1,11 @@
 import { COLORS } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
-import ShareImageButton from "./ShareImageButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
-import ImageEditor from "./ImageEditor";
 import LinksEditor from "./LinksEditor";
 import ConceptExpand from "./ConceptExpand";
-import { definitionShareText } from "../lib/share";
-import { renderDefinitionCardImage } from "../lib/cardImage";
+import { definitionCardPdfBlob } from "../lib/cardPdf";
 
 /**
  * Verbete de conceito/definição (modo "def:"). Ao contrário do TechCard, não
@@ -20,7 +17,6 @@ export default function DefinitionCard({
   onToggle,
   onTagsChange,
   onNoteChange,
-  onImagesChange,
   onSearchRelated,
   onAddRelatedCard,
   links,
@@ -55,8 +51,7 @@ export default function DefinitionCard({
           </h3>
         </div>
         <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
-          <ShareButton title={definition.term} text={definitionShareText(definition)} />
-          <ShareImageButton title={definition.term} render={() => renderDefinitionCardImage(definition)} />
+          <ShareButton title={definition.term} render={() => definitionCardPdfBlob(definition)} />
           <button
             onClick={onToggle}
             aria-label={saved ? "Soltar da Pokédex" : "Capturar conceito"}
@@ -177,7 +172,6 @@ export default function DefinitionCard({
 
       <div className="flex items-center" style={{ flexWrap: "wrap" }}>
         {onNoteChange && <NoteEditor note={definition.note} onChange={onNoteChange} />}
-        {onImagesChange && <ImageEditor images={definition.images} onChange={onImagesChange} />}
       </div>
     </div>
   );

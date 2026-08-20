@@ -76,10 +76,6 @@ export default function WordsView({
 
   return (
     <div>
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "12px", lineHeight: 1.4 }}>
-        Pesquise uma palavra em qualquer idioma — significado (sempre em português) e formação.
-      </p>
-
       <div className="flex gap-2" style={{ marginBottom: "14px" }}>
         <input
           value={query}

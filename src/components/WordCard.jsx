@@ -5,12 +5,10 @@ import { isMandarin } from "../lib/words";
 import { fetchHanziComponent, MissingApiKeyError } from "../lib/anthropic";
 import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
-import ShareImageButton from "./ShareImageButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
 import WordEtymology from "./WordEtymology";
-import { wordShareText } from "../lib/share";
-import { renderWordCardImage } from "../lib/cardImage";
+import { wordCardPdfBlob } from "../lib/cardPdf";
 
 const SEMANTIC_COLOR = { bg: "rgba(106,153,85,0.15)", border: "#6A9955" };
 const PHONETIC_COLOR = { bg: "rgba(142,124,195,0.15)", border: "#8E7CC3" };
@@ -182,8 +180,7 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
           )}
         </div>
         <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
-          <ShareButton title={data.word} text={wordShareText({ ...data, characters })} />
-          <ShareImageButton title={data.word} render={() => renderWordCardImage({ ...data, characters })} />
+          <ShareButton title={data.word} render={() => wordCardPdfBlob({ ...data, characters })} />
           {onToggle && (
             <button
               onClick={toggleWithCharacters}

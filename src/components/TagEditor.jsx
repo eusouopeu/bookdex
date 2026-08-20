@@ -1,20 +1,9 @@
-import { useState } from "react";
-import { Plus, X, Tag as TagIcon } from "lucide-react";
+import { X } from "lucide-react";
 import { COLORS } from "../theme";
 
-/** Chips de tag livre num item salvo, com input pequeno para adicionar mais. */
+/** Chips de tag livre já atribuídas a um item salvo, com botão de remover. */
 export default function TagEditor({ tags, onChange }) {
-  const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState("");
-
-  function commit() {
-    const clean = draft.trim();
-    if (clean && !tags.some((t) => t.toLowerCase() === clean.toLowerCase())) {
-      onChange([...tags, clean]);
-    }
-    setDraft("");
-    setAdding(false);
-  }
+  if (!tags || tags.length === 0) return null;
 
   function removeTag(tag) {
     onChange(tags.filter((t) => t !== tag));
@@ -46,49 +35,6 @@ export default function TagEditor({ tags, onChange }) {
           </button>
         </span>
       ))}
-      {adding ? (
-        <input
-          autoFocus
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onBlur={commit}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit();
-            if (e.key === "Escape") {
-              setDraft("");
-              setAdding(false);
-            }
-          }}
-          placeholder="nova tag"
-          style={{
-            fontFamily: '"JetBrains Mono", monospace',
-            fontSize: "10.5px",
-            border: `1.5px solid ${COLORS.screenBorder}`,
-            borderRadius: "999px",
-            padding: "3px 9px",
-            width: "84px",
-            outline: "none",
-          }}
-        />
-      ) : (
-        <button
-          onClick={() => setAdding(true)}
-          className="flex items-center gap-1"
-          aria-label="Adicionar tag"
-          style={{
-            fontFamily: '"JetBrains Mono", monospace',
-            fontSize: "10px",
-            color: COLORS.screenBorder,
-            background: "transparent",
-            border: `1.5px dashed ${COLORS.screenBorder}`,
-            borderRadius: "999px",
-            padding: "2px 8px",
-            cursor: "pointer",
-          }}
-        >
-          <TagIcon size={10} /> <Plus size={10} />
-        </button>
-      )}
     </div>
   );
 }

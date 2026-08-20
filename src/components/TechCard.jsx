@@ -3,13 +3,10 @@ import { COLORS, getTypeColor } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import StatBar from "./StatBar";
 import ShareButton from "./ShareButton";
-import ShareImageButton from "./ShareImageButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
-import ImageEditor from "./ImageEditor";
 import LinksEditor from "./LinksEditor";
-import { techniqueShareText } from "../lib/share";
-import { renderTechniqueCardImage } from "../lib/cardImage";
+import { techniqueCardPdfBlob } from "../lib/cardPdf";
 
 export default function TechCard({
   index,
@@ -22,7 +19,6 @@ export default function TechCard({
   hasDetail,
   onTagsChange,
   onNoteChange,
-  onImagesChange,
   selectable,
   selected,
   onSelectToggle,
@@ -61,9 +57,6 @@ export default function TechCard({
             />
           )}
           <div>
-            <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "var(--text-faint)" }}>
-              Nº {String(index + 1).padStart(3, "0")}
-            </div>
             <h3
               style={{
                 fontFamily: '"Baloo 2", sans-serif',
@@ -100,11 +93,7 @@ export default function TechCard({
                 <ThumbsDown size={15} fill={irrelevant ? "currentColor" : "none"} />
               </button>
             )}
-            <ShareButton title={technique.name} text={techniqueShareText(subjectDisplay || "", technique, statLabels)} />
-            <ShareImageButton
-              title={technique.name}
-              render={() => renderTechniqueCardImage(subjectDisplay || "", technique, statLabels)}
-            />
+            <ShareButton title={technique.name} render={() => techniqueCardPdfBlob(subjectDisplay || "", technique, statLabels)} />
             <button
               onClick={onToggle}
               aria-label={saved ? "Soltar da Pokédex" : "Capturar técnica"}
@@ -143,7 +132,6 @@ export default function TechCard({
       </div>
       <div className="flex items-center" style={{ flexWrap: "wrap" }}>
         {onNoteChange && <NoteEditor note={technique.note} onChange={onNoteChange} />}
-        {onImagesChange && <ImageEditor images={technique.images} onChange={onImagesChange} />}
       </div>
       {onOpenDetail && (
         <button

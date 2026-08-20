@@ -2,15 +2,15 @@ import { Minus, Plus } from "lucide-react";
 import { COLORS } from "../theme";
 import { clampRating } from "../lib/effectProfiles";
 
-const SEGMENTS = [-5, -4, -3, -2, -1, 1, 2, 3, 4, 5];
-
 /**
- * Barra divergente de -5 a +5: segmentos vermelhos crescem pra esquerda
- * (o item PIORA o critério), verdes pra direita (o item MELHORA). Com
- * `onChange` vira editável, com botões de +/- pra ajustar a nota.
+ * Barra de 5 blocos: verde quando o item MELHORA o critério (nota positiva),
+ * vermelho quando PIORA (nota negativa), preenchida proporcionalmente ao
+ * valor absoluto da nota (de -5 a +5). Com `onChange` vira editável, com
+ * botões de +/- pra ajustar a nota.
  */
 export default function EffectRatingBar({ label, value, editable, onChange }) {
   const v = value || 0;
+  const abs = Math.abs(v);
   const color = v > 0 ? "var(--success)" : v < 0 ? "var(--danger)" : "var(--text-muted)";
 
   return (
@@ -53,9 +53,8 @@ export default function EffectRatingBar({ label, value, editable, onChange }) {
         </button>
       )}
       <div className="flex" style={{ flex: 1, gap: "2px", minWidth: 0 }}>
-        {SEGMENTS.map((n) => {
-          const filled = (v > 0 && n > 0 && n <= v) || (v < 0 && n < 0 && n >= v);
-          const segColor = n > 0 ? "var(--success)" : "var(--danger)";
+        {[1, 2, 3, 4, 5].map((n) => {
+          const filled = n <= abs;
           return (
             <div
               key={n}
@@ -64,8 +63,8 @@ export default function EffectRatingBar({ label, value, editable, onChange }) {
                 flex: 1,
                 height: "8px",
                 borderRadius: "2px",
-                background: filled ? segColor : "transparent",
-                border: `1.5px solid ${filled ? segColor : COLORS.screenBorder}`,
+                background: filled ? color : "transparent",
+                border: `1.5px solid ${filled ? color : COLORS.screenBorder}`,
                 opacity: filled ? 1 : 0.3,
               }}
             />

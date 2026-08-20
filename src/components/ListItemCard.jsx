@@ -2,14 +2,11 @@ import { ThumbsDown } from "lucide-react";
 import { COLORS } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
-import ShareImageButton from "./ShareImageButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
-import ImageEditor from "./ImageEditor";
 import LinksEditor from "./LinksEditor";
 import ConceptExpand from "./ConceptExpand";
-import { listItemShareText } from "../lib/share";
-import { renderListItemCardImage } from "../lib/cardImage";
+import { listItemCardPdfBlob } from "../lib/cardPdf";
 
 /**
  * Card de um item de enumeração/tipo (modo "list:"). Como TechCard, mas sem
@@ -23,7 +20,6 @@ export default function ListItemCard({
   onToggle,
   onTagsChange,
   onNoteChange,
-  onImagesChange,
   onAddRelatedCard,
   links,
   onOpenLinkPicker,
@@ -45,9 +41,6 @@ export default function ListItemCard({
     >
       <div className="flex items-start justify-between gap-2 mb-1">
         <div>
-          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "var(--text-faint)" }}>
-            Nº {String(index + 1).padStart(3, "0")}
-          </div>
           <h3
             style={{
               fontFamily: '"Baloo 2", sans-serif',
@@ -82,8 +75,7 @@ export default function ListItemCard({
               <ThumbsDown size={15} fill={irrelevant ? "currentColor" : "none"} />
             </button>
           )}
-          <ShareButton title={item.name} text={listItemShareText(subjectDisplay || "", item)} />
-          <ShareImageButton title={item.name} render={() => renderListItemCardImage(subjectDisplay || "", item)} />
+          <ShareButton title={item.name} render={() => listItemCardPdfBlob(subjectDisplay || "", item)} />
           <button
             onClick={onToggle}
             aria-label={saved ? "Soltar da Pokédex" : "Capturar item"}
@@ -114,7 +106,6 @@ export default function ListItemCard({
       <ConceptExpand term={item.name} category={item.category} summary={item.description} onAddRelatedCard={onAddRelatedCard} />
       <div className="flex items-center" style={{ flexWrap: "wrap" }}>
         {onNoteChange && <NoteEditor note={item.note} onChange={onNoteChange} />}
-        {onImagesChange && <ImageEditor images={item.images} onChange={onImagesChange} />}
       </div>
     </div>
   );

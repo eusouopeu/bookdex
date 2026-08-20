@@ -56,12 +56,6 @@ export default function EffectsSection({
 
   return (
     <div>
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", lineHeight: 1.45, marginBottom: "14px" }}>
-        Crie um perfil pra cada domínio que quer acompanhar — ex.: "Suplementos & Alimentos", "Musculação",
-        "Práticas físicas". Cada perfil tem seus próprios critérios (ex.: energia, raciocínio) e itens avaliados
-        neles.
-      </p>
-
       {!creating ? (
         <button
           onClick={() => setCreating(true)}

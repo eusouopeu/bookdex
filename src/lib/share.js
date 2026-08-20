@@ -51,61 +51,6 @@ export async function shareOrDownloadFile(fileName, content, mime, title) {
   return "downloaded";
 }
 
-export function techniqueShareText(subjectDisplay, technique, statLabels) {
-  const stats = (statLabels || technique.statLabels || [])
-    .map((label, i) => `${label}: ${technique.stats ? technique.stats[i] : "?"}/5`)
-    .join(" · ");
-  return [
-    `${technique.name} (${technique.type}) — ${subjectDisplay}`,
-    technique.description,
-    stats,
-    technique.bestFor ? `Ideal para: ${technique.bestFor}` : "",
-    "",
-    "via Bookdex",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-export function definitionShareText(definition) {
-  return [
-    `${definition.term} (${definition.category})`,
-    definition.definition,
-    ...(definition.keyPoints || []).map((k) => `• ${k}`),
-    definition.example ? `Exemplo: ${definition.example}` : "",
-    "",
-    "via Bookdex",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
-export function listItemShareText(subjectDisplay, item) {
-  return [`${item.name} (${item.category}) — ${subjectDisplay}`, item.description, "", "via Bookdex"]
-    .filter(Boolean)
-    .join("\n");
-}
-
-export function wordShareText(data) {
-  const isZh = (data.languageCode || "").toLowerCase() === "zh";
-  const characters = isZh ? data.characters || [] : [];
-  return [
-    `${data.word}${isZh && data.pinyin ? ` (${data.pinyin})` : ""} — ${data.language}`,
-    data.meaning,
-    !isZh && data.radical ? `Radical: ${data.radical}` : "",
-    ...characters.map((c) => {
-      const comps = [c.semanticComponent && `S: ${c.semanticComponent}`, c.phoneticComponent && `F: ${c.phoneticComponent}`]
-        .filter(Boolean)
-        .join(" · ");
-      return `${c.hanzi} (${c.pinyin})${c.meaning ? ` — ${c.meaning}` : ""}${comps ? ` [${comps}]` : ""}`;
-    }),
-    "",
-    "via Bookdex",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 export function guideMarkdown(subjectDisplay, technique, detail) {
   const lines = [
     `# ${technique.name}`,

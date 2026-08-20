@@ -18,7 +18,7 @@ export default function RelatedSuggestions({ suggestions, loading, error, genera
         marginBottom: "14px",
       }}
     >
-      <div className="flex items-center gap-1.5" style={{ marginBottom: suggestions.length || loading || error ? "8px" : 0 }}>
+      <div className="flex items-center gap-1.5" style={{ marginBottom: suggestions.length || loading ? "8px" : 0 }}>
         <Compass size={14} style={{ color: COLORS.lensBlue, flexShrink: 0 }} />
         <span style={{ flex: 1, fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "12px", color: COLORS.ink }}>
           Sugestões para você
@@ -46,12 +46,6 @@ export default function RelatedSuggestions({ suggestions, loading, error, genera
 
       {error && (
         <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--danger)", margin: 0 }}>{error}</p>
-      )}
-
-      {!error && !loading && suggestions.length === 0 && (
-        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", margin: 0 }}>
-          Peça sugestões de assuntos relacionados ao que você já capturou.
-        </p>
       )}
 
       {loading && suggestions.length === 0 && (
