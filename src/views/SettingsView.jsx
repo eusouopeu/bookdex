@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Eye, EyeOff, Gauge, Sun, Moon, Bell, BellOff, Flame, Award, Download } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Gauge, Sun, Moon, Flame, Award, Download } from "lucide-react";
 import { COLORS, primaryButtonStyle } from "../theme";
 import {
   getApiKey,
@@ -50,8 +50,6 @@ export default function SettingsView({
   onCredentialsChanged,
   theme,
   onThemeChange,
-  notificationsEnabled,
-  onNotificationsChange,
   gamification,
   totalSavedCount,
   prefetchDetailsEnabled,
@@ -181,52 +179,6 @@ export default function SettingsView({
           <Moon size={15} /> Escuro
         </button>
       </div>
-
-      <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, marginBottom: "8px" }}>
-        Notificações
-      </h3>
-      <button
-        onClick={() => onNotificationsChange && onNotificationsChange(!notificationsEnabled)}
-        className="flex items-center gap-2"
-        style={{
-          width: "100%",
-          minHeight: "44px",
-          borderRadius: "8px",
-          border: `2px solid ${COLORS.screenBorder}`,
-          background: "transparent",
-          padding: "0 12px",
-          cursor: "pointer",
-          marginBottom: "16px",
-        }}
-      >
-        {notificationsEnabled ? <Bell size={16} style={{ color: COLORS.ink }} /> : <BellOff size={16} style={{ color: COLORS.ink }} />}
-        <span style={{ flex: 1, textAlign: "left", fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: COLORS.ink }}>
-          Lembrete diário de revisão pendente
-        </span>
-        <span
-          style={{
-            width: "38px",
-            height: "22px",
-            borderRadius: "999px",
-            background: notificationsEnabled ? COLORS.lensBlue : COLORS.screenBorder,
-            position: "relative",
-            flexShrink: 0,
-          }}
-        >
-          <span
-            style={{
-              position: "absolute",
-              top: "2px",
-              left: notificationsEnabled ? "18px" : "2px",
-              width: "18px",
-              height: "18px",
-              borderRadius: "50%",
-              background: "#fff",
-              transition: "left 0.15s ease",
-            }}
-          />
-        </span>
-      </button>
 
       <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, marginBottom: "8px" }}>
         Guias offline

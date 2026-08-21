@@ -141,66 +141,103 @@ mover dados entre aparelhos ou reinstalar o app sem perder nada.
 
 ```
 src/
-  App.jsx                  casca do aparelho, navegação e estado compartilhado
+  App.jsx                  casca do aparelho, navegação, busca e preferências
   theme.js                 cores, paleta de tipos, slug, estilos comuns
   utilities.css            subconjunto das utilitárias usadas no artefato
+  state/
+    DataContext.jsx         provider dos dados capturados + todos os mutadores (useData())
+    searchReducer.js        reducer do fluxo de busca (digitar → buscar → resultado/erro)
   components/
     TechCard.jsx            card da técnica (+ botão Aprofundar)
     DefinitionCard.jsx      card do verbete de conceito (modo def:)
     ListItemCard.jsx        card de item de enumeração (modo list:)
+    WordCard.jsx            card de palavra (+ botão de pronúncia por voz do sistema)
     StatBar.jsx             barra de 5 blocos das stats
     PokeballIcon.jsx        ícone de captura
     TagEditor.jsx           chips de tag livre num item salvo
     NoteEditor.jsx          anotação pessoal livre num item salvo
-    RelatedSuggestions.jsx  card de sugestões de assuntos relacionados (sob demanda)
     CollectionPicker.jsx    bottom sheet pra escolher/criar coleção na seleção em lote
     CollectionsSection.jsx  aba "Coleções" dentro da Pokédex
   views/
     SearchView.jsx          busca, loading, erro, aviso de chave ausente
-    DexView.jsx             Pokédex com badges Técnicas/Conceitos & Tipos/Coleções e pastas por assunto
+    DexView.jsx             Pokédex com badges Técnicas/Conceitos/Palavras/Coleções
+    WordsView.jsx           aba "Palavras": busca, pastas por idioma, pronúncia
     DetailPage.jsx          guia passo a passo + sinais de acerto/erro
-    SettingsView.jsx        API key, proxy, tema, notificações, pré-carregamento de guias
-    ImportView.jsx          importar JSON, backup, export em PDF e export para Anki
+    SettingsView.jsx        API key, proxy, tema, pré-carregamento de guias
+    ImportView.jsx          importar JSON, backup, export em PDF, Markdown e Anki
   lib/
     storage.js              get/set/delete/list sobre @capacitor/preferences
-    anthropic.js            chamadas à API, prompts e erros tratados (técnica/def/list/sugestões)
+    migrations.js           versão do schema persistido + migrações em ordem
+    anthropic.js            chamadas à API, prompts e erros tratados (técnica/def/list)
+    speech.js               pronúncia via speechSynthesis (escolha de voz por idioma)
     searchQuery.js          parse dos prefixos tec:/def:/list:
     importer.js             validação e merge do payload importado
-    reviewWidget.js         ponte com o widget de tela inicial do Android
     collections.js          resolução de refs de coleções manuais contra `saved`
     ankiExport.js           gera o CSV de export para o Anki
+  test/
+    setup.js                setup do vitest (jest-dom + cleanup)
+    renderWithData.jsx      render de view dentro do DataProvider real
+    storageMock.js          storage em memória no lugar do @capacitor/preferences
 proxy/cloudflare-worker.js proxy opcional (plano B)
-android/app/src/main/java/com/pedroteles/tecnicadex/
-  ReviewWidgetPlugin.java   plugin Capacitor custom: grava a fila de revisão em SharedPreferences próprio
-  ReviewWidgetProvider.java AppWidgetProvider que desenha o widget de tela inicial
 ```
 
+### Estado: contexto + reducer
+
+Os dados capturados (`saved`, `detailCache`, `words`, `collections`) e todas as
+operações que os alteram vivem em `src/state/DataContext.jsx`. As views puxam o que
+precisam com `useData()` em vez de receber dezenas de props do `App.jsx`, que ficou só
+com navegação, busca, tema, perfis de efeito e relevância. O fluxo da aba **Buscar** é
+um reducer puro (`src/state/searchReducer.js`), testado sem renderizar nada.
+
+### Versão do schema e migrações
+
+Tudo que é persistido carrega uma versão em `KEYS.schemaVersion`. Na abertura o
+`DataProvider` roda as migrações pendentes em ordem (`src/lib/migrations.js`), uma vez
+só, regrava os dados e sobe a versão. Para criar uma migração: adicione uma entrada em
+`MIGRATIONS` com a versão de destino e uma função pura `(data) => data`, e suba
+`CURRENT_SCHEMA_VERSION`. Payloads importados passam pelas mesmas migrações antes de
+entrar no estado.
+
 Chaves de armazenamento (prefixadas com `tecnicadex:`): `pokedex-saved`,
-`pokedex-details`, `anthropic-api-key`, `anthropic-proxy-url`, `search-history`,
-`collections`, `related-suggestions`, `prefetch-details-enabled`, entre outras (ver
-`KEYS` em `src/lib/storage.js`). Dentro de `pokedex-saved`,
-grupos de técnica guardam um array `techniques`; grupos de conceito/tipo (`kind:
-"definition"` ou `"list"`) guardam um array `items` e são prefixados com `kn:` para não
-colidir com o slug de um assunto de técnica igual. Cada item salvo tem um campo `note`
-de anotação pessoal livre, além de `tags`.
+`pokedex-details`, `saved-words`, `anthropic-api-key`, `anthropic-proxy-url`,
+`search-history`, `collections`, `schema-version`, `prefetch-details-enabled`, entre
+outras (ver `KEYS` em `src/lib/storage.js`). Dentro de `pokedex-saved`, grupos de
+técnica guardam um array `techniques`; grupos de conceito/tipo (`kind: "definition"` ou
+`"list"`) guardam um array `items` e são prefixados com `kn:` para não colidir com o
+slug de um assunto de técnica igual. Cada item salvo tem um campo `note` de anotação
+pessoal livre, além de `tags`.
 
 `collections` guarda pastas manuais que cruzam itens de assuntos diferentes: cada
 coleção é `{ id, name, createdAt, refs: [{subjectKey, itemId}] }` — as refs apontam pro
 item real em `pokedex-saved` (nunca duplicam o dado); uma ref cujo item foi removido da
 Pokédex simplesmente some da exibição.
 
-### Widget de tela inicial (Android)
+### Pronúncia (aba Palavras)
 
-`ReviewWidgetPlugin` é um plugin Capacitor local (não é um pacote npm): o app chama
-`updateReviewWidget(dueCount, headline)` (em `src/lib/reviewWidget.js`) sempre que a fila
-de revisão muda; o plugin grava isso num `SharedPreferences` próprio
-(`com.pedroteles.tecnicadex.widget`, separado do storage do resto do app) e força o
-`ReviewWidgetProvider` a redesenhar todas as instâncias do widget na tela inicial. Fora
-do Android nativo (PWA/browser) a chamada falha silenciosamente — o widget só existe no
-APK, e precisa ser adicionado manualmente à tela inicial pelo usuário (padrão do Android:
-tocar e segurar a tela inicial → Widgets → Bookdex).
+O botão de alto-falante nos cards de palavra usa o `speechSynthesis` do próprio sistema
+— offline e sem custo de API. `src/lib/speech.js` completa o código curto do idioma
+("zh" → "zh-CN") e escolhe a melhor voz instalada; se o aparelho não tiver voz para
+aquele idioma, o card avisa em vez de ficar mudo. Em mandarim compostos ganham também um
+botão por hanzi.
 
-## 7. Notas
+### Memorização: é no Anki
+
+O app não tem revisão espaçada nem flashcards próprios — quem quiser memorizar exporta
+os cartões em **Configurações → Importar/Exportar → Exportar para Anki**.
+
+## 7. Testes
+
+```bash
+npm test
+```
+
+`vitest` com `jsdom` como ambiente padrão: as libs puras são testadas direto e as views
+(`DexView`, `WordsView`, `ImportView`) com Testing Library, renderizadas dentro do
+`DataProvider` real e com o storage substituído por um mock em memória — ou seja, o teste
+exercita provider e view juntos, como no app. O CI (`.github/workflows/ci.yml`) roda
+`npm test` e `npm run build` a cada push e PR.
+
+## 8. Notas
 
 - `appId`: `com.pedroteles.tecnicadex`. Para mudar, edite `capacitor.config.json` e rode
   `npx cap sync` (ou recrie a pasta `android/`).

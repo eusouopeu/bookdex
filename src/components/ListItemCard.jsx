@@ -4,7 +4,6 @@ import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
-import LinksEditor from "./LinksEditor";
 import ConceptExpand from "./ConceptExpand";
 import DeepDiveIconButton from "./DeepDiveIconButton";
 import { useConceptDeepDive } from "../lib/hooks";
@@ -23,27 +22,39 @@ export default function ListItemCard({
   onTagsChange,
   onNoteChange,
   onAddRelatedCard,
-  links,
-  onOpenLinkPicker,
-  onRemoveLink,
-  onJumpLink,
+  selectable,
+  selected,
+  onSelectToggle,
   irrelevant,
   onMarkIrrelevant,
 }) {
   const deepDive = useConceptDeepDive(item.name, item.category, item.description);
   return (
     <div
+      onClick={selectable ? onSelectToggle : undefined}
       style={{
         background: COLORS.surface,
-        border: `2px solid ${COLORS.screenBorder}`,
+        border: `2px solid ${selectable && selected ? COLORS.lensBlue : COLORS.screenBorder}`,
         borderRadius: "10px",
         padding: "12px",
         marginBottom: "10px",
+        cursor: selectable ? "pointer" : "default",
+        boxShadow: selectable && selected ? `0 0 0 2px ${COLORS.lensBlue} inset` : "none",
         opacity: irrelevant ? 0.5 : 1,
       }}
     >
       <div className="flex items-start justify-between gap-2 mb-1">
-        <div>
+        <div className="flex items-start gap-2">
+          {selectable && (
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={onSelectToggle}
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: "18px", height: "18px", marginTop: "3px", flexShrink: 0 }}
+              aria-label={`Selecionar ${item.name}`}
+            />
+          )}
           <h3
             style={{
               fontFamily: '"Baloo 2", sans-serif',
@@ -57,6 +68,7 @@ export default function ListItemCard({
             {item.name}
           </h3>
         </div>
+        {!selectable && (
         <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
           {onMarkIrrelevant && (
             <button
@@ -96,13 +108,11 @@ export default function ListItemCard({
             <PokeballIcon filled={saved} size={26} />
           </button>
         </div>
+        )}
       </div>
-      {(onTagsChange || onOpenLinkPicker) && (
+      {onTagsChange && (
         <div style={{ marginBottom: "4px" }}>
-          {onTagsChange && <TagEditor tags={item.tags || []} onChange={onTagsChange} />}
-          {onOpenLinkPicker && (
-            <LinksEditor links={links || []} onOpenPicker={onOpenLinkPicker} onRemove={onRemoveLink} onJump={onJumpLink} />
-          )}
+          <TagEditor tags={item.tags || []} onChange={onTagsChange} />
         </div>
       )}
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.4 }}>

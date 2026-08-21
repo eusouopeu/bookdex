@@ -127,14 +127,13 @@ export const KEYS = {
   theme: "theme",
   gamification: "gamification",
   offlineQueue: "offline-search-queue",
-  notificationsEnabled: "notifications-enabled",
   collections: "collections",
-  suggestions: "related-suggestions",
   prefetchDetails: "prefetch-details-enabled",
   irrelevantItems: "irrelevant-items",
   effectProfiles: "effect-profiles",
   searchEffort: "search-effort",
   words: "saved-words",
+  schemaVersion: "schema-version",
 };
 
 export default { get, set, delete: remove, list, getJSON, setJSON, KEYS };

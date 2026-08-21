@@ -1,0 +1,573 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { slug } from "../theme";
+import { getJSON, setJSON, KEYS } from "../lib/storage";
+import { fetchDetail, hasCredentials } from "../lib/anthropic";
+import { mergeData, mergeCollections } from "../lib/importer";
+import { findSimilarItem } from "../lib/dedupe";
+import { createCollectionId } from "../lib/collections";
+import { wordLangKey, wordItemId } from "../lib/words";
+import { CURRENT_SCHEMA_VERSION, runMigrations } from "../lib/migrations";
+
+/**
+ * Fonte única dos dados capturados (Pokédex, guias, palavras e coleções) e de
+ * todas as operações que os alteram. Antes isso vivia no App.jsx e descia por
+ * ~40 props até as views; agora cada view puxa o que precisa com `useData()`.
+ *
+ * Também é aqui que o schema persistido é migrado, uma vez por abertura, antes
+ * de qualquer render depender do formato dos dados (ver lib/migrations.js).
+ */
+const DataContext = createContext(null);
+
+export function useData() {
+  const ctx = useContext(DataContext);
+  if (!ctx) throw new Error("useData() precisa estar dentro de <DataProvider>");
+  return ctx;
+}
+
+function isKnowledgeGroup(group) {
+  return group.kind === "definition" || group.kind === "list";
+}
+
+function activeCount(list) {
+  return (list || []).filter((it) => !it.archived).length;
+}
+
+export function DataProvider({ children }) {
+  const [saved, setSaved] = useState({});
+  const [detailCache, setDetailCache] = useState({});
+  const [words, setWords] = useState({});
+  const [collections, setCollections] = useState({});
+  const [storageLoaded, setStorageLoaded] = useState(false);
+  const [toast, setToast] = useState(null);
+
+  // Preferência "baixar guias em background" — mora aqui porque só o prefetch
+  // dentro deste provider a consome, e a tela de Configurações só a alterna.
+  const [prefetchDetailsEnabled, setPrefetchDetailsEnabled] = useState(true);
+  const prefetchRef = useRef(true);
+  useEffect(() => {
+    prefetchRef.current = prefetchDetailsEnabled;
+  }, [prefetchDetailsEnabled]);
+
+  function changePrefetchDetails(enabled) {
+    setPrefetchDetailsEnabled(enabled);
+    persist(KEYS.prefetchDetails, enabled);
+  }
+
+  useEffect(() => {
+    (async () => {
+      const loaded = {
+        saved: await getJSON(KEYS.saved, {}),
+        detailCache: await getJSON(KEYS.details, {}),
+        words: await getJSON(KEYS.words, {}),
+        collections: await getJSON(KEYS.collections, {}),
+      };
+      setPrefetchDetailsEnabled(await getJSON(KEYS.prefetchDetails, true));
+      const version = await getJSON(KEYS.schemaVersion, 0);
+      const { data, migrated } = runMigrations(loaded, version);
+      setSaved(data.saved);
+      setDetailCache(data.detailCache);
+      setWords(data.words);
+      setCollections(data.collections);
+      if (migrated) {
+        await Promise.all([
+          setJSON(KEYS.saved, data.saved),
+          setJSON(KEYS.details, data.detailCache),
+          setJSON(KEYS.words, data.words),
+          setJSON(KEYS.collections, data.collections),
+        ]).catch(() => {});
+      }
+      await setJSON(KEYS.schemaVersion, CURRENT_SCHEMA_VERSION).catch(() => {});
+      setStorageLoaded(true);
+    })();
+  }, []);
+
+  const showToast = useCallback((msg, onUndo) => {
+    setToast({ msg, onUndo });
+    setTimeout(() => setToast((t) => (t && t.msg === msg ? null : t)), onUndo ? 4000 : 2200);
+  }, []);
+
+  const dismissToast = useCallback(() => setToast(null), []);
+
+  function persist(key, value) {
+    setJSON(key, value).catch((e) => console.error(`Falha ao gravar ${key}`, e));
+  }
+
+  const persistSaved = (next) => persist(KEYS.saved, next);
+  const persistDetails = (next) => persist(KEYS.details, next);
+  const persistWords = (next) => persist(KEYS.words, next);
+  const persistCollections = (next) => persist(KEYS.collections, next);
+
+  /* ---------------------------------------------------------------- guias */
+
+  function hasDetail(subjectDisplay, technique) {
+    const techId = technique.id || slug(technique.name);
+    return !!detailCache[`${slug(subjectDisplay)}:${techId}`];
+  }
+
+  function cacheDetail(cacheKey, detail) {
+    setDetailCache((prev) => {
+      const next = { ...prev, [cacheKey]: detail };
+      persistDetails(next);
+      return next;
+    });
+  }
+
+  /** Baixa o guia em background assim que uma técnica é capturada. */
+  async function prefetchDetail(subjectDisplay, technique) {
+    if (!prefetchRef.current) return;
+    const cacheKey = `${slug(subjectDisplay)}:${technique.id}`;
+    if (detailCache[cacheKey]) return;
+    if (typeof navigator !== "undefined" && !navigator.onLine) return;
+    if (!(await hasCredentials())) return;
+    try {
+      cacheDetail(cacheKey, await fetchDetail(subjectDisplay, technique));
+    } catch {
+      /* best-effort — dá pra abrir "Aprofundar" manualmente depois */
+    }
+  }
+
+  /* -------------------------------------------------------------- pokédex */
+
+  function isSaved(mode, subjectDisplay, itemId) {
+    if (mode === "technique") {
+      const group = saved[slug(subjectDisplay)];
+      return !!(group && group.techniques.some((t) => t.id === itemId));
+    }
+    const group = saved[`kn:${slug(subjectDisplay)}`];
+    return !!(group && group.items.some((it) => it.id === itemId));
+  }
+
+  function commitSaved(next, message, prevSaved) {
+    setSaved(next);
+    persistSaved(next);
+    if (!message) return;
+    showToast(
+      message,
+      prevSaved
+        ? () => {
+            setSaved(prevSaved);
+            persistSaved(prevSaved);
+          }
+        : undefined
+    );
+  }
+
+  function toggleTechniqueSave(subjectDisplay, technique, statLabels) {
+    const prevSaved = saved;
+    const subjectKey = slug(subjectDisplay);
+    const techId = technique.id || slug(technique.name);
+    const next = { ...saved };
+    const existing = next[subjectKey];
+    const group = existing
+      ? { displayName: existing.displayName, kind: "technique", techniques: [...existing.techniques] }
+      : { displayName: subjectDisplay, kind: "technique", techniques: [] };
+
+    const idx = group.techniques.findIndex((t) => t.id === techId);
+    const removed = idx >= 0;
+    if (removed) {
+      group.techniques.splice(idx, 1);
+    } else {
+      group.techniques.push({
+        id: techId,
+        name: technique.name,
+        type: technique.type,
+        description: technique.description,
+        bestFor: technique.bestFor,
+        stats: technique.stats,
+        statLabels,
+        savedAt: Date.now(),
+        tags: [],
+        note: "",
+      });
+    }
+
+    if (group.techniques.length === 0) delete next[subjectKey];
+    else next[subjectKey] = group;
+
+    if (removed) {
+      commitSaved(next, `${technique.name} solto(a) da Pokédex.`, prevSaved);
+      return;
+    }
+    const dup = findSimilarItem(prevSaved, technique.name);
+    commitSaved(
+      next,
+      dup
+        ? `${technique.name} capturado(a)! Você já tem algo parecido: "${dup.name}" em "${dup.subjectDisplay}".`
+        : `${technique.name} capturado(a)!`
+    );
+    prefetchDetail(subjectDisplay, { ...technique, id: techId });
+  }
+
+  function toggleKnowledgeSave(mode, subjectDisplay, payload) {
+    const prevSaved = saved;
+    const subjectKey = `kn:${slug(subjectDisplay)}`;
+    const next = { ...saved };
+    const existing = next[subjectKey];
+    const group = existing
+      ? { displayName: existing.displayName, kind: mode, items: [...existing.items] }
+      : { displayName: subjectDisplay, kind: mode, items: [] };
+
+    let itemId;
+    let itemName;
+    let itemObj;
+    if (mode === "definition") {
+      const d = payload.definition;
+      itemId = slug(d.term);
+      itemName = d.term;
+      itemObj = {
+        id: itemId,
+        term: d.term,
+        category: d.category,
+        definition: d.definition,
+        keyPoints: d.keyPoints || [],
+        example: d.example || "",
+        relatedTerms: d.relatedTerms || [],
+        savedAt: Date.now(),
+        tags: [],
+        note: "",
+      };
+    } else {
+      const it = payload.item;
+      itemId = slug(it.name);
+      itemName = it.name;
+      itemObj = {
+        id: itemId,
+        name: it.name,
+        category: it.category,
+        description: it.description,
+        savedAt: Date.now(),
+        tags: [],
+        note: "",
+      };
+    }
+
+    const idx = group.items.findIndex((x) => x.id === itemId);
+    const removed = idx >= 0;
+    if (removed) group.items.splice(idx, 1);
+    else group.items.push(itemObj);
+
+    if (group.items.length === 0) delete next[subjectKey];
+    else next[subjectKey] = group;
+
+    if (removed) {
+      commitSaved(next, `${itemName} solto(a) da Pokédex.`, prevSaved);
+      return;
+    }
+    const dup = findSimilarItem(prevSaved, itemName);
+    commitSaved(
+      next,
+      dup ? `${itemName} capturado(a)! Você já tem algo parecido: "${dup.name}" em "${dup.subjectDisplay}".` : `${itemName} capturado(a)!`
+    );
+  }
+
+  function toggleSave(mode, subjectDisplay, payload) {
+    if (mode === "technique") toggleTechniqueSave(subjectDisplay, payload.technique, payload.statLabels);
+    else toggleKnowledgeSave(mode, subjectDisplay, payload);
+  }
+
+  function removeGroup(key) {
+    const group = saved[key];
+    if (!group) return;
+    const next = { ...saved };
+    delete next[key];
+    commitSaved(next, `"${group.displayName}" removido(a) da Pokédex.`, saved);
+  }
+
+  /** Aplica `mutate` a cada item referenciado, devolvendo o novo `saved`. */
+  function mapRefs(base, refs, mutate) {
+    let next = base;
+    for (const { subjectKey, itemId } of refs) {
+      const group = next[subjectKey];
+      if (!group) continue;
+      const knowledge = isKnowledgeGroup(group);
+      const list = knowledge ? group.items : group.techniques;
+      const idx = list.findIndex((it) => it.id === itemId);
+      if (idx === -1) continue;
+      const nextList = [...list];
+      const mutated = mutate(nextList[idx]);
+      if (mutated === null) nextList.splice(idx, 1);
+      else nextList[idx] = mutated;
+      if (nextList.length === 0) {
+        next = { ...next };
+        delete next[subjectKey];
+      } else {
+        next = { ...next, [subjectKey]: knowledge ? { ...group, items: nextList } : { ...group, techniques: nextList } };
+      }
+    }
+    return next;
+  }
+
+  function bulkRemoveItems(refs) {
+    const next = mapRefs(saved, refs, () => null);
+    commitSaved(next, `${refs.length} item(ns) removido(s) da Pokédex.`, saved);
+  }
+
+  function bulkAddTag(refs, tag) {
+    const clean = (tag || "").trim();
+    if (!clean) return;
+    const next = mapRefs(saved, refs, (item) =>
+      (item.tags || []).includes(clean) ? item : { ...item, tags: [...(item.tags || []), clean] }
+    );
+    commitSaved(next, `Tag "${clean}" aplicada a ${refs.length} item(ns).`);
+  }
+
+  function archiveItems(refs, archived) {
+    const next = mapRefs(saved, refs, (item) => ({ ...item, archived }));
+    commitSaved(next, archived ? `${refs.length} item(ns) arquivado(s).` : `${refs.length} item(ns) desarquivado(s).`, saved);
+  }
+
+  function updateItemInGroup(subjectKey, itemId, mutate) {
+    setSaved((prev) => {
+      const next = mapRefs(prev, [{ subjectKey, itemId }], mutate);
+      if (next === prev) return prev;
+      persistSaved(next);
+      return next;
+    });
+  }
+
+  const updateItemTags = (subjectKey, itemId, _kind, tags) =>
+    updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, tags }));
+  const updateItemNote = (subjectKey, itemId, _kind, note) =>
+    updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, note }));
+  const updateItemImages = (subjectKey, itemId, _kind, images) =>
+    updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, images }));
+
+  /* ------------------------------------------------------------- palavras */
+
+  function isWordSaved(languageCode, language, word) {
+    const group = words[wordLangKey(languageCode, language)];
+    return !!(group && group.words.some((w) => w.id === wordItemId(word)));
+  }
+
+  function toggleWordSave(data) {
+    const prevWords = words;
+    const langKey = wordLangKey(data.languageCode, data.language);
+    const wordId = wordItemId(data.word);
+    const next = { ...words };
+    const existing = next[langKey];
+    const group = existing
+      ? { displayName: existing.displayName, words: [...existing.words] }
+      : { displayName: data.language, words: [] };
+
+    const idx = group.words.findIndex((w) => w.id === wordId);
+    const removed = idx >= 0;
+    if (removed) {
+      group.words.splice(idx, 1);
+    } else {
+      group.words.push({
+        id: wordId,
+        word: data.word,
+        language: data.language,
+        languageCode: data.languageCode || "",
+        meaning: data.meaning,
+        pinyin: data.pinyin || "",
+        radical: data.radical || "",
+        characters: data.characters || [],
+        savedAt: Date.now(),
+        tags: [],
+        note: "",
+      });
+    }
+
+    if (group.words.length === 0) delete next[langKey];
+    else next[langKey] = group;
+
+    setWords(next);
+    persistWords(next);
+    showToast(removed ? `"${data.word}" solta(o) das Palavras.` : `"${data.word}" capturada(o)!`, () => {
+      setWords(prevWords);
+      persistWords(prevWords);
+    });
+  }
+
+  function removeWordGroup(langKey) {
+    const prevWords = words;
+    const group = words[langKey];
+    if (!group) return;
+    const next = { ...words };
+    delete next[langKey];
+    setWords(next);
+    persistWords(next);
+    showToast(`"${group.displayName}" removido(a) das Palavras.`, () => {
+      setWords(prevWords);
+      persistWords(prevWords);
+    });
+  }
+
+  function updateWordInGroup(langKey, wordId, mutate) {
+    setWords((prev) => {
+      const group = prev[langKey];
+      if (!group) return prev;
+      const idx = group.words.findIndex((w) => w.id === wordId);
+      if (idx === -1) return prev;
+      const nextList = [...group.words];
+      nextList[idx] = mutate(nextList[idx]);
+      const next = { ...prev, [langKey]: { ...group, words: nextList } };
+      persistWords(next);
+      return next;
+    });
+  }
+
+  const updateWordTags = (langKey, wordId, tags) => updateWordInGroup(langKey, wordId, (w) => ({ ...w, tags }));
+  const updateWordNote = (langKey, wordId, note) => updateWordInGroup(langKey, wordId, (w) => ({ ...w, note }));
+
+  /** Componente semântico/fonético identificado sob demanda pra UM hanzi. */
+  function updateWordCharacterComponent(langKey, wordId, charIndex, kind, result) {
+    updateWordInGroup(langKey, wordId, (w) => {
+      const characters = [...(w.characters || [])];
+      if (!characters[charIndex]) return w;
+      characters[charIndex] = {
+        ...characters[charIndex],
+        ...(kind === "semantic"
+          ? { semanticComponent: result.component || "—" }
+          : { phoneticComponent: result.component || "—", phoneticComponentPinyin: result.pinyin || "" }),
+      };
+      return { ...w, characters };
+    });
+  }
+
+  /* ------------------------------------------------------------- coleções */
+
+  function createCollection(name) {
+    const clean = (name || "").trim();
+    if (!clean) return null;
+    const id = createCollectionId();
+    setCollections((prev) => {
+      const next = { ...prev, [id]: { id, name: clean, createdAt: Date.now(), refs: [] } };
+      persistCollections(next);
+      return next;
+    });
+    showToast(`Coleção "${clean}" criada.`);
+    return id;
+  }
+
+  function deleteCollection(id) {
+    setCollections((prev) => {
+      const col = prev[id];
+      if (!col) return prev;
+      const next = { ...prev };
+      delete next[id];
+      persistCollections(next);
+      showToast(`Coleção "${col.name}" excluída.`);
+      return next;
+    });
+  }
+
+  function addToCollection(collectionId, refs, newName) {
+    setCollections((prev) => {
+      let id = collectionId;
+      let next = prev;
+      if (!id) {
+        const clean = (newName || "").trim();
+        if (!clean) return prev;
+        id = createCollectionId();
+        next = { ...prev, [id]: { id, name: clean, createdAt: Date.now(), refs: [] } };
+      }
+      const col = next[id];
+      if (!col) return prev;
+      const existingKeys = new Set(col.refs.map((r) => `${r.subjectKey}:${r.itemId}`));
+      const merged = [...col.refs];
+      for (const r of refs) {
+        const k = `${r.subjectKey}:${r.itemId}`;
+        if (!existingKeys.has(k)) {
+          merged.push(r);
+          existingKeys.add(k);
+        }
+      }
+      next = { ...next, [id]: { ...col, refs: merged } };
+      persistCollections(next);
+      showToast(`${refs.length} item(ns) adicionado(s) a "${col.name}".`);
+      return next;
+    });
+  }
+
+  function removeFromCollection(collectionId, ref) {
+    setCollections((prev) => {
+      const col = prev[collectionId];
+      if (!col) return prev;
+      const next = {
+        ...prev,
+        [collectionId]: {
+          ...col,
+          refs: col.refs.filter((r) => !(r.subjectKey === ref.subjectKey && r.itemId === ref.itemId)),
+        },
+      };
+      persistCollections(next);
+      return next;
+    });
+  }
+
+  /* ------------------------------------------------------------ importação */
+
+  function applyImport(payload) {
+    const { saved: mergedSaved, detailCache: mergedDetails, stats } = mergeData(saved, detailCache, payload);
+    const migrated = runMigrations({ saved: mergedSaved, detailCache: mergedDetails, words, collections }, 0).data;
+    setSaved(migrated.saved);
+    setDetailCache(migrated.detailCache);
+    persistSaved(migrated.saved);
+    persistDetails(migrated.detailCache);
+
+    let collectionStats = { newCollections: 0, updatedCollections: 0 };
+    if (payload.collections) {
+      const { collections: mergedCollections, stats: cStats } = mergeCollections(collections, payload.collections);
+      setCollections(mergedCollections);
+      persistCollections(mergedCollections);
+      collectionStats = cStats;
+    }
+
+    showToast("Dados importados!");
+    return { ...stats, ...collectionStats };
+  }
+
+  /* -------------------------------------------------------------- derivados */
+
+  const counts = useMemo(() => {
+    const groups = Object.values(saved);
+    return {
+      total: groups.reduce((sum, g) => sum + activeCount(isKnowledgeGroup(g) ? g.items : g.techniques), 0),
+      techniques: groups.reduce((sum, g) => sum + (isKnowledgeGroup(g) ? 0 : activeCount(g.techniques)), 0),
+      knowledge: groups.reduce((sum, g) => sum + (isKnowledgeGroup(g) ? activeCount(g.items) : 0), 0),
+      subjects: groups.length,
+      collections: Object.keys(collections || {}).length,
+      words: Object.values(words || {}).reduce((sum, g) => sum + g.words.length, 0),
+    };
+  }, [saved, collections, words]);
+
+  const value = {
+    saved,
+    detailCache,
+    words,
+    collections,
+    storageLoaded,
+    counts,
+    prefetchDetailsEnabled,
+    changePrefetchDetails,
+    toast,
+    showToast,
+    dismissToast,
+    hasDetail,
+    cacheDetail,
+    isSaved,
+    toggleSave,
+    removeGroup,
+    bulkRemoveItems,
+    bulkAddTag,
+    archiveItems,
+    updateItemTags,
+    updateItemNote,
+    updateItemImages,
+    isWordSaved,
+    toggleWordSave,
+    removeWordGroup,
+    updateWordTags,
+    updateWordNote,
+    updateWordCharacterComponent,
+    createCollection,
+    deleteCollection,
+    addToCollection,
+    removeFromCollection,
+    applyImport,
+  };
+
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
+}

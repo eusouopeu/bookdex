@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeUnlocked, initGamificationState, recordReviewCompleted, recordVisit } from "./gamification";
+import { computeUnlocked, initGamificationState, recordVisit } from "./gamification";
 
 const DAY_MS = 86400000;
 
@@ -38,20 +38,13 @@ describe("gamification", () => {
     expect(state.longestStreak).toBe(2);
   });
 
-  it("recordReviewCompleted increments the counter, defaulting from null state", () => {
-    let state = recordReviewCompleted(null);
-    expect(state.reviewsCompleted).toBe(1);
-    state = recordReviewCompleted(state);
-    expect(state.reviewsCompleted).toBe(2);
-  });
 
   it("computeUnlocked only unlocks achievements whose thresholds are met", () => {
-    const state = { ...initGamificationState(), streak: 3, reviewsCompleted: 0 };
+    const state = { ...initGamificationState(), streak: 3 };
     const unlocked = computeUnlocked(state, 1);
     expect(unlocked).toContain("first-capture");
     expect(unlocked).toContain("streak-3");
     expect(unlocked).not.toContain("streak-7");
     expect(unlocked).not.toContain("collector-10");
-    expect(unlocked).not.toContain("reviewer-10");
   });
 });

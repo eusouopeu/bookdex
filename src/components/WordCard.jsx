@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Volume2 } from "lucide-react";
 import { COLORS } from "../theme";
 import { isMandarin } from "../lib/words";
 import { fetchHanziComponent, MissingApiKeyError } from "../lib/anthropic";
@@ -9,6 +9,7 @@ import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
 import WordEtymology from "./WordEtymology";
 import { wordCardPdfBlob } from "../lib/cardPdf";
+import { isSpeechSupported, speak } from "../lib/speech";
 
 const SEMANTIC_COLOR = { bg: "rgba(106,153,85,0.15)", border: "#6A9955" };
 const PHONETIC_COLOR = { bg: "rgba(142,124,195,0.15)", border: "#8E7CC3" };
@@ -84,6 +85,20 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
   const [overrides, setOverrides] = useState({}); // { [index]: { semanticComponent, phoneticComponent, phoneticComponentPinyin } }
   const [loadingKey, setLoadingKey] = useState(null); // "<index>-<kind>"
   const [componentError, setComponentError] = useState(null);
+  const [speechError, setSpeechError] = useState(null);
+  const speechSupported = isSpeechSupported();
+
+  /** Fala a palavra (ou um hanzi) no idioma do card, usando a voz do sistema. */
+  function pronounce(text) {
+    const result = speak(text, data.languageCode || data.language);
+    setSpeechError(
+      result === "unsupported"
+        ? "Este dispositivo não tem síntese de voz."
+        : result === "no-voice"
+          ? `Nenhuma voz de ${data.language} instalada neste dispositivo.`
+          : null
+    );
+  }
 
   const characters = baseCharacters.map((c, i) => ({ ...c, ...(overrides[i] || {}) }));
   const isCompound = characters.length > 1;
@@ -181,6 +196,24 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
           )}
         </div>
         <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
+          {speechSupported && (
+            <button
+              onClick={() => pronounce(data.word)}
+              aria-label={`Ouvir a pronúncia de ${data.word}`}
+              title="Ouvir a pronúncia"
+              style={{
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: "9px",
+                margin: "-9px",
+                flexShrink: 0,
+                color: COLORS.screenBorder,
+              }}
+            >
+              <Volume2 size={16} />
+            </button>
+          )}
           <ShareButton title={data.word} render={() => wordCardPdfBlob({ ...data, characters })} />
           {onToggle && (
             <button
@@ -275,7 +308,19 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
                       <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text)" }}>— {c.meaning}</span>
                     )}
                   </div>
-                  {sfButtons(i, c)}
+                  <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
+                    {speechSupported && (
+                      <button
+                        onClick={() => pronounce(c.hanzi)}
+                        aria-label={`Ouvir a pronúncia de ${c.hanzi}`}
+                        title="Ouvir a pronúncia"
+                        style={{ ...sfButtonStyle(COLORS.screenBorder, false), color: COLORS.screenBorder }}
+                      >
+                        <Volume2 size={11} />
+                      </button>
+                    )}
+                    {sfButtons(i, c)}
+                  </div>
                 </div>
                 {(c.semanticComponent || c.phoneticComponent) && (
                   <div className="flex" style={{ flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
@@ -287,6 +332,10 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
             ))}
           </div>
         </div>
+      )}
+
+      {speechError && (
+        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px" }}>{speechError}</p>
       )}
 
       {componentError && (

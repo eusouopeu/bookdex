@@ -55,4 +55,11 @@ export default defineConfig({
     outDir: "dist",
     sourcemap: false,
   },
+  test: {
+    // Testes de lib rodam em Node; os de view precisam de DOM. `jsdom` como
+    // ambiente padrão cobre os dois casos sem anotação por arquivo.
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.js"],
+    globals: false,
+  },
 });

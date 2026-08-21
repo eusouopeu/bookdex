@@ -5,7 +5,6 @@ import StatBar from "./StatBar";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
-import LinksEditor from "./LinksEditor";
 import { techniqueCardPdfBlob } from "../lib/cardPdf";
 
 export default function TechCard({
@@ -22,10 +21,6 @@ export default function TechCard({
   selectable,
   selected,
   onSelectToggle,
-  links,
-  onOpenLinkPicker,
-  onRemoveLink,
-  onJumpLink,
   irrelevant,
   onMarkIrrelevant,
 }) {
@@ -53,7 +48,7 @@ export default function TechCard({
               onChange={onSelectToggle}
               onClick={(e) => e.stopPropagation()}
               style={{ width: "18px", height: "18px", marginTop: "3px", flexShrink: 0 }}
-              aria-label={`Selecionar ${technique.name} para comparar`}
+              aria-label={`Selecionar ${technique.name}`}
             />
           )}
           <div>
@@ -130,12 +125,9 @@ export default function TechCard({
           </div>
         )}
       </div>
-      {(onTagsChange || onOpenLinkPicker) && (
+      {onTagsChange && (
         <div style={{ marginBottom: "4px" }}>
-          {onTagsChange && <TagEditor tags={technique.tags || []} onChange={onTagsChange} />}
-          {onOpenLinkPicker && (
-            <LinksEditor links={links || []} onOpenPicker={onOpenLinkPicker} onRemove={onRemoveLink} onJump={onJumpLink} />
-          )}
+          <TagEditor tags={technique.tags || []} onChange={onTagsChange} />
         </div>
       )}
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.4, marginBottom: "9px" }}>

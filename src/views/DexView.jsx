@@ -19,15 +19,13 @@ import {
 } from "lucide-react";
 import { COLORS, slug } from "../theme";
 import { getJSON, KEYS } from "../lib/storage";
-import { listAllItems, resolveLinks } from "../lib/links";
 import TechCard from "../components/TechCard";
 import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
 import CollectionPicker from "../components/CollectionPicker";
 import CollectionsSection from "../components/CollectionsSection";
-import RelatedSuggestions from "../components/RelatedSuggestions";
-import LinkPicker from "../components/LinkPicker";
 import WordsView from "./WordsView";
+import { useData } from "../state/DataContext";
 
 const BACKUP_REMINDER_DAYS = 14;
 const CONFIRM_THRESHOLD = 3; // grupos com mais itens do que isso pedem confirmação antes de apagar
@@ -58,51 +56,40 @@ function badgeStyle(active) {
 }
 
 export default function DexView({
-  saved,
-  detailCache,
-  storageLoaded,
   category,
   onCategoryChange,
-  onToggleSave,
   onOpenDetail,
-  hasDetail,
   onOpenImport,
-  onRemoveGroup,
-  onUpdateTags,
-  onUpdateNote,
-  onUpdateImages,
-  onLinkItems,
-  onUnlinkItems,
   onSearchRelated,
   onExampleSearch,
   onOpenCompare,
-  onBulkRemoveItems,
-  onBulkAddTag,
-  onArchiveItems,
   showArchived,
   onToggleShowArchived,
-  collections,
-  onCreateCollection,
-  onDeleteCollection,
-  onAddToCollection,
-  onRemoveFromCollection,
-  suggestions,
-  suggestionsLoading,
-  suggestionsError,
-  onGenerateSuggestions,
-  words,
-  onToggleWord,
-  isWordSaved,
-  onRemoveWordGroup,
-  onUpdateWordTags,
-  onUpdateWordNote,
-  onUpdateWordCharacterComponent,
   searchEffort,
 }) {
+  const {
+    saved,
+    detailCache,
+    collections,
+    storageLoaded,
+    hasDetail,
+    toggleSave: onToggleSave,
+    removeGroup: onRemoveGroup,
+    updateItemTags: onUpdateTags,
+    updateItemNote: onUpdateNote,
+    updateItemImages: onUpdateImages,
+    bulkRemoveItems: onBulkRemoveItems,
+    bulkAddTag: onBulkAddTag,
+    archiveItems: onArchiveItems,
+    createCollection: onCreateCollection,
+    deleteCollection: onDeleteCollection,
+    addToCollection: onAddToCollection,
+    removeFromCollection: onRemoveFromCollection,
+  } = useData();
   const [collapsed, setCollapsed] = useState({});
   const [filterText, setFilterText] = useState("");
   const [activeTag, setActiveTag] = useState(null);
-  const [sortBy, setSortBy] = useState("recent"); // "recent" | "name" | "review"
+  const [sortBy, setSortBy] = useState("recent"); // "recent" | "name"
   const [lastBackup, setLastBackup] = useState(undefined); // undefined = ainda não carregado
   const [bannerDismissed, setBannerDismissed] = useState(false);
   const [compareMode, setCompareMode] = useState(false);
@@ -113,7 +100,6 @@ export default function DexView({
   const [bulkTagDraft, setBulkTagDraft] = useState("");
   const [confirmingBulkDelete, setConfirmingBulkDelete] = useState(false);
   const [pickingCollection, setPickingCollection] = useState(false);
-  const [linkPickerFor, setLinkPickerFor] = useState(null); // { subjectKey, itemId, kind } aguardando escolha
 
   useEffect(() => {
     (async () => {
@@ -213,12 +199,6 @@ export default function DexView({
     const copy = [...list];
     if (sortBy === "name") {
       copy.sort((a, b) => a[1].displayName.localeCompare(b[1].displayName, "pt-BR"));
-    } else if (sortBy === "review") {
-      copy.sort((a, b) => {
-        const aMin = Math.min(...groupItems(a[1]).map((it) => (it.reviewState ? it.reviewState.nextReviewAt : 0)));
-        const bMin = Math.min(...groupItems(b[1]).map((it) => (it.reviewState ? it.reviewState.nextReviewAt : 0)));
-        return aMin - bMin;
-      });
     } else {
       copy.sort((a, b) => {
         const aMax = Math.max(0, ...groupItems(a[1]).map((it) => it.savedAt || 0));
@@ -233,33 +213,27 @@ export default function DexView({
     setCollapsed((c) => ({ ...c, [key]: !c[key] }));
   }
 
-  function wrapSelectable(subjectKey, itemId, cardElement) {
-    if (!selectMode) return cardElement;
-    const isSelected = bulkSelection.some((s) => s.subjectKey === subjectKey && s.itemId === itemId);
-    return (
-      <div key={itemId} style={{ position: "relative", marginBottom: "10px" }} onClick={() => toggleBulkItem(subjectKey, itemId)}>
-        <div
-          aria-hidden="true"
-          style={{
-            position: "absolute",
-            top: "10px",
-            left: "10px",
-            zIndex: 2,
-            width: "20px",
-            height: "20px",
-            borderRadius: "5px",
-            border: `2px solid ${isSelected ? COLORS.lensBlue : COLORS.screenBorder}`,
-            background: isSelected ? COLORS.lensBlue : COLORS.surface,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {isSelected && <Check size={13} color="#fff" strokeWidth={3} />}
-        </div>
-        <div style={{ pointerEvents: "none", marginBottom: 0 }}>{cardElement}</div>
-      </div>
-    );
+  /**
+   * Props de seleção do card. Os dois modos (comparar e selecionar em massa)
+   * usam a MESMA aparência: checkbox dentro do card + borda destacada.
+   */
+  function selectionProps(subjectKey, itemId, subjectDisplay, technique) {
+    if (compareMode) {
+      if (!technique) return {};
+      return {
+        selectable: true,
+        selected: compareSelection.some((c) => c.subjectKey === subjectKey && c.id === itemId),
+        onSelectToggle: () => toggleCompareSelection(subjectKey, subjectDisplay, technique),
+      };
+    }
+    if (selectMode) {
+      return {
+        selectable: true,
+        selected: bulkSelection.some((b) => b.subjectKey === subjectKey && b.itemId === itemId),
+        onSelectToggle: () => toggleBulkItem(subjectKey, itemId),
+      };
+    }
+    return {};
   }
 
   function requestRemoveGroup(key, count) {
@@ -339,25 +313,6 @@ export default function DexView({
       onAddToCollection(null, bulkSelection, newName);
     }
     setPickingCollection(false);
-    exitSelectMode();
-  }
-
-  function openLinkPicker(subjectKey, itemId, kind) {
-    setLinkPickerFor({ subjectKey, itemId, kind });
-  }
-
-  function pickLinkTarget(target) {
-    if (!linkPickerFor || !onLinkItems) return;
-    onLinkItems(linkPickerFor, { subjectKey: target.subjectKey, itemId: target.itemId, kind: target.kind });
-    setLinkPickerFor(null);
-  }
-
-  function jumpToLink(link) {
-    onCategoryChange(link.kind === "definition" || link.kind === "list" ? "knowledge" : "technique");
-    setFilterText(link.label);
-    setActiveTag(null);
-    setCollapsed((c) => ({ ...c, [link.subjectKey]: false }));
-    exitCompareMode();
     exitSelectMode();
   }
 
@@ -466,16 +421,6 @@ export default function DexView({
         </div>
       )}
 
-      {onGenerateSuggestions && (
-        <RelatedSuggestions
-          suggestions={suggestions || []}
-          loading={!!suggestionsLoading}
-          error={suggestionsError}
-          onGenerate={onGenerateSuggestions}
-          onPick={(mode, term) => onSearchRelated && onSearchRelated(mode, term)}
-        />
-      )}
-
       {category === "collections" ? (
         <CollectionsSection
           collections={collections}
@@ -494,17 +439,7 @@ export default function DexView({
           onSearchRelated={onSearchRelated}
         />
       ) : category === "words" ? (
-        <WordsView
-          words={words}
-          storageLoaded={storageLoaded}
-          searchEffort={searchEffort}
-          onToggleWord={onToggleWord}
-          isWordSaved={isWordSaved}
-          onRemoveGroup={onRemoveWordGroup}
-          onUpdateTags={onUpdateWordTags}
-          onUpdateNote={onUpdateWordNote}
-          onUpdateCharacterComponent={onUpdateWordCharacterComponent}
-        />
+        <WordsView searchEffort={searchEffort} />
       ) : (
         <>
       {showArchived && (
@@ -520,8 +455,7 @@ export default function DexView({
             color: COLORS.ink,
           }}
         >
-          Mostrando itens arquivados — eles não aparecem na Pokédex ativa nem contam pra revisão, mas continuam no
-          backup/export.
+          Mostrando itens arquivados — eles não aparecem na Pokédex ativa, mas continuam no backup/export.
         </div>
       )}
 
@@ -636,7 +570,6 @@ export default function DexView({
           >
             <option value="recent">Recentes</option>
             <option value="name">Nome</option>
-            <option value="review">Próxima revisão</option>
           </select>
         </div>
 
@@ -822,76 +755,52 @@ export default function DexView({
               )}
             </div>
             {open && !isKnowledge &&
-              group.techniques.map((t, i) =>
-                wrapSelectable(
-                  key,
-                  t.id,
-                  <TechCard
-                    key={t.id}
-                    index={i}
-                    subjectDisplay={group.displayName}
-                    technique={t}
-                    statLabels={t.statLabels || []}
-                    saved={true}
-                    onToggle={() => onToggleSave("technique", group.displayName, { technique: t, statLabels: t.statLabels })}
-                    onOpenDetail={compareMode ? undefined : () => onOpenDetail(group.displayName, t)}
-                    hasDetail={hasDetail ? hasDetail(group.displayName, t) : false}
-                    onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, t.id, group.kind || "technique", tags) : undefined}
-                    onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, t.id, group.kind || "technique", note) : undefined}
-                    onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, t.id, group.kind || "technique", images) : undefined}
-                    links={resolveLinks(saved, t.links)}
-                    onOpenLinkPicker={onLinkItems ? () => openLinkPicker(key, t.id, "technique") : undefined}
-                    onRemoveLink={onUnlinkItems ? (l) => onUnlinkItems({ subjectKey: key, itemId: t.id, kind: "technique" }, l) : undefined}
-                    onJumpLink={jumpToLink}
-                    selectable={compareMode}
-                    selected={compareSelection.some((c) => c.subjectKey === key && c.id === t.id)}
-                    onSelectToggle={() => toggleCompareSelection(key, group.displayName, t)}
-                  />
-                )
-              )}
+              group.techniques.map((t, i) => (
+                <TechCard
+                  key={t.id}
+                  index={i}
+                  subjectDisplay={group.displayName}
+                  technique={t}
+                  statLabels={t.statLabels || []}
+                  saved={true}
+                  onToggle={() => onToggleSave("technique", group.displayName, { technique: t, statLabels: t.statLabels })}
+                  onOpenDetail={compareMode || selectMode ? undefined : () => onOpenDetail(group.displayName, t)}
+                  hasDetail={hasDetail ? hasDetail(group.displayName, t) : false}
+                  onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, t.id, group.kind || "technique", tags) : undefined}
+                  onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, t.id, group.kind || "technique", note) : undefined}
+                  onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, t.id, group.kind || "technique", images) : undefined}
+                  {...selectionProps(key, t.id, group.displayName, t)}
+                />
+              ))}
             {open && group.kind === "definition" &&
-              group.items.map((d) =>
-                wrapSelectable(
-                  key,
-                  d.id,
-                  <DefinitionCard
-                    key={d.id}
-                    definition={d}
-                    saved={true}
-                    onToggle={() => onToggleSave("definition", group.displayName, { definition: d })}
-                    onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, d.id, "definition", tags) : undefined}
-                    onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, d.id, "definition", note) : undefined}
-                    onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, d.id, "definition", images) : undefined}
-                    onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
-                    links={resolveLinks(saved, d.links)}
-                    onOpenLinkPicker={onLinkItems ? () => openLinkPicker(key, d.id, "definition") : undefined}
-                    onRemoveLink={onUnlinkItems ? (l) => onUnlinkItems({ subjectKey: key, itemId: d.id, kind: "definition" }, l) : undefined}
-                    onJumpLink={jumpToLink}
-                  />
-                )
-              )}
+              group.items.map((d) => (
+                <DefinitionCard
+                  key={d.id}
+                  definition={d}
+                  saved={true}
+                  onToggle={() => onToggleSave("definition", group.displayName, { definition: d })}
+                  onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, d.id, "definition", tags) : undefined}
+                  onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, d.id, "definition", note) : undefined}
+                  onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, d.id, "definition", images) : undefined}
+                  onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
+                  {...selectionProps(key, d.id)}
+                />
+              ))}
             {open && group.kind === "list" &&
-              group.items.map((it, i) =>
-                wrapSelectable(
-                  key,
-                  it.id,
-                  <ListItemCard
-                    key={it.id}
-                    index={i}
-                    subjectDisplay={group.displayName}
-                    item={it}
-                    saved={true}
-                    onToggle={() => onToggleSave("list", group.displayName, { item: it })}
-                    onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, it.id, "list", tags) : undefined}
-                    onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, it.id, "list", note) : undefined}
-                    onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, it.id, "list", images) : undefined}
-                    links={resolveLinks(saved, it.links)}
-                    onOpenLinkPicker={onLinkItems ? () => openLinkPicker(key, it.id, "list") : undefined}
-                    onRemoveLink={onUnlinkItems ? (l) => onUnlinkItems({ subjectKey: key, itemId: it.id, kind: "list" }, l) : undefined}
-                    onJumpLink={jumpToLink}
-                  />
-                )
-              )}
+              group.items.map((it, i) => (
+                <ListItemCard
+                  key={it.id}
+                  index={i}
+                  subjectDisplay={group.displayName}
+                  item={it}
+                  saved={true}
+                  onToggle={() => onToggleSave("list", group.displayName, { item: it })}
+                  onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, it.id, "list", tags) : undefined}
+                  onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, it.id, "list", note) : undefined}
+                  onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, it.id, "list", images) : undefined}
+                  {...selectionProps(key, it.id)}
+                />
+              ))}
           </div>
         );
       })}
@@ -962,8 +871,8 @@ export default function DexView({
             style={{
               background: COLORS.surface,
               border: `2px solid ${COLORS.screenBorder}`,
-              borderRadius: "999px",
-              padding: "6px 8px 6px 14px",
+              borderRadius: "10px",
+              padding: "8px 10px",
               boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
               flexWrap: "wrap",
               justifyContent: "center",
@@ -978,7 +887,7 @@ export default function DexView({
               placeholder="tag..."
               style={{
                 width: "80px",
-                borderRadius: "999px",
+                borderRadius: "8px",
                 border: `1.5px solid ${COLORS.screenBorder}`,
                 padding: "5px 10px",
                 fontFamily: '"JetBrains Mono", monospace',
@@ -993,7 +902,7 @@ export default function DexView({
                 background: COLORS.lensBlue,
                 color: "#fff",
                 border: "none",
-                borderRadius: "999px",
+                borderRadius: "8px",
                 padding: "7px 12px",
                 fontFamily: '"Baloo 2", sans-serif',
                 fontWeight: 700,
@@ -1013,7 +922,7 @@ export default function DexView({
                   background: "transparent",
                   color: COLORS.ink,
                   border: `1.5px solid ${COLORS.screenBorder}`,
-                  borderRadius: "999px",
+                  borderRadius: "8px",
                   padding: "7px 12px",
                   fontFamily: '"Baloo 2", sans-serif',
                   fontWeight: 700,
@@ -1035,7 +944,7 @@ export default function DexView({
                   background: "transparent",
                   color: COLORS.ink,
                   border: `1.5px solid ${COLORS.screenBorder}`,
-                  borderRadius: "999px",
+                  borderRadius: "8px",
                   padding: "7px 12px",
                   fontFamily: '"Baloo 2", sans-serif',
                   fontWeight: 700,
@@ -1055,7 +964,7 @@ export default function DexView({
                 background: "var(--danger)",
                 color: "#fff",
                 border: "none",
-                borderRadius: "999px",
+                borderRadius: "8px",
                 padding: "7px 12px",
                 fontFamily: '"Baloo 2", sans-serif',
                 fontWeight: 700,
@@ -1073,7 +982,7 @@ export default function DexView({
                 background: "#23291F",
                 color: "#fff",
                 border: "none",
-                borderRadius: "999px",
+                borderRadius: "8px",
                 padding: "7px 12px",
                 fontFamily: '"Baloo 2", sans-serif',
                 fontWeight: 700,
@@ -1097,23 +1006,7 @@ export default function DexView({
         />
       )}
 
-      {linkPickerFor && (
-        <LinkPicker
-          items={linkableItemsFor(linkPickerFor)}
-          onPick={pickLinkTarget}
-          onClose={() => setLinkPickerFor(null)}
-        />
-      )}
     </>
   );
 
-  function linkableItemsFor(ref) {
-    const group = saved[ref.subjectKey];
-    const list = group ? (group.kind === "definition" || group.kind === "list" ? group.items : group.techniques) : [];
-    const current = list.find((it) => it.id === ref.itemId);
-    const alreadyLinked = new Set((current?.links || []).map((l) => `${l.subjectKey}:${l.itemId}`));
-    return listAllItems(saved).filter(
-      (it) => !(it.subjectKey === ref.subjectKey && it.itemId === ref.itemId) && !alreadyLinked.has(`${it.subjectKey}:${it.itemId}`)
-    );
-  }
 }

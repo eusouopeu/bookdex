@@ -3,7 +3,6 @@ import PokeballIcon from "./PokeballIcon";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
-import LinksEditor from "./LinksEditor";
 import ConceptExpand from "./ConceptExpand";
 import DeepDiveIconButton from "./DeepDiveIconButton";
 import { useConceptDeepDive } from "../lib/hooks";
@@ -21,23 +20,36 @@ export default function DefinitionCard({
   onNoteChange,
   onSearchRelated,
   onAddRelatedCard,
-  links,
-  onOpenLinkPicker,
-  onRemoveLink,
-  onJumpLink,
+  selectable,
+  selected,
+  onSelectToggle,
 }) {
   const deepDive = useConceptDeepDive(definition.term, definition.category, definition.definition);
   return (
     <div
+      onClick={selectable ? onSelectToggle : undefined}
       style={{
         background: COLORS.surface,
-        border: `2px solid ${COLORS.screenBorder}`,
+        border: `2px solid ${selectable && selected ? COLORS.lensBlue : COLORS.screenBorder}`,
         borderRadius: "10px",
         padding: "14px",
+        cursor: selectable ? "pointer" : "default",
+        boxShadow: selectable && selected ? `0 0 0 2px ${COLORS.lensBlue} inset` : "none",
       }}
     >
       <div className="flex items-start justify-between gap-2 mb-1">
-        <div>
+        <div className="flex items-start gap-2">
+          {selectable && (
+            <input
+              type="checkbox"
+              checked={!!selected}
+              onChange={onSelectToggle}
+              onClick={(e) => e.stopPropagation()}
+              style={{ width: "18px", height: "18px", marginTop: "6px", flexShrink: 0 }}
+              aria-label={`Selecionar ${definition.term}`}
+            />
+          )}
+          <div>
           <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "var(--text-faint)" }}>
             CONCEITO
           </div>
@@ -53,7 +65,9 @@ export default function DefinitionCard({
           >
             {definition.term}
           </h3>
+          </div>
         </div>
+        {!selectable && (
         <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
           <ShareButton title={definition.term} render={() => definitionCardPdfBlob(definition)} />
           <DeepDiveIconButton hasContent={!!deepDive.data} loading={deepDive.loading} onClick={deepDive.toggle} />
@@ -72,13 +86,11 @@ export default function DefinitionCard({
             <PokeballIcon filled={saved} size={26} />
           </button>
         </div>
+        )}
       </div>
-      {(onTagsChange || onOpenLinkPicker) && (
+      {onTagsChange && (
         <div style={{ marginBottom: "4px" }}>
-          {onTagsChange && <TagEditor tags={definition.tags || []} onChange={onTagsChange} />}
-          {onOpenLinkPicker && (
-            <LinksEditor links={links || []} onOpenPicker={onOpenLinkPicker} onRemove={onRemoveLink} onJump={onJumpLink} />
-          )}
+          <TagEditor tags={definition.tags || []} onChange={onTagsChange} />
         </div>
       )}
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.45, marginBottom: "12px" }}>

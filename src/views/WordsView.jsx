@@ -5,6 +5,7 @@ import { fetchWord, MissingApiKeyError } from "../lib/anthropic";
 import { findSavedWord, wordLangKey } from "../lib/words";
 import WordCard from "../components/WordCard";
 import SkeletonList from "../components/Skeleton";
+import { useData } from "../state/DataContext";
 
 const CONFIRM_THRESHOLD = 3;
 
@@ -14,17 +15,17 @@ const CONFIRM_THRESHOLD = 3;
  * salva e, só se não achar nada, pergunta pra API. Palavras capturadas ficam
  * organizadas em pastas por idioma.
  */
-export default function WordsView({
-  words,
-  storageLoaded,
-  searchEffort,
-  onToggleWord,
-  isWordSaved,
-  onRemoveGroup,
-  onUpdateTags,
-  onUpdateNote,
-  onUpdateCharacterComponent,
-}) {
+export default function WordsView({ searchEffort }) {
+  const {
+    words,
+    storageLoaded,
+    toggleWordSave: onToggleWord,
+    isWordSaved,
+    removeWordGroup: onRemoveGroup,
+    updateWordTags: onUpdateTags,
+    updateWordNote: onUpdateNote,
+    updateWordCharacterComponent: onUpdateCharacterComponent,
+  } = useData();
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);

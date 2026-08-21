@@ -10,8 +10,10 @@ import { buildAnkiCsv, countAnkiRows } from "../lib/ankiExport";
 import { buildPokedexMarkdown, countMarkdownItems } from "../lib/markdownExport";
 import { shareOrDownloadFile } from "../lib/share";
 import QRScanner from "../components/QRScanner";
+import { useData } from "../state/DataContext";
 
-export default function ImportView({ onBack, onImport, saved, detailCache, collections }) {
+export default function ImportView({ onBack }) {
+  const { saved, detailCache, collections, applyImport } = useData();
   const [text, setText] = useState("");
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -43,7 +45,7 @@ export default function ImportView({ onBack, onImport, saved, detailCache, colle
 
   function confirmImport() {
     if (!pending) return;
-    const stats = onImport(pending.payload);
+    const stats = applyImport(pending.payload);
     setSummary(stats);
     setPending(null);
     setText("");

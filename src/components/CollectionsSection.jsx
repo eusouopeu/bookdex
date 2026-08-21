@@ -12,8 +12,7 @@ import {
   Tag,
   ArrowDownAZ,
   Clock,
-  CalendarClock,
-} from "lucide-react";
+  } from "lucide-react";
 import { COLORS, slug } from "../theme";
 import { resolveCollectionItems, refKey } from "../lib/collections";
 import { buildCollectionExportPayload } from "../lib/importer";
@@ -57,7 +56,7 @@ export default function CollectionsSection({
   const [qrModal, setQrModal] = useState(null); // { title, dataUrl }
   const [filterText, setFilterText] = useState("");
   const [activeTag, setActiveTag] = useState(null);
-  const [sortBy, setSortBy] = useState("recent"); // "recent" | "name" | "review"
+  const [sortBy, setSortBy] = useState("recent"); // "recent" | "name"
 
   const list = Object.values(collections || {}).sort((a, b) => b.createdAt - a.createdAt);
 
@@ -88,8 +87,6 @@ export default function CollectionsSection({
     const copy = [...filtered];
     if (sortBy === "name") {
       copy.sort((a, b) => (a.item.term || a.item.name || "").localeCompare(b.item.term || b.item.name || "", "pt-BR"));
-    } else if (sortBy === "review") {
-      copy.sort((a, b) => (a.item.reviewState?.nextReviewAt || 0) - (b.item.reviewState?.nextReviewAt || 0));
     } else {
       copy.sort((a, b) => (b.item.savedAt || 0) - (a.item.savedAt || 0));
     }
@@ -383,23 +380,6 @@ export default function CollectionsSection({
               }}
             >
               <ArrowDownAZ size={11} /> Nome
-            </button>
-            <button
-              onClick={() => setSortBy("review")}
-              className="flex items-center gap-1"
-              style={{
-                padding: "5px 10px",
-                borderRadius: "999px",
-                border: `1.5px solid ${COLORS.screenBorder}`,
-                background: sortBy === "review" ? COLORS.screenBorder : "transparent",
-                color: sortBy === "review" ? COLORS.white : COLORS.screenBorder,
-                fontFamily: '"Baloo 2", sans-serif',
-                fontWeight: 700,
-                fontSize: "10.5px",
-                cursor: "pointer",
-              }}
-            >
-              <CalendarClock size={11} /> Próxima revisão
             </button>
           </div>
         </>

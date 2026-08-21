@@ -1,9 +1,8 @@
 /**
  * Exporta a Pokédex inteira num CSV compatível com o importador do Anki
- * (Arquivo → Importar). Front/Back seguem a mesma lógica de conteúdo da
- * revisão espaçada, mas aqui o Back é mais completo: inclui o guia passo a
- * passo já cacheado, quando existir, já que não há limite de "virar o card
- * rápido" como na ReviewView.
+ * (Arquivo → Importar). O Bookdex não tem revisão/flashcard próprio: quem
+ * quiser memorizar leva os cartões pro Anki por aqui. O verso traz o conteúdo
+ * completo do item, incluindo o guia passo a passo já cacheado, quando existir.
  */
 import { slug } from "../theme";
 

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Settings as SettingsIcon, Upload, WifiOff, Brain, Mic, MicOff, History } from "lucide-react";
+import { useEffect, useReducer, useRef, useState } from "react";
+import { Settings as SettingsIcon, Upload, WifiOff, Mic, MicOff, History } from "lucide-react";
 import { COLORS, THEME_VARS, slug, tabStyle, iconButtonStyle } from "./theme";
 import { getJSON, setJSON, KEYS } from "./lib/storage";
 import {
@@ -7,24 +7,14 @@ import {
   fetchDefinition,
   fetchList,
   fetchCompare,
-  fetchDetail,
-  fetchRelatedSuggestions,
   hasCredentials,
   getSearchEffort,
   setSearchEffort as persistSearchEffort,
   MissingApiKeyError,
 } from "./lib/anthropic";
 import { parseSearchQuery, hasExplicitPrefix, splitCompareTerms, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
-import { wordLangKey, wordItemId } from "./lib/words";
-import { mergeData, mergeCollections } from "./lib/importer";
-import { initReviewState, gradeReviewState, countDue, getDueQueue } from "./lib/review";
-import { recordVisit, recordReviewCompleted } from "./lib/gamification";
-import { scheduleReviewReminder, requestNotificationPermission, cancelReviewReminder } from "./lib/notifications";
-import { updateReviewWidget } from "./lib/reviewWidget";
-import { createCollectionId } from "./lib/collections";
-import { findSimilarItem } from "./lib/dedupe";
-import { initEffectProfiles, createProfileId, createCriterionId, createItemId, clampRating } from "./lib/effectProfiles";
-import { addLink, removeLink } from "./lib/links";
+import { recordVisit } from "./lib/gamification";
+import { createProfileId, createCriterionId, createItemId, clampRating, initEffectProfiles } from "./lib/effectProfiles";
 import {
   initRelevanceState,
   markIrrelevant as markIrrelevantState,
@@ -33,6 +23,16 @@ import {
   avoidListForSubject,
   tasteAvoidList,
 } from "./lib/relevance";
+import { useData } from "./state/DataContext";
+import { searchReducer, initialSearchState } from "./state/searchReducer";
+
+import SearchView from "./views/SearchView";
+import DexView from "./views/DexView";
+import DetailPage from "./views/DetailPage";
+import SettingsView from "./views/SettingsView";
+import ImportView from "./views/ImportView";
+import CompareView from "./views/CompareView";
+import EffectsSection from "./components/EffectsSection";
 
 const SEARCH_MODES = [
   { mode: "technique", label: "Técnicas" },
@@ -42,72 +42,44 @@ const SEARCH_MODES = [
 ];
 const MAX_HISTORY = 8;
 const MODE_LABELS_SHORT = { technique: "téc", definition: "def", list: "list", compare: "cmp" };
-import SearchView from "./views/SearchView";
-import DexView from "./views/DexView";
-import DetailPage from "./views/DetailPage";
-import SettingsView from "./views/SettingsView";
-import ImportView from "./views/ImportView";
-import CompareView from "./views/CompareView";
-import ReviewView from "./views/ReviewView";
-import EffectsSection from "./components/EffectsSection";
 
 export default function App() {
+  const data = useData();
+  const { detailCache, counts, toast, showToast, dismissToast } = data;
+
   const [view, setView] = useState("search");
   const [lastTab, setLastTab] = useState("search");
   const [detailTarget, setDetailTarget] = useState(null);
   const [compareTarget, setCompareTarget] = useState(null);
 
-  const [query, setQuery] = useState("");
-  const [criteria, setCriteria] = useState("");
-  const [searchMode, setSearchMode] = useState("technique");
+  const [search, dispatch] = useReducer(searchReducer, initialSearchState);
+  const { query, criteria, mode: searchMode, loading, error, needsKey, result, scanCount } = search;
+
   const [listening, setListening] = useState(false);
   const recognitionRef = useRef(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [needsKey, setNeedsKey] = useState(false);
-  const [result, setResult] = useState(null);
-  const [scanCount, setScanCount] = useState(0);
   const [history, setHistory] = useState([]);
+  const [showHistorySuggestions, setShowHistorySuggestions] = useState(false);
 
-  const [saved, setSaved] = useState({});
-  const [detailCache, setDetailCache] = useState({});
-  const [toast, setToast] = useState(null);
-  const [storageLoaded, setStorageLoaded] = useState(false);
   const [hasKey, setHasKey] = useState(true);
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" || navigator.onLine);
   const [theme, setTheme] = useState("light");
   const [offlineQueue, setOfflineQueue] = useState([]);
   const offlineQueueRef = useRef([]);
   const [gamification, setGamification] = useState(null);
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false);
-  const [collections, setCollections] = useState({});
-  const [suggestions, setSuggestions] = useState([]);
-  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
-  const [suggestionsError, setSuggestionsError] = useState(null);
-  const [prefetchDetailsEnabled, setPrefetchDetailsEnabled] = useState(true);
-  const [showHistorySuggestions, setShowHistorySuggestions] = useState(false);
   const [relevance, setRelevance] = useState(initRelevanceState());
-  const [dexCategory, setDexCategory] = useState("technique"); // "technique" | "knowledge" | "words" | "collections"
+  const [dexCategory, setDexCategory] = useState("technique"); // technique | knowledge | words | collections
   const [effectProfiles, setEffectProfiles] = useState(initEffectProfiles());
   const [searchEffort, setSearchEffortState] = useState("medium");
   const [showArchived, setShowArchived] = useState(false);
-  const [words, setWords] = useState({});
 
   useEffect(() => {
     (async () => {
-      setSaved(await getJSON(KEYS.saved, {}));
-      setDetailCache(await getJSON(KEYS.details, {}));
       setHistory(await getJSON(KEYS.searchHistory, []));
       setTheme(await getJSON(KEYS.theme, "light"));
       setOfflineQueue(await getJSON(KEYS.offlineQueue, []));
-      setNotificationsEnabled(await getJSON(KEYS.notificationsEnabled, false));
-      setCollections(await getJSON(KEYS.collections, {}));
       setEffectProfiles(await getJSON(KEYS.effectProfiles, initEffectProfiles()));
-      setSuggestions((await getJSON(KEYS.suggestions, null))?.items || []);
-      setPrefetchDetailsEnabled(await getJSON(KEYS.prefetchDetails, true));
       setRelevance(await getJSON(KEYS.irrelevantItems, initRelevanceState()));
       setSearchEffortState(await getSearchEffort());
-      setWords(await getJSON(KEYS.words, {}));
       const savedTab = await getJSON(KEYS.lastTab, "search");
       if (savedTab === "search" || savedTab === "dex" || savedTab === "effects") {
         setLastTab(savedTab);
@@ -117,7 +89,6 @@ export default function App() {
       const nextG = recordVisit(gState);
       setGamification(nextG);
       setJSON(KEYS.gamification, nextG).catch(() => {});
-      setStorageLoaded(true);
       setHasKey(await hasCredentials());
     })();
   }, []);
@@ -152,29 +123,6 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    if (!storageLoaded || !notificationsEnabled) return;
-    scheduleReviewReminder(countDue(saved)).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageLoaded, notificationsEnabled, saved]);
-
-  useEffect(() => {
-    if (!storageLoaded) return;
-    const queue = getDueQueue(saved);
-    const headline = queue.length
-      ? queue[0].kind === "definition"
-        ? queue[0].item.term
-        : queue[0].item.name
-      : "Tudo revisado por hoje!";
-    updateReviewWidget(queue.length, headline).catch(() => {});
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [storageLoaded, saved]);
-
-  const showToast = useCallback((msg, onUndo) => {
-    setToast({ msg, onUndo });
-    setTimeout(() => setToast((t) => (t && t.msg === msg ? null : t)), onUndo ? 4000 : 2200);
-  }, []);
-
   function addToHistory(mode, term) {
     setHistory((prev) => {
       const next = [
@@ -186,486 +134,7 @@ export default function App() {
     });
   }
 
-  async function persistSaved(newSaved) {
-    try {
-      await setJSON(KEYS.saved, newSaved);
-    } catch (e) {
-      console.error("Falha ao salvar na Pokédex", e);
-    }
-  }
-
-  async function persistDetails(newCache) {
-    try {
-      await setJSON(KEYS.details, newCache);
-    } catch (e) {
-      console.error("Falha ao salvar o guia", e);
-    }
-  }
-
-  async function persistWords(newWords) {
-    try {
-      await setJSON(KEYS.words, newWords);
-    } catch (e) {
-      console.error("Falha ao salvar palavra", e);
-    }
-  }
-
-  function isWordSaved(languageCode, language, word) {
-    const group = words[wordLangKey(languageCode, language)];
-    return !!(group && group.words.some((w) => w.id === wordItemId(word)));
-  }
-
-  function toggleWordSave(data) {
-    const prevWords = words;
-    const langKey = wordLangKey(data.languageCode, data.language);
-    const wordId = wordItemId(data.word);
-    const nextWords = { ...words };
-    const existing = nextWords[langKey];
-    const group = existing
-      ? { displayName: existing.displayName, words: [...existing.words] }
-      : { displayName: data.language, words: [] };
-
-    const idx = group.words.findIndex((w) => w.id === wordId);
-    let removed = false;
-    if (idx >= 0) {
-      group.words.splice(idx, 1);
-      removed = true;
-    } else {
-      group.words.push({
-        id: wordId,
-        word: data.word,
-        language: data.language,
-        languageCode: data.languageCode || "",
-        meaning: data.meaning,
-        pinyin: data.pinyin || "",
-        radical: data.radical || "",
-        characters: data.characters || [],
-        savedAt: Date.now(),
-        tags: [],
-        note: "",
-      });
-    }
-
-    if (group.words.length === 0) delete nextWords[langKey];
-    else nextWords[langKey] = group;
-
-    setWords(nextWords);
-    persistWords(nextWords);
-    showToast(removed ? `"${data.word}" solta(o) das Palavras.` : `"${data.word}" capturada(o)!`, () => {
-      setWords(prevWords);
-      persistWords(prevWords);
-    });
-  }
-
-  function removeWordGroup(langKey) {
-    const prevWords = words;
-    const group = words[langKey];
-    if (!group) return;
-    const nextWords = { ...words };
-    delete nextWords[langKey];
-    setWords(nextWords);
-    persistWords(nextWords);
-    showToast(`"${group.displayName}" removido(a) das Palavras.`, () => {
-      setWords(prevWords);
-      persistWords(prevWords);
-    });
-  }
-
-  function updateWordInGroup(langKey, wordId, mutate) {
-    setWords((prev) => {
-      const group = prev[langKey];
-      if (!group) return prev;
-      const idx = group.words.findIndex((w) => w.id === wordId);
-      if (idx === -1) return prev;
-      const nextList = [...group.words];
-      nextList[idx] = mutate(nextList[idx]);
-      const next = { ...prev, [langKey]: { ...group, words: nextList } };
-      persistWords(next);
-      return next;
-    });
-  }
-
-  function updateWordTags(langKey, wordId, tags) {
-    updateWordInGroup(langKey, wordId, (w) => ({ ...w, tags }));
-  }
-
-  function updateWordNote(langKey, wordId, note) {
-    updateWordInGroup(langKey, wordId, (w) => ({ ...w, note }));
-  }
-
-  /** Persiste o componente semântico/fonético identificado sob demanda pra UM hanzi de uma palavra salva. */
-  function updateWordCharacterComponent(langKey, wordId, charIndex, kind, result) {
-    updateWordInGroup(langKey, wordId, (w) => {
-      const characters = [...(w.characters || [])];
-      if (!characters[charIndex]) return w;
-      characters[charIndex] = {
-        ...characters[charIndex],
-        ...(kind === "semantic"
-          ? { semanticComponent: result.component || "—" }
-          : { phoneticComponent: result.component || "—", phoneticComponentPinyin: result.pinyin || "" }),
-      };
-      return { ...w, characters };
-    });
-  }
-
-  function hasDetail(subjectDisplay, technique) {
-    const techId = technique.id || slug(technique.name);
-    return !!detailCache[`${slug(subjectDisplay)}:${techId}`];
-  }
-
-  function isSaved(mode, subjectDisplay, itemId) {
-    if (mode === "technique") {
-      const group = saved[slug(subjectDisplay)];
-      return !!(group && group.techniques.some((t) => t.id === itemId));
-    }
-    const group = saved[`kn:${slug(subjectDisplay)}`];
-    return !!(group && group.items.some((it) => it.id === itemId));
-  }
-
-  function toggleTechniqueSave(subjectDisplay, technique, statLabels) {
-    const prevSaved = saved;
-    const subjectKey = slug(subjectDisplay);
-    const techId = technique.id || slug(technique.name);
-    const newSaved = { ...saved };
-    const existing = newSaved[subjectKey];
-    const group = existing
-      ? { displayName: existing.displayName, kind: "technique", techniques: [...existing.techniques] }
-      : { displayName: subjectDisplay, kind: "technique", techniques: [] };
-
-    const idx = group.techniques.findIndex((t) => t.id === techId);
-    let removed = false;
-    if (idx >= 0) {
-      group.techniques.splice(idx, 1);
-      removed = true;
-    } else {
-      group.techniques.push({
-        id: techId,
-        name: technique.name,
-        type: technique.type,
-        description: technique.description,
-        bestFor: technique.bestFor,
-        stats: technique.stats,
-        statLabels: statLabels,
-        savedAt: Date.now(),
-        tags: [],
-        note: "",
-        reviewState: initReviewState(),
-      });
-    }
-
-    if (group.techniques.length === 0) {
-      delete newSaved[subjectKey];
-    } else {
-      newSaved[subjectKey] = group;
-    }
-
-    setSaved(newSaved);
-    persistSaved(newSaved);
-
-    if (removed) {
-      showToast(`${technique.name} solto(a) da Pokédex.`, () => {
-        setSaved(prevSaved);
-        persistSaved(prevSaved);
-      });
-    } else {
-      const dup = findSimilarItem(prevSaved, technique.name);
-      showToast(
-        dup
-          ? `${technique.name} capturado(a)! Você já tem algo parecido: "${dup.name}" em "${dup.subjectDisplay}".`
-          : `${technique.name} capturado(a)!`
-      );
-      prefetchDetail(subjectDisplay, { ...technique, id: techId });
-    }
-  }
-
-  /** Baixa o guia em background assim que uma técnica é capturada, pra já ficar disponível offline. */
-  async function prefetchDetail(subjectDisplay, technique) {
-    if (!prefetchDetailsEnabled) return;
-    const cacheKey = `${slug(subjectDisplay)}:${technique.id}`;
-    if (detailCache[cacheKey]) return;
-    if (typeof navigator !== "undefined" && !navigator.onLine) return;
-    if (!(await hasCredentials())) return;
-    try {
-      const parsed = await fetchDetail(subjectDisplay, technique);
-      cacheDetail(cacheKey, parsed);
-    } catch {
-      /* best-effort — o usuário ainda pode abrir "Aprofundar" manualmente depois */
-    }
-  }
-
-  function toggleKnowledgeSave(mode, subjectDisplay, payload) {
-    const prevSaved = saved;
-    const subjectKey = `kn:${slug(subjectDisplay)}`;
-    const newSaved = { ...saved };
-    const existing = newSaved[subjectKey];
-    const group = existing
-      ? { displayName: existing.displayName, kind: mode, items: [...existing.items] }
-      : { displayName: subjectDisplay, kind: mode, items: [] };
-
-    let itemId;
-    let itemName;
-    let itemObj;
-    if (mode === "definition") {
-      const d = payload.definition;
-      itemId = slug(d.term);
-      itemName = d.term;
-      itemObj = {
-        id: itemId,
-        term: d.term,
-        category: d.category,
-        definition: d.definition,
-        keyPoints: d.keyPoints || [],
-        example: d.example || "",
-        relatedTerms: d.relatedTerms || [],
-        savedAt: Date.now(),
-        tags: [],
-        note: "",
-        reviewState: initReviewState(),
-      };
-    } else {
-      const it = payload.item;
-      itemId = slug(it.name);
-      itemName = it.name;
-      itemObj = {
-        id: itemId,
-        name: it.name,
-        category: it.category,
-        description: it.description,
-        savedAt: Date.now(),
-        tags: [],
-        note: "",
-        reviewState: initReviewState(),
-      };
-    }
-
-    const idx = group.items.findIndex((x) => x.id === itemId);
-    let removed = false;
-    if (idx >= 0) {
-      group.items.splice(idx, 1);
-      removed = true;
-    } else {
-      group.items.push(itemObj);
-    }
-
-    if (group.items.length === 0) {
-      delete newSaved[subjectKey];
-    } else {
-      newSaved[subjectKey] = group;
-    }
-
-    setSaved(newSaved);
-    persistSaved(newSaved);
-
-    if (removed) {
-      showToast(`${itemName} solto(a) da Pokédex.`, () => {
-        setSaved(prevSaved);
-        persistSaved(prevSaved);
-      });
-    } else {
-      const dup = findSimilarItem(prevSaved, itemName);
-      showToast(
-        dup
-          ? `${itemName} capturado(a)! Você já tem algo parecido: "${dup.name}" em "${dup.subjectDisplay}".`
-          : `${itemName} capturado(a)!`
-      );
-    }
-  }
-
-  function removeGroup(key) {
-    const prevSaved = saved;
-    const group = saved[key];
-    if (!group) return;
-    const newSaved = { ...saved };
-    delete newSaved[key];
-    setSaved(newSaved);
-    persistSaved(newSaved);
-    showToast(`"${group.displayName}" removido(a) da Pokédex.`, () => {
-      setSaved(prevSaved);
-      persistSaved(prevSaved);
-    });
-  }
-
-  function bulkRemoveItems(items) {
-    const prevSaved = saved;
-    const next = { ...saved };
-    for (const { subjectKey, itemId } of items) {
-      const group = next[subjectKey];
-      if (!group) continue;
-      const isKnowledge = group.kind === "definition" || group.kind === "list";
-      const list = isKnowledge ? group.items : group.techniques;
-      const filtered = list.filter((it) => it.id !== itemId);
-      if (filtered.length === 0) {
-        delete next[subjectKey];
-      } else {
-        next[subjectKey] = isKnowledge ? { ...group, items: filtered } : { ...group, techniques: filtered };
-      }
-    }
-    setSaved(next);
-    persistSaved(next);
-    showToast(`${items.length} item(ns) removido(s) da Pokédex.`, () => {
-      setSaved(prevSaved);
-      persistSaved(prevSaved);
-    });
-  }
-
-  function bulkAddTag(items, tag) {
-    const clean = (tag || "").trim();
-    if (!clean) return;
-    const next = { ...saved };
-    for (const { subjectKey, itemId } of items) {
-      const group = next[subjectKey];
-      if (!group) continue;
-      const isKnowledge = group.kind === "definition" || group.kind === "list";
-      const list = isKnowledge ? group.items : group.techniques;
-      const idx = list.findIndex((it) => it.id === itemId);
-      if (idx === -1) continue;
-      const item = list[idx];
-      if ((item.tags || []).includes(clean)) continue;
-      const nextList = [...list];
-      nextList[idx] = { ...item, tags: [...(item.tags || []), clean] };
-      next[subjectKey] = isKnowledge ? { ...group, items: nextList } : { ...group, techniques: nextList };
-    }
-    setSaved(next);
-    persistSaved(next);
-    showToast(`Tag "${clean}" aplicada a ${items.length} item(ns).`);
-  }
-
-  function updateItemInGroup(subjectKey, itemId, mutate) {
-    setSaved((prev) => {
-      const group = prev[subjectKey];
-      if (!group) return prev;
-      const isKnowledge = group.kind === "definition" || group.kind === "list";
-      const list = isKnowledge ? group.items : group.techniques;
-      const idx = list.findIndex((it) => it.id === itemId);
-      if (idx === -1) return prev;
-      const nextList = [...list];
-      nextList[idx] = mutate(nextList[idx]);
-      const nextGroup = isKnowledge ? { ...group, items: nextList } : { ...group, techniques: nextList };
-      const next = { ...prev, [subjectKey]: nextGroup };
-      persistSaved(next);
-      return next;
-    });
-  }
-
-  function updateItemTags(subjectKey, itemId, _kind, tags) {
-    updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, tags }));
-  }
-
-  function updateItemNote(subjectKey, itemId, _kind, note) {
-    updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, note }));
-  }
-
-  function updateItemImages(subjectKey, itemId, _kind, images) {
-    updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, images }));
-  }
-
-  function archiveItems(items, archived) {
-    const prevSaved = saved;
-    let next = saved;
-    for (const { subjectKey, itemId } of items) {
-      const group = next[subjectKey];
-      if (!group) continue;
-      const isKnowledge = group.kind === "definition" || group.kind === "list";
-      const list = isKnowledge ? group.items : group.techniques;
-      const idx = list.findIndex((it) => it.id === itemId);
-      if (idx === -1) continue;
-      const nextList = [...list];
-      nextList[idx] = { ...nextList[idx], archived };
-      next = { ...next, [subjectKey]: isKnowledge ? { ...group, items: nextList } : { ...group, techniques: nextList } };
-    }
-    setSaved(next);
-    persistSaved(next);
-    showToast(archived ? `${items.length} item(ns) arquivado(s).` : `${items.length} item(ns) desarquivado(s).`, () => {
-      setSaved(prevSaved);
-      persistSaved(prevSaved);
-    });
-  }
-
-  function linkItems(a, b) {
-    setSaved((prev) => {
-      const next = addLink(prev, a, b);
-      persistSaved(next);
-      return next;
-    });
-  }
-
-  function unlinkItems(a, b) {
-    setSaved((prev) => {
-      const next = removeLink(prev, a, b);
-      persistSaved(next);
-      return next;
-    });
-  }
-
-  function persistCollections(next) {
-    setJSON(KEYS.collections, next).catch(() => {});
-  }
-
-  function createCollection(name) {
-    const clean = (name || "").trim();
-    if (!clean) return null;
-    const id = createCollectionId();
-    setCollections((prev) => {
-      const next = { ...prev, [id]: { id, name: clean, createdAt: Date.now(), refs: [] } };
-      persistCollections(next);
-      return next;
-    });
-    showToast(`Coleção "${clean}" criada.`);
-    return id;
-  }
-
-  function deleteCollection(id) {
-    setCollections((prev) => {
-      const col = prev[id];
-      if (!col) return prev;
-      const next = { ...prev };
-      delete next[id];
-      persistCollections(next);
-      showToast(`Coleção "${col.name}" excluída.`);
-      return next;
-    });
-  }
-
-  function addToCollection(collectionId, refs, newName) {
-    setCollections((prev) => {
-      let id = collectionId;
-      let next = prev;
-      if (!id) {
-        const clean = (newName || "").trim();
-        if (!clean) return prev;
-        id = createCollectionId();
-        next = { ...prev, [id]: { id, name: clean, createdAt: Date.now(), refs: [] } };
-      }
-      const col = next[id];
-      if (!col) return prev;
-      const existingKeys = new Set(col.refs.map((r) => `${r.subjectKey}:${r.itemId}`));
-      const merged = [...col.refs];
-      for (const r of refs) {
-        const k = `${r.subjectKey}:${r.itemId}`;
-        if (!existingKeys.has(k)) {
-          merged.push(r);
-          existingKeys.add(k);
-        }
-      }
-      next = { ...next, [id]: { ...col, refs: merged } };
-      persistCollections(next);
-      showToast(`${refs.length} item(ns) adicionado(s) a "${col.name}".`);
-      return next;
-    });
-  }
-
-  function removeFromCollection(collectionId, ref) {
-    setCollections((prev) => {
-      const col = prev[collectionId];
-      if (!col) return prev;
-      const next = {
-        ...prev,
-        [collectionId]: { ...col, refs: col.refs.filter((r) => !(r.subjectKey === ref.subjectKey && r.itemId === ref.itemId)) },
-      };
-      persistCollections(next);
-      return next;
-    });
-  }
+  /* --------------------------------------------------------- perfis de efeito */
 
   function persistEffectProfiles(next) {
     setJSON(KEYS.effectProfiles, next).catch(() => {});
@@ -702,9 +171,8 @@ export default function App() {
     setEffectProfiles((prev) => {
       const profile = prev[profileId];
       if (!profile) return prev;
-      const existingIds = profile.criteria.map((c) => c.id);
       if (profile.criteria.some((c) => c.label.toLowerCase() === clean.toLowerCase())) return prev;
-      const id = createCriterionId(existingIds, clean);
+      const id = createCriterionId(profile.criteria.map((c) => c.id), clean);
       const next = { ...prev, [profileId]: { ...profile, criteria: [...profile.criteria, { id, label: clean }] } };
       persistEffectProfiles(next);
       return next;
@@ -735,8 +203,7 @@ export default function App() {
     setEffectProfiles((prev) => {
       const profile = prev[profileId];
       if (!profile) return prev;
-      const existingIds = profile.items.map((it) => it.id);
-      const id = createItemId(existingIds, clean);
+      const id = createItemId(profile.items.map((it) => it.id), clean);
       const item = { id, name: clean, active: true, ratings: ratings || {}, reasons: reasons || {}, note: note || "" };
       const next = { ...prev, [profileId]: { ...profile, items: [...profile.items, item] } };
       persistEffectProfiles(next);
@@ -745,96 +212,32 @@ export default function App() {
     showToast(`"${clean}" adicionado(a) ao perfil.`);
   }
 
-  function removeEffectItem(profileId, itemId) {
+  function updateEffectItems(profileId, mutate) {
     setEffectProfiles((prev) => {
       const profile = prev[profileId];
       if (!profile) return prev;
-      const next = { ...prev, [profileId]: { ...profile, items: profile.items.filter((it) => it.id !== itemId) } };
+      const next = { ...prev, [profileId]: { ...profile, items: mutate(profile.items) } };
       persistEffectProfiles(next);
       return next;
     });
   }
 
-  function toggleEffectItemActive(profileId, itemId) {
-    setEffectProfiles((prev) => {
-      const profile = prev[profileId];
-      if (!profile) return prev;
-      const items = profile.items.map((it) => (it.id === itemId ? { ...it, active: !it.active } : it));
-      const next = { ...prev, [profileId]: { ...profile, items } };
-      persistEffectProfiles(next);
-      return next;
-    });
-  }
+  const removeEffectItem = (profileId, itemId) =>
+    updateEffectItems(profileId, (items) => items.filter((it) => it.id !== itemId));
+  const toggleEffectItemActive = (profileId, itemId) =>
+    updateEffectItems(profileId, (items) => items.map((it) => (it.id === itemId ? { ...it, active: !it.active } : it)));
+  const updateEffectItemRating = (profileId, itemId, criterionId, value) =>
+    updateEffectItems(profileId, (items) =>
+      items.map((it) => (it.id === itemId ? { ...it, ratings: { ...it.ratings, [criterionId]: clampRating(value) } } : it))
+    );
+  const updateEffectItemNote = (profileId, itemId, note) =>
+    updateEffectItems(profileId, (items) => items.map((it) => (it.id === itemId ? { ...it, note } : it)));
 
-  function updateEffectItemRating(profileId, itemId, criterionId, value) {
-    setEffectProfiles((prev) => {
-      const profile = prev[profileId];
-      if (!profile) return prev;
-      const items = profile.items.map((it) =>
-        it.id === itemId ? { ...it, ratings: { ...it.ratings, [criterionId]: clampRating(value) } } : it
-      );
-      const next = { ...prev, [profileId]: { ...profile, items } };
-      persistEffectProfiles(next);
-      return next;
-    });
-  }
-
-  function updateEffectItemNote(profileId, itemId, note) {
-    setEffectProfiles((prev) => {
-      const profile = prev[profileId];
-      if (!profile) return prev;
-      const items = profile.items.map((it) => (it.id === itemId ? { ...it, note } : it));
-      const next = { ...prev, [profileId]: { ...profile, items } };
-      persistEffectProfiles(next);
-      return next;
-    });
-  }
-
-  async function generateSuggestions() {
-    setSuggestionsLoading(true);
-    setSuggestionsError(null);
-    try {
-      const captured = [];
-      for (const group of Object.values(saved)) {
-        captured.push(group.displayName);
-        const items = group.kind === "definition" || group.kind === "list" ? group.items : group.techniques;
-        for (const it of items || []) captured.push(it.term || it.name);
-      }
-      const uniqueCaptured = [...new Set(captured)].slice(0, 60);
-      const result = await fetchRelatedSuggestions(uniqueCaptured);
-      setSuggestions(result);
-      setJSON(KEYS.suggestions, { items: result, generatedAt: Date.now() }).catch(() => {});
-    } catch (e) {
-      if (e instanceof MissingApiKeyError) {
-        setSuggestionsError("Configure sua API key em Configurações para gerar sugestões.");
-      } else {
-        setSuggestionsError(e.message || "Não foi possível gerar sugestões agora.");
-      }
-    } finally {
-      setSuggestionsLoading(false);
-    }
-  }
-
-  function changePrefetchDetails(enabled) {
-    setPrefetchDetailsEnabled(enabled);
-    setJSON(KEYS.prefetchDetails, enabled).catch(() => {});
-  }
+  /* ------------------------------------------------------------ preferências */
 
   function changeSearchEffort(effort) {
     setSearchEffortState(effort);
     persistSearchEffort(effort).catch(() => {});
-  }
-
-  function gradeReviewItem(subjectKey, itemId, _kind, correct) {
-    updateItemInGroup(subjectKey, itemId, (item) => ({
-      ...item,
-      reviewState: gradeReviewState(item.reviewState, correct),
-    }));
-    setGamification((prev) => {
-      const next = recordReviewCompleted(prev);
-      setJSON(KEYS.gamification, next).catch(() => {});
-      return next;
-    });
   }
 
   function changeTheme(next) {
@@ -842,37 +245,7 @@ export default function App() {
     setJSON(KEYS.theme, next).catch(() => {});
   }
 
-  async function changeNotifications(enabled) {
-    if (enabled) {
-      const granted = await requestNotificationPermission();
-      if (!granted) {
-        showToast("Permissão de notificações negada pelo sistema.");
-        return false;
-      }
-    } else {
-      await cancelReviewReminder();
-    }
-    setNotificationsEnabled(enabled);
-    await setJSON(KEYS.notificationsEnabled, enabled);
-    return true;
-  }
-
-  function searchRelated(mode, term) {
-    setDetailTarget(null);
-    setCompareTarget(null);
-    setLastTab("search");
-    setView("search");
-    setJSON(KEYS.lastTab, "search").catch(() => {});
-    handleSearch({ mode, term });
-  }
-
-  function toggleSave(mode, subjectDisplay, payload) {
-    if (mode === "technique") {
-      toggleTechniqueSave(subjectDisplay, payload.technique, payload.statLabels);
-    } else {
-      toggleKnowledgeSave(mode, subjectDisplay, payload);
-    }
-  }
+  /* --------------------------------------------------------------- relevância */
 
   function markItemIrrelevant(subjectDisplay, mode, item) {
     const subjectSlug = slug(subjectDisplay);
@@ -896,14 +269,15 @@ export default function App() {
     return isMarkedIrrelevant(relevance, slug(subjectDisplay), slug(itemName));
   }
 
+  /* -------------------------------------------------------------------- busca */
+
   function enqueueOfflineSearch(mode, term) {
     setOfflineQueue((prev) => {
       const next = [...prev.filter((q) => !(q.mode === mode && q.term.toLowerCase() === term.toLowerCase())), { mode, term }];
       setJSON(KEYS.offlineQueue, next).catch(() => {});
       return next;
     });
-    setSearchMode(mode);
-    setQuery(term);
+    dispatch({ type: "queuedOffline", mode, term });
     showToast(`Sem internet — "${term}" foi enfileirado(a) e será buscado(a) ao reconectar.`);
   }
 
@@ -922,39 +296,34 @@ export default function App() {
       enqueueOfflineSearch(mode, term);
       return;
     }
-    setSearchMode(mode);
-    setQuery(term);
-    setLoading(true);
-    setError(null);
-    setNeedsKey(false);
+    dispatch({ type: "start", mode, term });
     try {
-      let data;
+      let payload;
       const avoid = [...avoidListForSubject(relevance, slug(term)), ...tasteAvoidList(relevance)];
       const critList = criteria.split(",").map((c) => c.trim()).filter(Boolean);
-      if (mode === "definition") data = await fetchDefinition(term, avoid, searchEffort);
-      else if (mode === "list") data = await fetchList(term, avoid, searchEffort, critList);
+      if (mode === "definition") payload = await fetchDefinition(term, avoid, searchEffort);
+      else if (mode === "list") payload = await fetchList(term, avoid, searchEffort, critList);
       else if (mode === "compare") {
         const names = splitCompareTerms(term);
         if (names.length < 2) throw new Error('Informe pelo menos 2 itens separados por vírgula, ex.: "melatonina, magnésio".');
         if (names.length > 3) throw new Error("No máximo 3 itens por comparação.");
-        data = await fetchCompare(names, avoid, critList, searchEffort);
-      } else data = await fetchTechniques(term, avoid, critList, searchEffort);
-      setResult({ mode, data });
-      setScanCount((c) => c + 1);
+        payload = await fetchCompare(names, avoid, critList, searchEffort);
+      } else payload = await fetchTechniques(term, avoid, critList, searchEffort);
+      dispatch({ type: "success", mode, data: payload });
       addToHistory(mode, term);
     } catch (e) {
       console.error(e);
-      if (e instanceof MissingApiKeyError) {
-        setNeedsKey(true);
-      } else {
-        setError(e.message || "Não foi possível escanear esse assunto agora. Tente novamente.");
-      }
-    } finally {
-      setLoading(false);
+      if (e instanceof MissingApiKeyError) dispatch({ type: "missingKey" });
+      else dispatch({ type: "failure", error: e.message || "Não foi possível escanear esse assunto agora. Tente novamente." });
     }
   }
 
-  function runHistoryTerm(mode, term) {
+  function searchRelated(mode, term) {
+    setDetailTarget(null);
+    setCompareTarget(null);
+    setLastTab("search");
+    setView("search");
+    setJSON(KEYS.lastTab, "search").catch(() => {});
     handleSearch({ mode, term });
   }
 
@@ -986,6 +355,8 @@ export default function App() {
     recognition.start();
   }
 
+  /* ---------------------------------------------------------------- navegação */
+
   function openDetail(subjectDisplay, technique) {
     setCompareTarget(null);
     setDetailTarget({ subjectDisplay, technique });
@@ -994,33 +365,6 @@ export default function App() {
   function openCompare(items) {
     setDetailTarget(null);
     setCompareTarget(items);
-  }
-
-  function cacheDetail(cacheKey, detail) {
-    setDetailCache((prev) => {
-      const next = { ...prev, [cacheKey]: detail };
-      persistDetails(next);
-      return next;
-    });
-  }
-
-  function applyImport(payload) {
-    const { saved: mergedSaved, detailCache: mergedDetails, stats } = mergeData(saved, detailCache, payload);
-    setSaved(mergedSaved);
-    setDetailCache(mergedDetails);
-    persistSaved(mergedSaved);
-    persistDetails(mergedDetails);
-
-    let collectionStats = { newCollections: 0, updatedCollections: 0 };
-    if (payload.collections) {
-      const { collections: mergedCollections, stats: cStats } = mergeCollections(collections, payload.collections);
-      setCollections(mergedCollections);
-      persistCollections(mergedCollections);
-      collectionStats = cStats;
-    }
-
-    showToast("Dados importados!");
-    return { ...stats, ...collectionStats };
   }
 
   function goTab(tab) {
@@ -1043,29 +387,16 @@ export default function App() {
     setView(lastTab);
   }
 
-  const activeCount = (list) => (list || []).filter((it) => !it.archived).length;
-  const totalSavedCount = Object.values(saved).reduce(
-    (sum, g) => sum + activeCount(g.kind === "definition" || g.kind === "list" ? g.items : g.techniques),
-    0
-  );
-  const techniqueCount = Object.values(saved).reduce(
-    (sum, g) => sum + ((!g.kind || g.kind === "technique") ? activeCount(g.techniques) : 0),
-    0
-  );
-  const knowledgeCount = Object.values(saved).reduce(
-    (sum, g) => sum + (g.kind === "definition" || g.kind === "list" ? activeCount(g.items) : 0),
-    0
-  );
-  const collectionsCount = Object.keys(collections || {}).length;
   const effectProfilesCount = Object.keys(effectProfiles || {}).length;
-  const totalWordsCount = Object.values(words || {}).reduce((sum, g) => sum + g.words.length, 0);
-  const dueCount = countDue(saved);
   const isTab = view === "search" || view === "dex" || view === "effects";
   const showSearchBar = view === "search" && !detailTarget && !compareTarget;
   const showDexNav = view === "dex" && !detailTarget && !compareTarget;
   const matchingHistory = query.trim()
     ? history.filter((h) => h.term.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 5)
     : [];
+  const detailKey = detailTarget
+    ? `${slug(detailTarget.subjectDisplay)}:${detailTarget.technique.id || slug(detailTarget.technique.name)}`
+    : null;
 
   return (
     <div
@@ -1147,33 +478,6 @@ export default function App() {
             >
               Bookdex
             </h1>
-            <button onClick={() => openScreen("review")} aria-label="Revisão espaçada" title="Revisão espaçada" style={{ ...iconButtonStyle, position: "relative" }}>
-              <Brain size={17} />
-              {dueCount > 0 && (
-                <span
-                  style={{
-                    position: "absolute",
-                    top: "-3px",
-                    right: "-3px",
-                    background: COLORS.gold,
-                    color: "#4A3300",
-                    fontFamily: '"JetBrains Mono", monospace',
-                    fontWeight: 700,
-                    fontSize: "9px",
-                    borderRadius: "999px",
-                    minWidth: "15px",
-                    height: "15px",
-                    padding: "0 3px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    border: "1.5px solid #7A5A00",
-                  }}
-                >
-                  {dueCount > 99 ? "99+" : dueCount}
-                </span>
-              )}
-            </button>
             <button onClick={() => openScreen("import")} aria-label="Importar dados" title="Importar dados" style={iconButtonStyle}>
               <Upload size={17} />
             </button>
@@ -1186,7 +490,7 @@ export default function App() {
               BUSCAR
             </button>
             <button onClick={() => goTab("dex")} style={tabStyle(view === "dex")}>
-              POKÉDEX ({totalSavedCount})
+              POKÉDEX ({counts.total})
             </button>
             <button onClick={() => goTab("effects")} style={tabStyle(view === "effects")}>
               EFEITOS ({effectProfilesCount})
@@ -1238,12 +542,12 @@ export default function App() {
 
             {detailTarget && (
               <DetailPage
-                key={`${slug(detailTarget.subjectDisplay)}:${detailTarget.technique.id || slug(detailTarget.technique.name)}`}
+                key={detailKey}
                 subjectDisplay={detailTarget.subjectDisplay}
                 technique={detailTarget.technique}
-                cacheKey={`${slug(detailTarget.subjectDisplay)}:${detailTarget.technique.id || slug(detailTarget.technique.name)}`}
+                cacheKey={detailKey}
                 detailCache={detailCache}
-                onCached={cacheDetail}
+                onCached={data.cacheDetail}
                 onBack={() => setDetailTarget(null)}
                 onGoSettings={() => openScreen("settings")}
               />
@@ -1259,14 +563,14 @@ export default function App() {
                 result={result}
                 scanCount={scanCount}
                 history={history}
-                isSaved={isSaved}
-                onToggleSave={toggleSave}
+                isSaved={data.isSaved}
+                onToggleSave={data.toggleSave}
                 onOpenDetail={openDetail}
                 onRetry={() => handleSearch()}
-                onRunHistoryTerm={runHistoryTerm}
+                onRunHistoryTerm={(mode, term) => handleSearch({ mode, term })}
                 onGoSettings={() => openScreen("settings")}
                 onSearchRelated={searchRelated}
-                hasDetail={hasDetail}
+                hasDetail={data.hasDetail}
                 isIrrelevant={isItemIrrelevant}
                 onMarkIrrelevant={markItemIrrelevant}
               />
@@ -1274,54 +578,20 @@ export default function App() {
 
             {!detailTarget && !compareTarget && view === "dex" && (
               <DexView
-                saved={saved}
-                detailCache={detailCache}
-                storageLoaded={storageLoaded}
                 category={dexCategory}
                 onCategoryChange={setDexCategory}
-                onToggleSave={toggleSave}
                 onOpenDetail={openDetail}
-                hasDetail={hasDetail}
                 onOpenImport={() => openScreen("import")}
-                onRemoveGroup={removeGroup}
-                onUpdateTags={updateItemTags}
-                onUpdateNote={updateItemNote}
-                onUpdateImages={updateItemImages}
-                onLinkItems={linkItems}
-                onUnlinkItems={unlinkItems}
                 onSearchRelated={searchRelated}
                 onExampleSearch={(mode, term) => searchRelated(mode, term)}
                 onOpenCompare={openCompare}
-                onBulkRemoveItems={bulkRemoveItems}
-                onBulkAddTag={bulkAddTag}
-                onArchiveItems={archiveItems}
                 showArchived={showArchived}
                 onToggleShowArchived={() => setShowArchived((v) => !v)}
-                collections={collections}
-                onCreateCollection={createCollection}
-                onDeleteCollection={deleteCollection}
-                onAddToCollection={addToCollection}
-                onRemoveFromCollection={removeFromCollection}
-                suggestions={suggestions}
-                suggestionsLoading={suggestionsLoading}
-                suggestionsError={suggestionsError}
-                onGenerateSuggestions={generateSuggestions}
-                words={words}
-                onToggleWord={toggleWordSave}
-                isWordSaved={isWordSaved}
-                onRemoveWordGroup={removeWordGroup}
-                onUpdateWordTags={updateWordTags}
-                onUpdateWordNote={updateWordNote}
-                onUpdateWordCharacterComponent={updateWordCharacterComponent}
                 searchEffort={searchEffort}
               />
             )}
 
             {compareTarget && <CompareView items={compareTarget} onBack={() => setCompareTarget(null)} />}
-
-            {!detailTarget && !compareTarget && view === "review" && (
-              <ReviewView saved={saved} onBack={backToTab} onGrade={gradeReviewItem} />
-            )}
 
             {!detailTarget && !compareTarget && view === "effects" && (
               <EffectsSection
@@ -1344,24 +614,20 @@ export default function App() {
                 onCredentialsChanged={async () => {
                   const ok = await hasCredentials();
                   setHasKey(ok);
-                  if (ok) setNeedsKey(false);
+                  if (ok) dispatch({ type: "clearNeedsKey" });
                 }}
                 theme={theme}
                 onThemeChange={changeTheme}
-                notificationsEnabled={notificationsEnabled}
-                onNotificationsChange={changeNotifications}
                 gamification={gamification}
-                totalSavedCount={totalSavedCount}
-                prefetchDetailsEnabled={prefetchDetailsEnabled}
-                onPrefetchDetailsChange={changePrefetchDetails}
+                totalSavedCount={counts.total}
+                prefetchDetailsEnabled={data.prefetchDetailsEnabled}
+                onPrefetchDetailsChange={data.changePrefetchDetails}
                 searchEffort={searchEffort}
                 onSearchEffortChange={changeSearchEffort}
               />
             )}
 
-            {!detailTarget && view === "import" && (
-              <ImportView onBack={backToTab} onImport={applyImport} saved={saved} detailCache={detailCache} collections={collections} />
-            )}
+            {!detailTarget && view === "import" && <ImportView onBack={backToTab} />}
           </div>
 
           {toast && (
@@ -1393,7 +659,7 @@ export default function App() {
                   <button
                     onClick={() => {
                       toast.onUndo();
-                      setToast(null);
+                      dismissToast();
                     }}
                     style={{
                       background: "rgba(255,255,255,0.15)",
@@ -1430,7 +696,7 @@ export default function App() {
                 {SEARCH_MODES.map(({ mode, label }) => (
                   <button
                     key={mode}
-                    onClick={() => setSearchMode(mode)}
+                    onClick={() => dispatch({ type: "setMode", mode })}
                     style={{
                       flex: 1,
                       padding: "5px 8px",
@@ -1499,7 +765,7 @@ export default function App() {
                 )}
                 <input
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => dispatch({ type: "setQuery", query: e.target.value })}
                   onFocus={() => setShowHistorySuggestions(true)}
                   onBlur={() => setShowHistorySuggestions(false)}
                   onKeyDown={(e) => {
@@ -1572,7 +838,7 @@ export default function App() {
               {(searchMode === "technique" || searchMode === "list" || searchMode === "compare") && (
                 <input
                   value={criteria}
-                  onChange={(e) => setCriteria(e.target.value)}
+                  onChange={(e) => dispatch({ type: "setCriteria", criteria: e.target.value })}
                   onKeyDown={(e) => {
                     if (e.key === "Enter") handleSearch();
                   }}
@@ -1595,16 +861,16 @@ export default function App() {
           ) : showDexNav ? (
             <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
               <button onClick={() => setDexCategory("technique")} style={tabStyle(dexCategory === "technique")}>
-                TÉCNICAS ({techniqueCount})
+                TÉCNICAS ({counts.techniques})
               </button>
               <button onClick={() => setDexCategory("knowledge")} style={tabStyle(dexCategory === "knowledge")}>
-                CONCEITOS ({knowledgeCount})
+                CONCEITOS ({counts.knowledge})
               </button>
               <button onClick={() => setDexCategory("words")} style={tabStyle(dexCategory === "words")}>
-                PALAVRAS ({totalWordsCount})
+                PALAVRAS ({counts.words})
               </button>
               <button onClick={() => setDexCategory("collections")} style={tabStyle(dexCategory === "collections")}>
-                COLEÇÕES ({collectionsCount})
+                COLEÇÕES ({counts.collections})
               </button>
             </div>
           ) : (
@@ -1612,7 +878,7 @@ export default function App() {
               {view === "effects"
                 ? `${effectProfilesCount} perfil(is) de efeito`
                 : isTab || detailTarget
-                  ? `${totalSavedCount} item(ns) registrado(s) em ${Object.keys(saved).length} assunto(s)`
+                  ? `${counts.total} item(ns) registrado(s) em ${counts.subjects} assunto(s)`
                   : "Bookdex"}
             </div>
           )}

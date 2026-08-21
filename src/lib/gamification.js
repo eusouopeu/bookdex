@@ -1,14 +1,14 @@
 /**
  * Gamificação leve: sequência de dias de uso (streak) + conquistas simples.
  * Estado persistido em storage (KEYS.gamification):
- *   { streak, longestStreak, lastVisitDate, reviewsCompleted, unlocked: [] }
+ *   { streak, longestStreak, lastVisitDate, unlocked: [] }
  * `lastVisitDate` é uma string "AAAA-MM-DD" (fuso local) pra comparar dias
  * sem depender de horário.
  */
 const DAY_MS = 86400000;
 
 export function initGamificationState() {
-  return { streak: 0, longestStreak: 0, lastVisitDate: null, reviewsCompleted: 0, unlocked: [] };
+  return { streak: 0, longestStreak: 0, lastVisitDate: null, unlocked: [] };
 }
 
 function dateKey(ts) {
@@ -33,11 +33,6 @@ export function recordVisit(prevState, now = Date.now()) {
   };
 }
 
-export function recordReviewCompleted(prevState) {
-  const state = prevState || initGamificationState();
-  return { ...state, reviewsCompleted: (state.reviewsCompleted || 0) + 1 };
-}
-
 export const ACHIEVEMENTS = [
   { id: "first-capture", label: "Primeira captura", desc: "Capture seu primeiro item.", check: (s) => s.totalSaved >= 1 },
   { id: "collector-10", label: "Colecionador", desc: "Capture 10 itens.", check: (s) => s.totalSaved >= 10 },
@@ -45,12 +40,10 @@ export const ACHIEVEMENTS = [
   { id: "streak-3", label: "Hábito formado", desc: "3 dias seguidos de uso.", check: (s) => s.streak >= 3 },
   { id: "streak-7", label: "Uma semana inteira", desc: "7 dias seguidos de uso.", check: (s) => s.streak >= 7 },
   { id: "streak-30", label: "Mestre da constância", desc: "30 dias seguidos de uso.", check: (s) => s.streak >= 30 },
-  { id: "reviewer-10", label: "Estudante aplicado", desc: "Complete 10 revisões.", check: (s) => s.reviewsCompleted >= 10 },
-  { id: "reviewer-50", label: "Memória de elefante", desc: "Complete 50 revisões.", check: (s) => s.reviewsCompleted >= 50 },
 ];
 
 /** Recalcula quais conquistas estão desbloqueadas dado o estado atual + total salvo. */
 export function computeUnlocked(state, totalSaved) {
-  const stats = { totalSaved, streak: state.streak || 0, reviewsCompleted: state.reviewsCompleted || 0 };
+  const stats = { totalSaved, streak: state.streak || 0 };
   return ACHIEVEMENTS.filter((a) => a.check(stats)).map((a) => a.id);
 }
