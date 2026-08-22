@@ -7,7 +7,14 @@ vi.mock("../lib/storage", async (importOriginal) => ({
   ...(await import("../test/storageMock")).storageModuleMock(),
 }));
 
-import { seedStorage } from "../test/storageMock";
+const enrichMock = vi.fn();
+vi.mock("../lib/anthropic", async (importOriginal) => ({
+  ...(await importOriginal()),
+  hasCredentials: async () => false,
+  fetchItemEnrichment: (...args) => enrichMock(...args),
+}));
+
+import { seedStorage, storageState } from "../test/storageMock";
 import DexView from "./DexView";
 import { renderWithData } from "../test/renderWithData";
 
@@ -15,10 +22,10 @@ const SEED = {
   "pokedex-saved": {
     respiracao: {
       displayName: "Técnicas de respiração",
-      kind: "technique",
-      techniques: [
+      items: [
         {
           id: "diafragmatica",
+          kind: "technique",
           name: "Respiração diafragmática",
           type: "calma",
           description: "Respirar usando o diafragma em vez do peito.",
@@ -31,6 +38,7 @@ const SEED = {
         },
         {
           id: "box-breathing",
+          kind: "technique",
           name: "Box breathing",
           type: "foco",
           description: "Quatro tempos iguais de inspiração, pausa, expiração e pausa.",
@@ -44,7 +52,7 @@ const SEED = {
       ],
     },
   },
-  "schema-version": 2,
+  "schema-version": 3,
 };
 
 function renderDex(props = {}) {
@@ -127,5 +135,95 @@ describe("DexView", () => {
     await user.click(screen.getByRole("button", { name: "Marcar" }));
 
     expect(await screen.findByRole("button", { name: "Remover tag foco" })).toBeInTheDocument();
+  });
+
+  it("converte uma técnica em conceito: o card sai da aba Técnicas e reaparece em Conceitos", async () => {
+    const user = userEvent.setup();
+    const { rerender } = renderDex();
+    await screen.findByText("Box breathing");
+
+    await user.click(screen.getAllByRole("button", { name: "Converter este card em outro tipo" })[1]);
+    await user.click(screen.getByRole("button", { name: "Virar conceito" }));
+
+    await waitFor(() => expect(screen.queryByText("Box breathing")).not.toBeInTheDocument());
+
+    rerender(
+      <DexView
+        category="knowledge"
+        onCategoryChange={() => {}}
+        onOpenDetail={() => {}}
+        onOpenImport={() => {}}
+        onSearchRelated={() => {}}
+        onExampleSearch={() => {}}
+        onOpenCompare={() => {}}
+        showArchived={false}
+        onToggleShowArchived={() => {}}
+        searchEffort="medium"
+      />
+    );
+    expect(await screen.findByText("Box breathing")).toBeInTheDocument();
+    expect(screen.getByText("CONCEITO")).toBeInTheDocument();
+    expect(screen.queryByText("Respiração diafragmática")).not.toBeInTheDocument();
+  });
+
+  it("a conversão preserva tags e nota e o card convertido oferece completar com IA", async () => {
+    const user = userEvent.setup();
+    renderDex();
+    await screen.findByText("Respiração diafragmática");
+
+    // "Respiração diafragmática" tem a tag "ioga" e vira tipo
+    await user.click(screen.getAllByRole("button", { name: "Converter este card em outro tipo" })[0]);
+    await user.click(screen.getByRole("button", { name: "Virar tipo" }));
+
+    await waitFor(() => expect(screen.queryByText("Respiração diafragmática")).not.toBeInTheDocument());
+    const savedNow = storageState()["pokedex-saved"];
+    const converted = savedNow.respiracao.items.find((it) => it.id === "diafragmatica");
+    expect(converted.kind).toBe("list");
+    expect(converted.tags).toEqual(["ioga"]);
+    expect(converted.savedAt).toBe(2);
+  });
+
+  it("completar com IA preenche as barras da técnica convertida", async () => {
+    enrichMock.mockResolvedValue({
+      statLabels: ["Rapidez", "Facilidade", "Eficácia", "Duração"],
+      stats: [4, 3, 5, 2],
+      bestFor: "Decorar sequências",
+      type: "memoria",
+    });
+    seedStorage({
+      "pokedex-saved": {
+        memoria: {
+          displayName: "Memória",
+          items: [
+            {
+              id: "palacio",
+              kind: "technique",
+              convertedFrom: "list",
+              name: "Palácio da memória",
+              description: "Associa itens a lugares.",
+              type: "geral",
+              bestFor: "",
+              stats: [],
+              statLabels: [],
+              tags: [],
+              note: "",
+              savedAt: 1,
+            },
+          ],
+        },
+      },
+      "schema-version": 3,
+    });
+
+    const user = userEvent.setup();
+    renderDex();
+    expect(await screen.findByText(/Card convertido — faltam/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /Completar com IA/ }));
+
+    expect(await screen.findByText("Rapidez")).toBeInTheDocument();
+    expect(screen.getByText(/Ideal para: Decorar sequências/)).toBeInTheDocument();
+    expect(screen.queryByText(/Card convertido —/)).not.toBeInTheDocument();
+    expect(enrichMock).toHaveBeenCalledWith("technique", "Memória", expect.objectContaining({ id: "palacio" }));
   });
 });

@@ -36,7 +36,7 @@ describe("importer / mergeData", () => {
   const localSaved = {
     s1: {
       displayName: "Assunto 1",
-      techniques: [{ id: "a", name: "A", savedAt: 100 }],
+      items: [{ id: "a", kind: "technique", name: "A", savedAt: 100 }],
     },
   };
 
@@ -45,22 +45,32 @@ describe("importer / mergeData", () => {
     const { saved, stats } = mergeData(localSaved, {}, payload);
     expect(stats.newSubjects).toBe(1);
     expect(stats.newTechniques).toBe(1);
-    expect(saved.s2.techniques[0].name).toBe("B");
-    expect(saved.s1.techniques).toHaveLength(1); // não mexe no que já existia
+    expect(saved.s2.items[0].name).toBe("B");
+    expect(saved.s2.items[0].kind).toBe("technique"); // grupo legado vira kind de item
+    expect(saved.s1.items).toHaveLength(1); // não mexe no que já existia
   });
 
   it("keeps the local item when it is newer than the incoming one (duplicate)", () => {
     const payload = { saved: { s1: { displayName: "Assunto 1", techniques: [{ id: "a", name: "A velha", savedAt: 1 }] } } };
     const { saved, stats } = mergeData(localSaved, {}, payload);
     expect(stats.duplicateTechniques).toBe(1);
-    expect(saved.s1.techniques[0].name).toBe("A");
+    expect(saved.s1.items[0].name).toBe("A");
   });
 
   it("replaces the local item when the incoming one is newer (update)", () => {
     const payload = { saved: { s1: { displayName: "Assunto 1", techniques: [{ id: "a", name: "A nova", savedAt: 999 }] } } };
     const { saved, stats } = mergeData(localSaved, {}, payload);
     expect(stats.updatedTechniques).toBe(1);
-    expect(saved.s1.techniques[0].name).toBe("A nova");
+    expect(saved.s1.items[0].name).toBe("A nova");
+  });
+
+  it("normaliza um payload legado (grupo kn: com kind próprio) para itens com kind", () => {
+    const payload = {
+      saved: { "kn:s3": { displayName: "Assunto 3", kind: "list", items: [{ id: "c", name: "C", savedAt: 5 }] } },
+    };
+    const { saved } = mergeData(localSaved, {}, payload);
+    expect(saved["kn:s3"].items[0].kind).toBe("list");
+    expect(saved["kn:s3"].techniques).toBeUndefined();
   });
 
   it("merges detailCache, preserving whatever already exists locally", () => {
@@ -101,8 +111,10 @@ describe("importer / buildCollectionExportPayload", () => {
 
     const payload = buildCollectionExportPayload("col1", collection, saved, detailCache);
 
-    expect(payload.saved.s1.techniques.map((t) => t.id)).toEqual(["a"]); // "b" ficou de fora
+    expect(payload.saved.s1.items.map((t) => t.id)).toEqual(["a"]); // "b" ficou de fora
+    expect(payload.saved.s1.items[0].kind).toBe("technique");
     expect(payload.saved["kn:s2"].items.map((it) => it.id)).toEqual(["c"]);
+    expect(payload.saved["kn:s2"].items[0].kind).toBe("definition");
     expect(payload.detailCache["s1:a"]).toBeDefined();
     expect(payload.collections.col1.refs).toEqual(collection.refs);
   });

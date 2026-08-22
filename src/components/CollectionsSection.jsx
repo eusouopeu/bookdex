@@ -104,7 +104,7 @@ export default function CollectionsSection({
   async function addGoalSuggestion(col, suggestion) {
     const item = { name: suggestion.name, category: "Sugestão", description: suggestion.description };
     onToggleSave("list", col.name, { item });
-    onAddToCollection(col.id, [{ subjectKey: `kn:${slug(col.name)}`, itemId: slug(suggestion.name) }]);
+    onAddToCollection(col.id, [{ subjectKey: slug(col.name), itemId: slug(suggestion.name) }]);
   }
 
   async function showCollectionQr(col) {

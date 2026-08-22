@@ -7,6 +7,8 @@ import NoteEditor from "./NoteEditor";
 import ConceptExpand from "./ConceptExpand";
 import DeepDiveIconButton from "./DeepDiveIconButton";
 import { useConceptDeepDive } from "../lib/hooks";
+import ConvertButton from "./ConvertButton";
+import EnrichPrompt from "./EnrichPrompt";
 import { listItemCardPdfBlob } from "../lib/cardPdf";
 
 /**
@@ -27,6 +29,8 @@ export default function ListItemCard({
   onSelectToggle,
   irrelevant,
   onMarkIrrelevant,
+  onConvert,
+  onEnrich,
 }) {
   const deepDive = useConceptDeepDive(item.name, item.category, item.description);
   return (
@@ -91,6 +95,7 @@ export default function ListItemCard({
               <ThumbsDown size={15} fill={irrelevant ? "currentColor" : "none"} />
             </button>
           )}
+          <ConvertButton kind="list" onConvert={onConvert} />
           <ShareButton title={item.name} render={() => listItemCardPdfBlob(subjectDisplay || "", item)} />
           <DeepDiveIconButton hasContent={!!deepDive.data} loading={deepDive.loading} onClick={deepDive.toggle} />
           <button
@@ -115,6 +120,7 @@ export default function ListItemCard({
           <TagEditor tags={item.tags || []} onChange={onTagsChange} />
         </div>
       )}
+      <EnrichPrompt item={item} onEnrich={onEnrich} />
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.4 }}>
         {item.description}
       </p>

@@ -1,12 +1,14 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { slug } from "../theme";
 import { getJSON, setJSON, KEYS } from "../lib/storage";
-import { fetchDetail, hasCredentials } from "../lib/anthropic";
+import { fetchDetail, fetchItemEnrichment, hasCredentials } from "../lib/anthropic";
 import { mergeData, mergeCollections } from "../lib/importer";
 import { findSimilarItem } from "../lib/dedupe";
 import { createCollectionId } from "../lib/collections";
 import { wordLangKey, wordItemId } from "../lib/words";
 import { CURRENT_SCHEMA_VERSION, runMigrations } from "../lib/migrations";
+import { groupItems, itemKind, itemLabel, isKnowledgeKind, withItems, KIND_LABELS } from "../lib/savedModel";
+import { applyEnrichment, convertItem as convertItemFields } from "../lib/convert";
 
 /**
  * Fonte única dos dados capturados (Pokédex, guias, palavras e coleções) e de
@@ -24,12 +26,8 @@ export function useData() {
   return ctx;
 }
 
-function isKnowledgeGroup(group) {
-  return group.kind === "definition" || group.kind === "list";
-}
-
-function activeCount(list) {
-  return (list || []).filter((it) => !it.archived).length;
+function activeItems(group) {
+  return groupItems(group).filter((it) => !it.archived);
 }
 
 export function DataProvider({ children }) {
@@ -129,12 +127,8 @@ export function DataProvider({ children }) {
   /* -------------------------------------------------------------- pokédex */
 
   function isSaved(mode, subjectDisplay, itemId) {
-    if (mode === "technique") {
-      const group = saved[slug(subjectDisplay)];
-      return !!(group && group.techniques.some((t) => t.id === itemId));
-    }
-    const group = saved[`kn:${slug(subjectDisplay)}`];
-    return !!(group && group.items.some((it) => it.id === itemId));
+    const group = saved[slug(subjectDisplay)];
+    return groupItems(group).some((it) => it.id === itemId && itemKind(it, group) === mode);
   }
 
   function commitSaved(next, message, prevSaved) {
@@ -158,17 +152,17 @@ export function DataProvider({ children }) {
     const techId = technique.id || slug(technique.name);
     const next = { ...saved };
     const existing = next[subjectKey];
-    const group = existing
-      ? { displayName: existing.displayName, kind: "technique", techniques: [...existing.techniques] }
-      : { displayName: subjectDisplay, kind: "technique", techniques: [] };
+    const items = existing ? [...groupItems(existing)] : [];
+    const displayName = existing?.displayName || subjectDisplay;
 
-    const idx = group.techniques.findIndex((t) => t.id === techId);
+    const idx = items.findIndex((t) => t.id === techId && itemKind(t, existing) === "technique");
     const removed = idx >= 0;
     if (removed) {
-      group.techniques.splice(idx, 1);
+      items.splice(idx, 1);
     } else {
-      group.techniques.push({
+      items.push({
         id: techId,
+        kind: "technique",
         name: technique.name,
         type: technique.type,
         description: technique.description,
@@ -181,8 +175,8 @@ export function DataProvider({ children }) {
       });
     }
 
-    if (group.techniques.length === 0) delete next[subjectKey];
-    else next[subjectKey] = group;
+    if (items.length === 0) delete next[subjectKey];
+    else next[subjectKey] = withItems({ displayName }, items);
 
     if (removed) {
       commitSaved(next, `${technique.name} solto(a) da Pokédex.`, prevSaved);
@@ -200,12 +194,11 @@ export function DataProvider({ children }) {
 
   function toggleKnowledgeSave(mode, subjectDisplay, payload) {
     const prevSaved = saved;
-    const subjectKey = `kn:${slug(subjectDisplay)}`;
+    const subjectKey = slug(subjectDisplay);
     const next = { ...saved };
     const existing = next[subjectKey];
-    const group = existing
-      ? { displayName: existing.displayName, kind: mode, items: [...existing.items] }
-      : { displayName: subjectDisplay, kind: mode, items: [] };
+    const items = existing ? [...groupItems(existing)] : [];
+    const displayName = existing?.displayName || subjectDisplay;
 
     let itemId;
     let itemName;
@@ -216,6 +209,7 @@ export function DataProvider({ children }) {
       itemName = d.term;
       itemObj = {
         id: itemId,
+        kind: "definition",
         term: d.term,
         category: d.category,
         definition: d.definition,
@@ -232,6 +226,7 @@ export function DataProvider({ children }) {
       itemName = it.name;
       itemObj = {
         id: itemId,
+        kind: "list",
         name: it.name,
         category: it.category,
         description: it.description,
@@ -241,13 +236,13 @@ export function DataProvider({ children }) {
       };
     }
 
-    const idx = group.items.findIndex((x) => x.id === itemId);
+    const idx = items.findIndex((x) => x.id === itemId && itemKind(x, existing) === mode);
     const removed = idx >= 0;
-    if (removed) group.items.splice(idx, 1);
-    else group.items.push(itemObj);
+    if (removed) items.splice(idx, 1);
+    else items.push(itemObj);
 
-    if (group.items.length === 0) delete next[subjectKey];
-    else next[subjectKey] = group;
+    if (items.length === 0) delete next[subjectKey];
+    else next[subjectKey] = withItems({ displayName }, items);
 
     if (removed) {
       commitSaved(next, `${itemName} solto(a) da Pokédex.`, prevSaved);
@@ -279,19 +274,18 @@ export function DataProvider({ children }) {
     for (const { subjectKey, itemId } of refs) {
       const group = next[subjectKey];
       if (!group) continue;
-      const knowledge = isKnowledgeGroup(group);
-      const list = knowledge ? group.items : group.techniques;
+      const list = groupItems(group);
       const idx = list.findIndex((it) => it.id === itemId);
       if (idx === -1) continue;
       const nextList = [...list];
-      const mutated = mutate(nextList[idx]);
+      const mutated = mutate(nextList[idx], group);
       if (mutated === null) nextList.splice(idx, 1);
       else nextList[idx] = mutated;
       if (nextList.length === 0) {
         next = { ...next };
         delete next[subjectKey];
       } else {
-        next = { ...next, [subjectKey]: knowledge ? { ...group, items: nextList } : { ...group, techniques: nextList } };
+        next = { ...next, [subjectKey]: withItems(group, nextList) };
       }
     }
     return next;
@@ -314,6 +308,46 @@ export function DataProvider({ children }) {
   function archiveItems(refs, archived) {
     const next = mapRefs(saved, refs, (item) => ({ ...item, archived }));
     commitSaved(next, archived ? `${refs.length} item(ns) arquivado(s).` : `${refs.length} item(ns) desarquivado(s).`, saved);
+  }
+
+  /* ------------------------------------------------------------- conversão */
+
+  /**
+   * Converte um card entre técnica/conceito/tipo. É local e instantâneo: o
+   * item fica no mesmo assunto com o mesmo id, então refs de coleção seguem
+   * válidas e o toast de desfazer funciona como em qualquer outra edição. O
+   * que a conversão não sabe preencher fica pro `enrichItem`, sob demanda.
+   */
+  function convertItem(subjectKey, itemId, targetKind) {
+    const group = saved[subjectKey];
+    const current = groupItems(group).find((it) => it.id === itemId);
+    if (!current) return;
+    const from = itemKind(current, group);
+    if (from === targetKind) return;
+
+    const next = mapRefs(saved, [{ subjectKey, itemId }], (item) => convertItemFields({ ...item, kind: from }, targetKind));
+    commitSaved(
+      next,
+      `"${itemLabel(current)}" virou ${(KIND_LABELS[targetKind] || targetKind).toLowerCase()}.`,
+      saved
+    );
+  }
+
+  /**
+   * Completa com a API os campos que ficaram em branco na conversão.
+   * Devolve o item atualizado; erros sobem pra quem chamou mostrar no card.
+   */
+  async function enrichItem(subjectKey, itemId) {
+    const group = saved[subjectKey];
+    const current = groupItems(group).find((it) => it.id === itemId);
+    if (!current) return null;
+    const kind = itemKind(current, group);
+    const data = await fetchItemEnrichment(kind, group.displayName, current);
+    const enriched = applyEnrichment({ ...current, kind }, data);
+    const next = mapRefs(saved, [{ subjectKey, itemId }], () => enriched);
+    setSaved(next);
+    persistSaved(next);
+    return enriched;
   }
 
   function updateItemInGroup(subjectKey, itemId, mutate) {
@@ -501,19 +535,25 @@ export function DataProvider({ children }) {
 
   function applyImport(payload) {
     const { saved: mergedSaved, detailCache: mergedDetails, stats } = mergeData(saved, detailCache, payload);
-    const migrated = runMigrations({ saved: mergedSaved, detailCache: mergedDetails, words, collections }, 0).data;
-    setSaved(migrated.saved);
-    setDetailCache(migrated.detailCache);
-    persistSaved(migrated.saved);
-    persistDetails(migrated.detailCache);
 
     let collectionStats = { newCollections: 0, updatedCollections: 0 };
+    let mergedCollections = collections;
     if (payload.collections) {
-      const { collections: mergedCollections, stats: cStats } = mergeCollections(collections, payload.collections);
-      setCollections(mergedCollections);
-      persistCollections(mergedCollections);
-      collectionStats = cStats;
+      const merged = mergeCollections(collections, payload.collections);
+      mergedCollections = merged.collections;
+      collectionStats = merged.stats;
     }
+
+    // As migrações rodam sobre o pacote inteiro (inclusive coleções) porque a
+    // v3 pode renomear ids ao fundir grupos legados e precisa reescrever as
+    // refs junto — por isso o merge de coleções vem antes, e não depois.
+    const migrated = runMigrations({ saved: mergedSaved, detailCache: mergedDetails, words, collections: mergedCollections }, 0).data;
+    setSaved(migrated.saved);
+    setDetailCache(migrated.detailCache);
+    setCollections(migrated.collections);
+    persistSaved(migrated.saved);
+    persistDetails(migrated.detailCache);
+    persistCollections(migrated.collections);
 
     showToast("Dados importados!");
     return { ...stats, ...collectionStats };
@@ -523,10 +563,11 @@ export function DataProvider({ children }) {
 
   const counts = useMemo(() => {
     const groups = Object.values(saved);
+    const active = groups.flatMap((g) => activeItems(g).map((it) => itemKind(it, g)));
     return {
-      total: groups.reduce((sum, g) => sum + activeCount(isKnowledgeGroup(g) ? g.items : g.techniques), 0),
-      techniques: groups.reduce((sum, g) => sum + (isKnowledgeGroup(g) ? 0 : activeCount(g.techniques)), 0),
-      knowledge: groups.reduce((sum, g) => sum + (isKnowledgeGroup(g) ? activeCount(g.items) : 0), 0),
+      total: active.length,
+      techniques: active.filter((kind) => !isKnowledgeKind(kind)).length,
+      knowledge: active.filter(isKnowledgeKind).length,
       subjects: groups.length,
       collections: Object.keys(collections || {}).length,
       words: Object.values(words || {}).reduce((sum, g) => sum + g.words.length, 0),
@@ -556,6 +597,8 @@ export function DataProvider({ children }) {
     updateItemTags,
     updateItemNote,
     updateItemImages,
+    convertItem,
+    enrichItem,
     isWordSaved,
     toggleWordSave,
     removeWordGroup,

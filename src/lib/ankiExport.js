@@ -5,6 +5,7 @@
  * completo do item, incluindo o guia passo a passo já cacheado, quando existir.
  */
 import { slug } from "../theme";
+import { groupItems, itemKind, isKnowledgeKind } from "./savedModel";
 
 function escapeCsvField(value) {
   const str = String(value ?? "");
@@ -12,10 +13,6 @@ function escapeCsvField(value) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
-}
-
-function isKnowledgeGroup(group) {
-  return group.kind === "definition" || group.kind === "list";
 }
 
 function frontOf(kind, item) {
@@ -55,11 +52,9 @@ function tagsOf(displayName, kind, item) {
 export function buildAnkiCsv(saved, detailCache) {
   const rows = ["#separator:Semicolon", "#html:false", "#tags column:3"];
   for (const group of Object.values(saved || {})) {
-    const kind = group.kind || "technique";
-    const isKnowledge = isKnowledgeGroup(group);
-    const items = isKnowledge ? group.items : group.techniques;
-    for (const item of items || []) {
-      const detail = !isKnowledge ? detailCache?.[`${slug(group.displayName)}:${item.id}`] : null;
+    for (const item of groupItems(group)) {
+      const kind = itemKind(item, group);
+      const detail = isKnowledgeKind(kind) ? null : detailCache?.[`${slug(group.displayName)}:${item.id}`];
       const row = [frontOf(kind, item), backOf(kind, item, detail), tagsOf(group.displayName, kind, item)]
         .map(escapeCsvField)
         .join(";");
@@ -70,8 +65,5 @@ export function buildAnkiCsv(saved, detailCache) {
 }
 
 export function countAnkiRows(saved) {
-  return Object.values(saved || {}).reduce((sum, group) => {
-    const items = isKnowledgeGroup(group) ? group.items : group.techniques;
-    return sum + (items ? items.length : 0);
-  }, 0);
+  return Object.values(saved || {}).reduce((sum, group) => sum + groupItems(group).length, 0);
 }

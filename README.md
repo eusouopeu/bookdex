@@ -156,6 +156,8 @@ src/
     PokeballIcon.jsx        ícone de captura
     TagEditor.jsx           chips de tag livre num item salvo
     NoteEditor.jsx          anotação pessoal livre num item salvo
+    ConvertButton.jsx       menu de converter o card em outro tipo
+    EnrichPrompt.jsx        faixa "completar com IA" num card convertido incompleto
     CollectionPicker.jsx    bottom sheet pra escolher/criar coleção na seleção em lote
     CollectionsSection.jsx  aba "Coleções" dentro da Pokédex
   views/
@@ -167,6 +169,8 @@ src/
     ImportView.jsx          importar JSON, backup, export em PDF, Markdown e Anki
   lib/
     storage.js              get/set/delete/list sobre @capacitor/preferences
+    savedModel.js           forma canônica de `saved` e acessos a ela (kind por item)
+    convert.js              conversão de um card entre técnica/conceito/tipo
     migrations.js           versão do schema persistido + migrações em ordem
     anthropic.js            chamadas à API, prompts e erros tratados (técnica/def/list)
     speech.js               pronúncia via speechSynthesis (escolha de voz por idioma)
@@ -189,6 +193,32 @@ precisam com `useData()` em vez de receber dezenas de props do `App.jsx`, que fi
 com navegação, busca, tema, perfis de efeito e relevância. O fluxo da aba **Buscar** é
 um reducer puro (`src/state/searchReducer.js`), testado sem renderizar nada.
 
+### Modelo dos dados: `kind` é do item
+
+```
+saved[assunto] = { displayName, items: [ { id, kind, ... } ] }
+```
+
+`kind` é `"technique"`, `"definition"` ou `"list"` e mora no ITEM, não no
+grupo — um mesmo assunto guarda técnicas, conceitos e tipos lado a lado, e cada
+badge da Pokédex mostra o recorte dela do mesmo assunto. Os acessos passam por
+`src/lib/savedModel.js` (`groupItems`, `itemKind`, `itemLabel`, `withItems`),
+que também lê os formatos antigos, porque payloads importados chegam neles.
+
+### Converter um card entre tipos
+
+O botão de converter (ícone de setas no card) troca o `kind` e remapeia os
+campos localmente — instantâneo, offline, sem custo de API. O item continua no
+mesmo assunto, com o mesmo `id`, `savedAt`, tags, nota e imagens, então as refs
+de coleção seguem válidas e o toast desfaz a conversão como qualquer outra
+edição (`src/lib/convert.js`).
+
+O que a conversão não deduz sozinha — stats e "ideal para" de uma técnica,
+pontos-chave e exemplo de um conceito — fica em branco, e o card marcado como
+convertido oferece **Completar com IA**, que preenche só o que falta e nunca
+sobrescreve o que você já tinha escrito. O card é usável sem isso; a chamada à
+API só acontece se você tocar no botão.
+
 ### Versão do schema e migrações
 
 Tudo que é persistido carrega uma versão em `KEYS.schemaVersion`. Na abertura o
@@ -196,16 +226,19 @@ Tudo que é persistido carrega uma versão em `KEYS.schemaVersion`. Na abertura 
 só, regrava os dados e sobe a versão. Para criar uma migração: adicione uma entrada em
 `MIGRATIONS` com a versão de destino e uma função pura `(data) => data`, e suba
 `CURRENT_SCHEMA_VERSION`. Payloads importados passam pelas mesmas migrações antes de
-entrar no estado.
+entrar no estado — inclusive as coleções, porque a v3 pode renomear ids e precisa
+reescrever as refs junto.
+
+Versões até aqui: **v1** normaliza grupos legados; **v2** remove os campos das
+funcionalidades de revisão e vínculo, que saíram do app; **v3** move `kind` pro
+item, funde os antigos grupos `kn:<assunto>` no assunto de mesmo nome
+(renomeando ids que colidem) e reescreve as refs de coleção afetadas.
 
 Chaves de armazenamento (prefixadas com `tecnicadex:`): `pokedex-saved`,
 `pokedex-details`, `saved-words`, `anthropic-api-key`, `anthropic-proxy-url`,
 `search-history`, `collections`, `schema-version`, `prefetch-details-enabled`, entre
-outras (ver `KEYS` em `src/lib/storage.js`). Dentro de `pokedex-saved`, grupos de
-técnica guardam um array `techniques`; grupos de conceito/tipo (`kind: "definition"` ou
-`"list"`) guardam um array `items` e são prefixados com `kn:` para não colidir com o
-slug de um assunto de técnica igual. Cada item salvo tem um campo `note` de anotação
-pessoal livre, além de `tags`.
+outras (ver `KEYS` em `src/lib/storage.js`). Cada item salvo tem um campo `note` de
+anotação pessoal livre, além de `tags`.
 
 `collections` guarda pastas manuais que cruzam itens de assuntos diferentes: cada
 coleção é `{ id, name, createdAt, refs: [{subjectKey, itemId}] }` — as refs apontam pro

@@ -1,4 +1,5 @@
 import { slug } from "../theme";
+import { groupItems, itemLabel } from "./savedModel";
 
 /**
  * Procura, em QUALQUER assunto já salvo, um item cujo nome normalizado
@@ -10,9 +11,8 @@ export function findSimilarItem(saved, name) {
   const targetSlug = slug(name);
   if (!targetSlug) return null;
   for (const group of Object.values(saved || {})) {
-    const items = group.kind === "definition" || group.kind === "list" ? group.items : group.techniques;
-    for (const it of items || []) {
-      const itName = it.term || it.name;
+    for (const it of groupItems(group)) {
+      const itName = itemLabel(it);
       if (slug(itName) === targetSlug) {
         return { subjectDisplay: group.displayName, name: itName };
       }

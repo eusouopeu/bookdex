@@ -24,7 +24,7 @@ const PAYLOAD = JSON.stringify({
 
 describe("ImportView", () => {
   beforeEach(() => {
-    seedStorage({ "schema-version": 2 });
+    seedStorage({ "schema-version": 3 });
   });
 
   it("mostra o resumo antes de importar e só grava depois da confirmação", async () => {
@@ -41,7 +41,9 @@ describe("ImportView", () => {
     await user.click(confirm);
 
     expect(await screen.findByText(/assunto\(s\) novo\(s\)/)).toBeInTheDocument();
-    expect(Object.keys(storageState()["pokedex-saved"])).toEqual(["respiracao"]);
+    const savedAfter = storageState()["pokedex-saved"];
+    expect(Object.keys(savedAfter)).toEqual(["respiracao"]);
+    expect(savedAfter.respiracao.items[0].kind).toBe("technique"); // payload legado normalizado
   });
 
   it("reclama de JSON inválido sem gravar nada", async () => {

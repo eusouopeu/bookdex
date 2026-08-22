@@ -382,6 +382,71 @@ export async function fetchStepDeepDive(subjectDisplay, technique, step) {
   return parsed.substeps;
 }
 
+/**
+ * Preenche os campos que a conversão de um card entre tipos não consegue
+ * deduzir sozinha (stats de técnica, pontos-chave de conceito). O prompt muda
+ * conforme o tipo de DESTINO — o resto do card já foi convertido localmente.
+ */
+const ENRICH_SYSTEM_PROMPT = {
+  technique: `Você completa a ficha de uma TÉCNICA num app estilo Pokédex de conhecimento.
+O usuário converteu um card que antes era um conceito ou um tipo em uma técnica, e agora faltam os campos próprios de técnica.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "type": uma palavra em português classificando a técnica (ex.: "memoria", "foco", "calma").
+- "bestFor": em que situação essa técnica é a melhor escolha (até 12 palavras, em português).
+- "statLabels": exatamente 4 critérios de avaliação em português, curtos (1 a 3 palavras), adequados a esta técnica.
+- "stats": exatamente 4 inteiros de 1 a 5, na MESMA ordem de "statLabels".
+- Se o item não for praticável como técnica, ainda assim preencha da forma mais honesta possível, com notas baixas.
+
+Formato exato (sem campos extras):
+{"type":"...","bestFor":"...","statLabels":["...","...","...","..."],"stats":[3,4,2,5]}`,
+
+  definition: `Você completa a ficha de um CONCEITO num app estilo Pokédex de conhecimento.
+O usuário converteu um card que antes era uma técnica ou um tipo em um conceito, e agora faltam os campos próprios de verbete.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "definition": 1 a 3 frases definindo o termo, em português, sem repetir literalmente o texto já existente.
+- "keyPoints": 3 a 5 pontos-chave (até 14 palavras cada), em português.
+- "example": um exemplo concreto e curto, em português.
+- "relatedTerms": 2 a 4 termos relacionados, em português.
+- "category": uma palavra ou expressão curta classificando o conceito.
+
+Formato exato (sem campos extras):
+{"definition":"...","keyPoints":["..."],"example":"...","relatedTerms":["..."],"category":"..."}`,
+
+  list: `Você completa a ficha de um TIPO/ITEM de enumeração num app estilo Pokédex de conhecimento.
+O usuário converteu um card que antes era uma técnica ou um conceito em um tipo, e agora falta a descrição própria.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "description": 1 a 2 frases descrevendo o item, em português.
+- "category": uma palavra ou expressão curta classificando o item.
+
+Formato exato (sem campos extras):
+{"description":"...","category":"..."}`,
+};
+
+export async function fetchItemEnrichment(targetKind, subjectDisplay, item) {
+  const system = ENRICH_SYSTEM_PROMPT[targetKind];
+  if (!system) throw new Error("Tipo de card desconhecido para completar.");
+  const label = item.term || item.name || "";
+  const body = item.description || item.definition || "";
+  const parsed = await sendMessageJSON({
+    system,
+    user: `Assunto: ${subjectDisplay}\nItem: ${label}\nCategoria: ${item.category || ""}\nJá temos: ${body}`,
+    maxTokens: 600,
+  });
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Formato inesperado na resposta");
+  }
+  if (targetKind === "technique" && !(Array.isArray(parsed.stats) && Array.isArray(parsed.statLabels))) {
+    throw new Error("Formato inesperado na resposta");
+  }
+  return parsed;
+}
+
 export const CONCEPT_DEEPDIVE_SYSTEM_PROMPT = `Você aprofunda a explicação de um conceito/tipo já apresentado brevemente, num app estilo Pokédex de conhecimento.
 Dado o termo, a categoria e a explicação resumida já mostrada ao usuário, gere um complemento MAIS profundo — sem repetir o que já foi dito.
 

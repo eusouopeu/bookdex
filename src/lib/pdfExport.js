@@ -1,13 +1,20 @@
 import { jsPDF } from "jspdf";
 import { slug } from "../theme";
+import { groupItems, itemKind, isKnowledgeKind } from "./savedModel";
 
 const MARGIN = 15;
 const PAGE_WIDTH = 210; // A4 mm
 const PAGE_HEIGHT = 297;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 
-function isKnowledgeGroup(group) {
-  return group.kind === "definition" || group.kind === "list";
+/** Assuntos com pelo menos um item do naipe pedido, já com os itens filtrados. */
+function sectionsOf(saved, wantKnowledge) {
+  const out = [];
+  for (const group of Object.values(saved || {})) {
+    const items = groupItems(group).filter((it) => isKnowledgeKind(itemKind(it, group)) === wantKnowledge);
+    if (items.length) out.push({ group, items });
+  }
+  return out;
 }
 
 /**
@@ -58,9 +65,8 @@ export function buildPokedexPdf(saved, detailCache) {
   doc.addPage();
   y = MARGIN;
 
-  const entries = Object.entries(saved || {});
-  const techniqueEntries = entries.filter(([, g]) => !isKnowledgeGroup(g));
-  const knowledgeEntries = entries.filter(([, g]) => isKnowledgeGroup(g));
+  const techniqueSections = sectionsOf(saved, false);
+  const knowledgeSections = sectionsOf(saved, true);
 
   function writeTechniqueGroup(displayName, techniques) {
     writeHeading(displayName);
@@ -86,10 +92,10 @@ export function buildPokedexPdf(saved, detailCache) {
     });
   }
 
-  function writeKnowledgeGroup(displayName, group) {
+  function writeKnowledgeGroup(displayName, group, items) {
     writeHeading(displayName);
-    group.items.forEach((it) => {
-      if (group.kind === "definition") {
+    items.forEach((it) => {
+      if (itemKind(it, group) === "definition") {
         writeParagraph(`${it.term} (${it.category})`, { size: 12, style: "bold", gap: 1.5 });
         writeParagraph(it.definition, { size: 10 });
         (it.keyPoints || []).forEach((k) => writeParagraph(`• ${k}`, { size: 9.5, gap: 1 }));
@@ -102,16 +108,16 @@ export function buildPokedexPdf(saved, detailCache) {
     });
   }
 
-  if (techniqueEntries.length) {
+  if (techniqueSections.length) {
     writeHeading("Técnicas", 20);
-    techniqueEntries.forEach(([, group]) => writeTechniqueGroup(group.displayName, group.techniques));
+    techniqueSections.forEach(({ group, items }) => writeTechniqueGroup(group.displayName, items));
   }
 
-  if (knowledgeEntries.length) {
+  if (knowledgeSections.length) {
     doc.addPage();
     y = MARGIN;
     writeHeading("Conceitos & Tipos", 20);
-    knowledgeEntries.forEach(([, group]) => writeKnowledgeGroup(group.displayName, group));
+    knowledgeSections.forEach(({ group, items }) => writeKnowledgeGroup(group.displayName, group, items));
   }
 
   return doc;

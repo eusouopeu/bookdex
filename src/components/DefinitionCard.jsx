@@ -6,6 +6,8 @@ import NoteEditor from "./NoteEditor";
 import ConceptExpand from "./ConceptExpand";
 import DeepDiveIconButton from "./DeepDiveIconButton";
 import { useConceptDeepDive } from "../lib/hooks";
+import ConvertButton from "./ConvertButton";
+import EnrichPrompt from "./EnrichPrompt";
 import { definitionCardPdfBlob } from "../lib/cardPdf";
 
 /**
@@ -23,6 +25,8 @@ export default function DefinitionCard({
   selectable,
   selected,
   onSelectToggle,
+  onConvert,
+  onEnrich,
 }) {
   const deepDive = useConceptDeepDive(definition.term, definition.category, definition.definition);
   return (
@@ -69,6 +73,7 @@ export default function DefinitionCard({
         </div>
         {!selectable && (
         <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
+          <ConvertButton kind="definition" onConvert={onConvert} />
           <ShareButton title={definition.term} render={() => definitionCardPdfBlob(definition)} />
           <DeepDiveIconButton hasContent={!!deepDive.data} loading={deepDive.loading} onClick={deepDive.toggle} />
           <button
@@ -96,6 +101,7 @@ export default function DefinitionCard({
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.45, marginBottom: "12px" }}>
         {definition.definition}
       </p>
+      <EnrichPrompt item={definition} onEnrich={onEnrich} />
 
       {!!(definition.keyPoints || []).length && (
         <div style={{ marginBottom: "12px" }}>

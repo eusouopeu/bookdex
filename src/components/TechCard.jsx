@@ -5,6 +5,8 @@ import StatBar from "./StatBar";
 import ShareButton from "./ShareButton";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
+import ConvertButton from "./ConvertButton";
+import EnrichPrompt from "./EnrichPrompt";
 import { techniqueCardPdfBlob } from "../lib/cardPdf";
 
 export default function TechCard({
@@ -23,6 +25,8 @@ export default function TechCard({
   onSelectToggle,
   irrelevant,
   onMarkIrrelevant,
+  onConvert,
+  onEnrich,
 }) {
   const color = getTypeColor(technique.type);
   return (
@@ -89,6 +93,7 @@ export default function TechCard({
                 <ThumbsDown size={15} fill={irrelevant ? "currentColor" : "none"} />
               </button>
             )}
+            <ConvertButton kind="technique" onConvert={onConvert} />
             <ShareButton title={technique.name} render={() => techniqueCardPdfBlob(subjectDisplay || "", technique, statLabels)} />
             {onOpenDetail && (
               <button
@@ -133,14 +138,17 @@ export default function TechCard({
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.4, marginBottom: "9px" }}>
         {technique.description}
       </p>
+      <EnrichPrompt item={technique} onEnrich={onEnrich} />
       <div className="space-y-1.5" style={{ marginBottom: "8px" }}>
         {statLabels.map((label, i) => (
           <StatBar key={label + i} label={label} value={technique.stats ? technique.stats[i] : 0} color={color} />
         ))}
       </div>
-      <div style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", fontStyle: "italic" }}>
-        Ideal para: {technique.bestFor}
-      </div>
+      {technique.bestFor && (
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", fontStyle: "italic" }}>
+          Ideal para: {technique.bestFor}
+        </div>
+      )}
       <div className="flex items-center" style={{ flexWrap: "wrap" }}>
         {onNoteChange && <NoteEditor note={technique.note} onChange={onNoteChange} />}
       </div>

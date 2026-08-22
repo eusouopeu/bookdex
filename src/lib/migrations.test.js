@@ -24,20 +24,47 @@ describe("runMigrations", () => {
     expect(migrated).toBe(true);
     expect(version).toBe(CURRENT_SCHEMA_VERSION);
 
-    const tech = data.saved.respiracao;
+    const tech = data.saved.respiracao.items[0];
     expect(tech.kind).toBe("technique");
-    expect(tech.techniques[0].tags).toEqual([]);
-    expect(tech.techniques[0].note).toBe("");
-    expect(tech.techniques[0].reviewState).toBeUndefined();
-    expect(tech.techniques[0].links).toBeUndefined();
+    expect(tech.tags).toEqual([]);
+    expect(tech.note).toBe("");
+    expect(tech.reviewState).toBeUndefined();
+    expect(tech.links).toBeUndefined();
 
-    const list = data.saved["kn:memoria"];
-    expect(list.items[0].tags).toEqual(["a"]);
-    expect(list.items[0].reviewState).toBeUndefined();
-    expect(list.techniques).toBeUndefined();
+    const listItem = data.saved.memoria.items[0];
+    expect(listItem.kind).toBe("list");
+    expect(listItem.tags).toEqual(["a"]);
+    expect(listItem.reviewState).toBeUndefined();
+    expect(data.saved["kn:memoria"]).toBeUndefined();
+    expect(data.saved.memoria.techniques).toBeUndefined();
 
     expect(data.words.zh.displayName).toBe("zh");
     expect(data.words.zh.words[0].characters).toEqual([]);
+  });
+
+  it("funde o grupo kn: no assunto de mesmo nome, renomeia id repetido e reescreve as refs", () => {
+    const source = {
+      saved: {
+        foco: { displayName: "Foco", kind: "technique", techniques: [{ id: "pomodoro", name: "Pomodoro", savedAt: 1 }] },
+        "kn:foco": { displayName: "Foco", kind: "definition", items: [{ id: "pomodoro", term: "Pomodoro", savedAt: 2 }] },
+      },
+      detailCache: {},
+      words: {},
+      collections: {
+        c1: { id: "c1", name: "Prova", refs: [{ subjectKey: "kn:foco", itemId: "pomodoro" }, { subjectKey: "foco", itemId: "pomodoro" }] },
+      },
+    };
+    const { data } = runMigrations(source, 0);
+
+    const ids = data.saved.foco.items.map((it) => [it.id, it.kind]);
+    expect(ids).toEqual([
+      ["pomodoro", "technique"],
+      ["pomodoro-def", "definition"],
+    ]);
+    expect(data.collections.c1.refs).toEqual([
+      { subjectKey: "foco", itemId: "pomodoro-def" },
+      { subjectKey: "foco", itemId: "pomodoro" },
+    ]);
   });
 
   it("não mexe em dados já na versão atual", () => {
@@ -56,6 +83,7 @@ describe("runMigrations", () => {
     };
     const { data, migrated } = runMigrations(v1, 1);
     expect(migrated).toBe(true);
-    expect(data.saved.a.techniques[0].reviewState).toBeUndefined();
+    expect(data.saved.a.items[0].reviewState).toBeUndefined();
+    expect(data.saved.a.items[0].kind).toBe("technique");
   });
 });

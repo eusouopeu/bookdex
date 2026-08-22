@@ -26,6 +26,7 @@ import CollectionPicker from "../components/CollectionPicker";
 import CollectionsSection from "../components/CollectionsSection";
 import WordsView from "./WordsView";
 import { useData } from "../state/DataContext";
+import { groupItems, itemKind, itemLabel, isKnowledgeKind, withItems } from "../lib/savedModel";
 
 const BACKUP_REMINDER_DAYS = 14;
 const CONFIRM_THRESHOLD = 3; // grupos com mais itens do que isso pedem confirmação antes de apagar
@@ -85,6 +86,8 @@ export default function DexView({
     deleteCollection: onDeleteCollection,
     addToCollection: onAddToCollection,
     removeFromCollection: onRemoveFromCollection,
+    convertItem: onConvertItem,
+    enrichItem: onEnrichItem,
   } = useData();
   const [collapsed, setCollapsed] = useState({});
   const [filterText, setFilterText] = useState("");
@@ -114,32 +117,35 @@ export default function DexView({
   }, [category]);
 
   const entries = Object.entries(saved);
-  const techniqueEntries = useMemo(
-    () => entries.filter(([, g]) => !g.kind || g.kind === "technique"),
-    [entries]
-  );
-  const knowledgeEntries = useMemo(
-    () => entries.filter(([, g]) => g.kind === "definition" || g.kind === "list"),
-    [entries]
-  );
 
-  function itemLabel(kind, item) {
-    return kind === "definition" ? item.term : item.name;
-  }
-
-  function groupItems(group) {
-    return group.kind === "definition" || group.kind === "list" ? group.items : group.techniques;
-  }
+  /**
+   * Um assunto pode misturar técnicas, conceitos e tipos (o `kind` é do item),
+   * então a badge de categoria filtra ITENS, não grupos: cada aba mostra o
+   * mesmo assunto com o recorte dela, e some se não sobrar nada.
+   */
+  const activeEntries = useMemo(() => {
+    const wantKnowledge = category === "knowledge";
+    return entries
+      .map(([key, group]) => [
+        key,
+        withItems(
+          group,
+          groupItems(group).filter((it) => isKnowledgeKind(itemKind(it, group)) === wantKnowledge)
+        ),
+      ])
+      .filter(([, group]) => group.items.length > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [saved, category]);
 
   const allTags = useMemo(() => {
     const set = new Set();
-    for (const [, group] of category === "technique" ? techniqueEntries : knowledgeEntries) {
-      for (const item of groupItems(group)) {
+    for (const [, group] of activeEntries) {
+      for (const item of group.items) {
         for (const t of item.tags || []) set.add(t);
       }
     }
     return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [category, techniqueEntries, knowledgeEntries]);
+  }, [activeEntries]);
 
   function guideText(subjectDisplay, item) {
     if (!detailCache) return "";
@@ -157,7 +163,7 @@ export default function DexView({
   }
 
   /** Texto livre de um item salvo (nota + descrição/definição + exemplo), pra busca full-text. */
-  function itemFreeText(kind, it) {
+  function itemFreeText(it) {
     return [
       it.note,
       it.description,
@@ -173,24 +179,21 @@ export default function DexView({
 
   function filterEntries(list) {
     const q = slug(filterText.trim());
-    const bySubjectAllowsAll = (group) => !q || slug(group.displayName).includes(q);
     return list
       .map(([key, group]) => {
-        const isKnowledge = group.kind === "definition" || group.kind === "list";
-        const items = isKnowledge ? group.items : group.techniques;
-        const subjectMatches = bySubjectAllowsAll(group);
-        const finalItems = items.filter((it) => {
+        const subjectMatches = !q || slug(group.displayName).includes(q);
+        const finalItems = group.items.filter((it) => {
           if (!showArchived && it.archived) return false;
           if (showArchived && !it.archived) return false;
           if (activeTag && !(it.tags || []).includes(activeTag)) return false;
           if (!q || subjectMatches) return true;
-          if (slug(itemLabel(group.kind, it)).includes(q)) return true;
-          if (slug(itemFreeText(group.kind, it)).includes(q)) return true;
-          if (!isKnowledge && slug(guideText(group.displayName, it)).includes(q)) return true;
+          if (slug(itemLabel(it)).includes(q)) return true;
+          if (slug(itemFreeText(it)).includes(q)) return true;
+          if (itemKind(it, group) === "technique" && slug(guideText(group.displayName, it)).includes(q)) return true;
           return false;
         });
         if (finalItems.length === 0) return null;
-        return [key, isKnowledge ? { ...group, items: finalItems } : { ...group, techniques: finalItems }];
+        return [key, withItems(group, finalItems)];
       })
       .filter(Boolean);
   }
@@ -201,8 +204,8 @@ export default function DexView({
       copy.sort((a, b) => a[1].displayName.localeCompare(b[1].displayName, "pt-BR"));
     } else {
       copy.sort((a, b) => {
-        const aMax = Math.max(0, ...groupItems(a[1]).map((it) => it.savedAt || 0));
-        const bMax = Math.max(0, ...groupItems(b[1]).map((it) => it.savedAt || 0));
+        const aMax = Math.max(0, ...a[1].items.map((it) => it.savedAt || 0));
+        const bMax = Math.max(0, ...b[1].items.map((it) => it.savedAt || 0));
         return bMax - aMax;
       });
     }
@@ -217,9 +220,9 @@ export default function DexView({
    * Props de seleção do card. Os dois modos (comparar e selecionar em massa)
    * usam a MESMA aparência: checkbox dentro do card + borda destacada.
    */
-  function selectionProps(subjectKey, itemId, subjectDisplay, technique) {
+  function selectionProps(subjectKey, itemId, subjectDisplay, technique, kind) {
     if (compareMode) {
-      if (!technique) return {};
+      if (kind !== "technique") return {};
       return {
         selectable: true,
         selected: compareSelection.some((c) => c.subjectKey === subjectKey && c.id === itemId),
@@ -375,7 +378,6 @@ export default function DexView({
     );
   }
 
-  const activeEntries = category === "technique" ? techniqueEntries : knowledgeEntries;
   const visibleEntries = sortEntries(filterEntries(activeEntries));
 
   return (
@@ -671,8 +673,7 @@ export default function DexView({
 
       {visibleEntries.map(([key, group]) => {
         const open = !collapsed[key];
-        const isKnowledge = group.kind === "definition" || group.kind === "list";
-        const count = isKnowledge ? group.items.length : group.techniques.length;
+        const count = group.items.length;
         const confirming = confirmingRemove === key;
         return (
           <div key={key} style={{ marginBottom: "18px" }}>
@@ -754,53 +755,53 @@ export default function DexView({
                 </button>
               )}
             </div>
-            {open && !isKnowledge &&
-              group.techniques.map((t, i) => (
-                <TechCard
-                  key={t.id}
-                  index={i}
-                  subjectDisplay={group.displayName}
-                  technique={t}
-                  statLabels={t.statLabels || []}
-                  saved={true}
-                  onToggle={() => onToggleSave("technique", group.displayName, { technique: t, statLabels: t.statLabels })}
-                  onOpenDetail={compareMode || selectMode ? undefined : () => onOpenDetail(group.displayName, t)}
-                  hasDetail={hasDetail ? hasDetail(group.displayName, t) : false}
-                  onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, t.id, group.kind || "technique", tags) : undefined}
-                  onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, t.id, group.kind || "technique", note) : undefined}
-                  onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, t.id, group.kind || "technique", images) : undefined}
-                  {...selectionProps(key, t.id, group.displayName, t)}
-                />
-              ))}
-            {open && group.kind === "definition" &&
-              group.items.map((d) => (
-                <DefinitionCard
-                  key={d.id}
-                  definition={d}
-                  saved={true}
-                  onToggle={() => onToggleSave("definition", group.displayName, { definition: d })}
-                  onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, d.id, "definition", tags) : undefined}
-                  onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, d.id, "definition", note) : undefined}
-                  onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, d.id, "definition", images) : undefined}
-                  onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
-                  {...selectionProps(key, d.id)}
-                />
-              ))}
-            {open && group.kind === "list" &&
-              group.items.map((it, i) => (
-                <ListItemCard
-                  key={it.id}
-                  index={i}
-                  subjectDisplay={group.displayName}
-                  item={it}
-                  saved={true}
-                  onToggle={() => onToggleSave("list", group.displayName, { item: it })}
-                  onTagsChange={onUpdateTags ? (tags) => onUpdateTags(key, it.id, "list", tags) : undefined}
-                  onNoteChange={onUpdateNote ? (note) => onUpdateNote(key, it.id, "list", note) : undefined}
-                  onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, it.id, "list", images) : undefined}
-                  {...selectionProps(key, it.id)}
-                />
-              ))}
+            {open &&
+              group.items.map((item, i) => {
+                const kind = itemKind(item, group);
+                const common = {
+                  key: item.id,
+                  saved: true,
+                  onTagsChange: onUpdateTags ? (tags) => onUpdateTags(key, item.id, kind, tags) : undefined,
+                  onNoteChange: onUpdateNote ? (note) => onUpdateNote(key, item.id, kind, note) : undefined,
+                  onImagesChange: onUpdateImages ? (images) => onUpdateImages(key, item.id, kind, images) : undefined,
+                  onConvert: selectMode || compareMode ? undefined : (target) => onConvertItem(key, item.id, target),
+                  onEnrich: () => onEnrichItem(key, item.id),
+                  ...selectionProps(key, item.id, group.displayName, item, kind),
+                };
+                if (kind === "definition") {
+                  return (
+                    <DefinitionCard
+                      {...common}
+                      definition={item}
+                      onToggle={() => onToggleSave("definition", group.displayName, { definition: item })}
+                      onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
+                    />
+                  );
+                }
+                if (kind === "list") {
+                  return (
+                    <ListItemCard
+                      {...common}
+                      index={i}
+                      subjectDisplay={group.displayName}
+                      item={item}
+                      onToggle={() => onToggleSave("list", group.displayName, { item })}
+                    />
+                  );
+                }
+                return (
+                  <TechCard
+                    {...common}
+                    index={i}
+                    subjectDisplay={group.displayName}
+                    technique={item}
+                    statLabels={item.statLabels || []}
+                    onToggle={() => onToggleSave("technique", group.displayName, { technique: item, statLabels: item.statLabels })}
+                    onOpenDetail={compareMode || selectMode ? undefined : () => onOpenDetail(group.displayName, item)}
+                    hasDetail={hasDetail ? hasDetail(group.displayName, item) : false}
+                  />
+                );
+              })}
           </div>
         );
       })}

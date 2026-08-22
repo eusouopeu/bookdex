@@ -11,7 +11,7 @@
  * destino e uma função pura `(data) => data`, e suba CURRENT_SCHEMA_VERSION.
  */
 
-export const CURRENT_SCHEMA_VERSION = 2;
+export const CURRENT_SCHEMA_VERSION = 3;
 
 function isKnowledgeKind(kind) {
   return kind === "definition" || kind === "list";
@@ -36,11 +36,19 @@ function toV1(data) {
       kind,
       displayName: rawGroup.displayName || key,
     };
+    // A lista pode chegar em `items` (formato atual, ou grupo de conhecimento
+    // antigo) ou em `techniques` (grupo de técnica antigo) — o que existir é o
+    // que vale, senão dados de um import mais novo seriam descartados aqui.
+    const list = Array.isArray(rawGroup.techniques)
+      ? rawGroup.techniques
+      : Array.isArray(rawGroup.items)
+        ? rawGroup.items
+        : [];
     if (isKnowledgeKind(kind)) {
-      group.items = Array.isArray(rawGroup.items) ? rawGroup.items : [];
+      group.items = list;
       delete group.techniques;
     } else {
-      group.techniques = Array.isArray(rawGroup.techniques) ? rawGroup.techniques : [];
+      group.techniques = list;
       delete group.items;
     }
     saved[key] = mapItems(group, (item) => ({
@@ -80,9 +88,73 @@ function toV2(data) {
   return { ...data, saved };
 }
 
+/**
+ * v3 — `kind` passa a ser do ITEM, não do grupo. Cada grupo vira
+ * `{ displayName, items }` com itens de qualquer tipo misturados, e o prefixo
+ * `kn:` some (o grupo de conhecimento é fundido no grupo de mesmo assunto).
+ * Ids que colidem na fusão são renomeados com sufixo do tipo, e as refs das
+ * coleções são reescritas para continuarem apontando pro item certo.
+ */
+function kindSuffix(kind) {
+  return kind === "definition" ? "def" : kind === "list" ? "tipo" : "tec";
+}
+
+function toV3(data) {
+  const saved = {};
+  const refMap = new Map(); // "assuntoAntigo:idAntigo" -> { subjectKey, itemId }
+
+  // Grupos sem prefixo primeiro: assim as técnicas preservam os ids atuais e
+  // só os itens vindos de `kn:` são renomeados quando houver colisão.
+  const entries = Object.entries(data.saved || {}).sort(
+    ([a], [b]) => Number(a.startsWith("kn:")) - Number(b.startsWith("kn:"))
+  );
+
+  for (const [key, group] of entries) {
+    if (!group || typeof group !== "object") continue;
+    const targetKey = key.startsWith("kn:") ? key.slice(3) : key;
+    const groupKind = group.kind || "technique";
+    const legacyItems = Array.isArray(group.items)
+      ? group.items
+      : Array.isArray(group.techniques)
+        ? group.techniques
+        : [];
+
+    if (!saved[targetKey]) saved[targetKey] = { displayName: group.displayName || targetKey, items: [] };
+    const target = saved[targetKey];
+    const taken = new Set(target.items.map((it) => it.id));
+
+    for (const item of legacyItems) {
+      if (!item || !item.id) continue;
+      const kind = item.kind || groupKind;
+      let id = item.id;
+      if (taken.has(id)) id = `${item.id}-${kindSuffix(kind)}`;
+      let n = 2;
+      while (taken.has(id)) id = `${item.id}-${kindSuffix(kind)}-${n++}`;
+      taken.add(id);
+      if (key !== targetKey || id !== item.id) {
+        refMap.set(`${key}:${item.id}`, { subjectKey: targetKey, itemId: id });
+      }
+      const { kind: _ignored, ...rest } = item;
+      target.items.push({ ...rest, id, kind });
+    }
+  }
+
+  const collections = {};
+  for (const [id, col] of Object.entries(data.collections || {})) {
+    if (!col) continue;
+    collections[id] = {
+      ...col,
+      refs: (col.refs || []).map((ref) => refMap.get(`${ref.subjectKey}:${ref.itemId}`) || ref),
+    };
+  }
+
+  return { ...data, saved, collections };
+}
+
 const MIGRATIONS = [
   { version: 1, run: toV1 },
   { version: 2, run: toV2 },
+  { version: 3, run: toV3 },
 ];
 
 /**

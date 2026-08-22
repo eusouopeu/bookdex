@@ -31,7 +31,7 @@ const SEED = {
       ],
     },
   },
-  "schema-version": 2,
+  "schema-version": 3,
 };
 
 describe("WordsView", () => {

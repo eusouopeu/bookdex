@@ -5,17 +5,16 @@
  * Formato esperado do payload:
  *   { saved: {...}, detailCache?: {...}, exportedAt?: number, version?: 1 }
  *
- * Cada grupo em `saved` é ou um grupo de técnicas (sem `kind`, ou `kind:
- * "technique"`, com um array `techniques`) ou um grupo de conhecimento
- * (`kind: "definition"` ou `"list"`, com um array `items`).
+ * O merge aceita tanto o formato atual (grupo `{ displayName, items }` com
+ * `kind` em cada item) quanto os antigos (grupo com `kind` próprio e array
+ * `techniques` ou `items`, chave prefixada com `kn:`). O resultado sai sempre
+ * na forma atual, e as migrações rodam por cima depois de mesclar —
+ * é lá que chaves `kn:` antigas são fundidas e as refs de coleção reescritas.
  */
+import { groupItems, itemKind, withItems } from "./savedModel";
 
-function isTechniqueGroup(group) {
-  return !group.kind || group.kind === "technique";
-}
-
-function itemsArrayOf(group) {
-  return isTechniqueGroup(group) ? group.techniques : group.items;
+function normalizedItems(group) {
+  return groupItems(group).map((item) => ({ ...item, kind: itemKind(item, group) }));
 }
 
 export function parsePayload(rawText) {
@@ -36,7 +35,8 @@ export function validatePayload(payload) {
     throw new Error('O arquivo não contém o campo "saved" com os assuntos capturados.');
   }
   for (const [key, group] of Object.entries(payload.saved)) {
-    if (!group || typeof group !== "object" || !Array.isArray(itemsArrayOf(group))) {
+    const hasItemList = group && typeof group === "object" && (Array.isArray(group.items) || Array.isArray(group.techniques));
+    if (!hasItemList) {
       throw new Error(`Assunto "${key}" está com formato inválido (sem lista de itens).`);
     }
   }
@@ -96,11 +96,7 @@ export function mergeCollections(localCollections, incomingCollections) {
 export function mergeData(localSaved, localDetails, payload) {
   const saved = {};
   for (const [key, group] of Object.entries(localSaved || {})) {
-    if (isTechniqueGroup(group)) {
-      saved[key] = { displayName: group.displayName, kind: "technique", techniques: [...group.techniques] };
-    } else {
-      saved[key] = { displayName: group.displayName, kind: group.kind, items: [...group.items] };
-    }
+    saved[key] = withItems(group, normalizedItems(group));
   }
 
   const stats = {
@@ -113,18 +109,15 @@ export function mergeData(localSaved, localDetails, payload) {
   };
 
   for (const [key, incoming] of Object.entries(payload.saved || {})) {
-    const incomingIsTechnique = isTechniqueGroup(incoming);
     if (!saved[key]) {
-      saved[key] = incomingIsTechnique
-        ? { displayName: incoming.displayName || key, kind: "technique", techniques: [] }
-        : { displayName: incoming.displayName || key, kind: incoming.kind, items: [] };
+      saved[key] = { displayName: incoming.displayName || key, items: [] };
       stats.newSubjects++;
     }
     const group = saved[key];
     if (!group.displayName && incoming.displayName) group.displayName = incoming.displayName;
 
-    const localItems = itemsArrayOf(group);
-    for (const entry of itemsArrayOf(incoming) || []) {
+    const localItems = group.items;
+    for (const entry of normalizedItems(incoming)) {
       if (!entry || !entry.id) continue;
       const idx = localItems.findIndex((t) => t.id === entry.id);
       if (idx === -1) {
@@ -164,10 +157,6 @@ export function buildExportPayload(saved, detailCache) {
   };
 }
 
-function itemsArrayOfKind(kind) {
-  return kind === "definition" || kind === "list" ? "items" : "techniques";
-}
-
 /**
  * Empacota UMA coleção manual pra compartilhar com outro usuário: a coleção
  * em si, mais os itens de `saved` (e seus guias em `detailCache`, se houver)
@@ -179,15 +168,10 @@ export function buildCollectionExportPayload(collectionId, collection, saved, de
   for (const ref of collection.refs || []) {
     const group = saved[ref.subjectKey];
     if (!group) continue;
-    const field = itemsArrayOfKind(group.kind);
-    const item = (group[field] || []).find((it) => it.id === ref.itemId);
+    const item = normalizedItems(group).find((it) => it.id === ref.itemId);
     if (!item) continue;
-    if (!packagedSaved[ref.subjectKey]) {
-      packagedSaved[ref.subjectKey] = group.kind && group.kind !== "technique"
-        ? { displayName: group.displayName, kind: group.kind, items: [] }
-        : { displayName: group.displayName, kind: "technique", techniques: [] };
-    }
-    packagedSaved[ref.subjectKey][field].push(item);
+    if (!packagedSaved[ref.subjectKey]) packagedSaved[ref.subjectKey] = withItems(group, []);
+    packagedSaved[ref.subjectKey].items.push(item);
     const detailKey = `${ref.subjectKey}:${ref.itemId}`;
     if (detailCache && detailCache[detailKey]) packagedDetails[detailKey] = detailCache[detailKey];
   }
