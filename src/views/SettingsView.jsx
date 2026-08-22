@@ -176,14 +176,9 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
         <ArrowLeft size={16} /> Voltar
       </button>
 
-      <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "18px", color: COLORS.ink, marginBottom: "4px" }}>
+      <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "18px", color: COLORS.ink, marginBottom: "16px" }}>
         Configurações
       </h2>
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.45 }}>
-        Fora do claude.ai o app fala direto com a API da Anthropic e precisa da sua própria chave. Ela fica só neste
-        dispositivo e nunca é enviada para outro lugar.
-      </p>
-
       <h3 style={sectionTitleStyle}>Aparência</h3>
       <div className="flex gap-2" style={{ marginBottom: "16px" }}>
         <button onClick={() => changeTheme("light")} className="flex items-center justify-center gap-1.5" style={segmentStyle(theme === "light")}>
@@ -344,11 +339,6 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
           {budget ? ` de ${usd(budget)}` : " (sem teto)"}
         </span>
       </div>
-      <p style={hintStyle}>
-        Em dólares, por mês corrido. Atingido o teto, o app para de chamar a API até você subir o limite ou o mês virar —
-        o que já está capturado continua acessível. O histórico mensal não é apagado pelo botão de zerar contador.
-      </p>
-
       <label
         style={{
           display: "block",

@@ -32,8 +32,8 @@ import CollectionsSection from "./components/CollectionsSection";
 const SEARCH_MODES = [
   { mode: "technique", label: "Técnicas" },
   { mode: "list", label: "Tipos" },
-  { mode: "definition", label: "Conceito" },
   { mode: "compare", label: "Comparar" },
+  { mode: "definition", label: "Conceito" },
   { mode: "word", label: "Palavra" },
   { mode: "plant", label: "Planta" },
 ];
@@ -751,7 +751,7 @@ export default function App() {
           ) : (
             <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", color: "rgba(255,255,255,0.75)", textAlign: "center" }}>
               {view === "collections"
-                ? `${counts.collections} coleção(ões)`
+                ? `${counts.collections} coleções`
                 : isTab || detailTarget
                   ? `${counts.total} item(ns) registrado(s) em ${counts.subjects} assunto(s)`
                   : "Bookdex"}

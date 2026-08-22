@@ -1,9 +1,12 @@
+import { useState } from "react";
+import { Volume2 } from "lucide-react";
 import { COLORS } from "../theme";
 import { isMandarin } from "../lib/words";
-import CardShell from "./CardShell";
+import CardShell, { CardIconButton } from "./CardShell";
 import ShareButton from "./ShareButton";
 import WordEtymology from "./WordEtymology";
 import { wordCardPdfBlob } from "../lib/cardPdf";
+import { isSpeechSupported, speak } from "../lib/speech";
 
 /**
  * Card de uma palavra pesquisada/salva — significado (sempre em português),
@@ -14,11 +17,28 @@ import { wordCardPdfBlob } from "../lib/cardPdf";
  * app: rendia pouco perto do custo de uma chamada por caractere. O que sobrou
  * do mandarim é a decomposição simples — hanzi, pinyin e significado —, que já
  * vem pronta no próprio verbete.
+ *
+ * A pronúncia usa o `speechSynthesis` do próprio sistema — offline, sem custo
+ * de API (ver lib/speech.js).
  */
 export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteChange }) {
   const mandarin = isMandarin(data.languageCode);
   const characters = mandarin ? data.characters || [] : [];
   const isCompound = characters.length > 1;
+  const [speechError, setSpeechError] = useState(null);
+  const speechSupported = isSpeechSupported();
+
+  /** Fala a palavra (ou um hanzi) no idioma do card, usando a voz do sistema. */
+  function pronounce(text) {
+    const result = speak(text, data.languageCode || data.language);
+    setSpeechError(
+      result === "unsupported"
+        ? "Este dispositivo não tem síntese de voz."
+        : result === "no-voice"
+          ? `Nenhuma voz de ${data.language} instalada neste dispositivo.`
+          : null
+    );
+  }
 
   return (
     <CardShell
@@ -40,7 +60,16 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
       onTagsChange={onTagsChange}
       note={data.note}
       onNoteChange={onNoteChange}
-      actions={<ShareButton title={data.word} render={() => wordCardPdfBlob(data)} />}
+      actions={
+        <>
+          {speechSupported && (
+            <CardIconButton onClick={() => pronounce(data.word)} label={`Ouvir a pronúncia de ${data.word}`}>
+              <Volume2 size={16} />
+            </CardIconButton>
+          )}
+          <ShareButton title={data.word} render={() => wordCardPdfBlob(data)} />
+        </>
+      }
     >
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.45, marginBottom: "10px" }}>
         {data.meaning}
@@ -93,11 +122,37 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
                   {c.meaning && (
                     <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text)" }}>— {c.meaning}</span>
                   )}
+                  {speechSupported && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        pronounce(c.hanzi);
+                      }}
+                      aria-label={`Ouvir a pronúncia de ${c.hanzi}`}
+                      title="Ouvir a pronúncia"
+                      style={{
+                        marginLeft: "auto",
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        color: COLORS.screenBorder,
+                        padding: "2px",
+                        display: "flex",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Volume2 size={13} />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
+      )}
+
+      {speechError && (
+        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px" }}>{speechError}</p>
       )}
 
       {/* Etimologia desligada pra mandarim por enquanto — ver pedido do usuário. */}

@@ -458,23 +458,6 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
         </div>
       )}
 
-      {selectMode && (
-        <div
-          style={{
-            background: "rgba(46,134,222,0.1)",
-            border: `2px solid ${COLORS.lensBlue}`,
-            borderRadius: "10px",
-            padding: "8px 10px",
-            marginBottom: "10px",
-            fontFamily: "Inter, sans-serif",
-            fontSize: "11.5px",
-            color: COLORS.ink,
-          }}
-        >
-          Toque nos itens que quiser selecionar ({bulkSelection.length} selecionado(s)).
-        </div>
-      )}
-
       <div className="flex items-center gap-2" style={{ marginBottom: "10px", position: "relative" }}>
         <Search size={14} style={{ position: "absolute", left: "11px", color: COLORS.screenBorder, pointerEvents: "none" }} />
         <input
@@ -857,18 +840,20 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
           }}
         >
           <div
-            className="flex items-center gap-2"
+            className="flex items-center"
             style={{
+              gap: "5px",
               background: COLORS.surface,
               border: `2px solid ${COLORS.screenBorder}`,
               borderRadius: "10px",
-              padding: "8px 10px",
+              padding: "7px 6px",
               boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
               flexWrap: "wrap",
               justifyContent: "center",
+              maxWidth: "100%",
             }}
           >
-            <span style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "12px", color: COLORS.ink }}>
+            <span style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "12px", color: COLORS.ink, whiteSpace: "nowrap" }}>
               {bulkSelection.length} selecionado(s)
             </span>
             <input
@@ -876,10 +861,11 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
               onChange={(e) => setBulkTagDraft(e.target.value)}
               placeholder="tag..."
               style={{
-                width: "80px",
+                width: "50px",
+                minWidth: 0,
                 borderRadius: "8px",
                 border: `1.5px solid ${COLORS.screenBorder}`,
-                padding: "5px 10px",
+                padding: "5px 6px",
                 fontFamily: '"JetBrains Mono", monospace',
                 fontSize: "10.5px",
                 outline: "none",
@@ -888,20 +874,24 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
             <button
               onClick={applyBulkTag}
               disabled={bulkSelection.length === 0 || !bulkTagDraft.trim()}
+              aria-label="Marcar com a tag"
+              title="Marcar com a tag"
               style={{
                 background: COLORS.lensBlue,
                 color: "#fff",
                 border: "none",
                 borderRadius: "8px",
-                padding: "7px 12px",
-                fontFamily: '"Baloo 2", sans-serif',
-                fontWeight: 700,
-                fontSize: "11.5px",
+                width: "30px",
+                height: "30px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
                 cursor: "pointer",
                 opacity: bulkSelection.length === 0 || !bulkTagDraft.trim() ? 0.5 : 1,
               }}
             >
-              Marcar
+              <Check size={14} />
             </button>
             {onAddToCollection && (
               <button
@@ -913,13 +903,14 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
                   color: COLORS.ink,
                   border: `1.5px solid ${COLORS.screenBorder}`,
                   borderRadius: "8px",
-                  padding: "7px 12px",
+                  padding: "6px 9px",
                   fontFamily: '"Baloo 2", sans-serif',
                   fontWeight: 700,
-                  fontSize: "11.5px",
+                  fontSize: "11px",
                   cursor: "pointer",
                   opacity: bulkSelection.length === 0 ? 0.5 : 1,
                   whiteSpace: "nowrap",
+                  flexShrink: 0,
                 }}
               >
                 <FolderPlus size={12} /> Coleção
@@ -929,58 +920,67 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
               <button
                 onClick={applyBulkArchive}
                 disabled={bulkSelection.length === 0}
-                className="flex items-center gap-1"
+                aria-label={showArchived ? "Desarquivar selecionados" : "Arquivar selecionados"}
+                title={showArchived ? "Desarquivar selecionados" : "Arquivar selecionados"}
                 style={{
                   background: "transparent",
                   color: COLORS.ink,
                   border: `1.5px solid ${COLORS.screenBorder}`,
                   borderRadius: "8px",
-                  padding: "7px 12px",
-                  fontFamily: '"Baloo 2", sans-serif',
-                  fontWeight: 700,
-                  fontSize: "11.5px",
+                  width: "30px",
+                  height: "30px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
                   cursor: "pointer",
                   opacity: bulkSelection.length === 0 ? 0.5 : 1,
-                  whiteSpace: "nowrap",
                 }}
               >
-                {showArchived ? <ArchiveRestore size={12} /> : <Archive size={12} />} {showArchived ? "Desarquivar" : "Arquivar"}
+                {showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
               </button>
             )}
             <button
               onClick={applyBulkDelete}
               disabled={bulkSelection.length === 0}
+              aria-label={confirmingBulkDelete ? "Confirmar exclusão" : "Excluir selecionados"}
+              title={confirmingBulkDelete ? "Confirmar exclusão" : "Excluir selecionados"}
               style={{
-                background: "var(--danger)",
-                color: "#fff",
-                border: "none",
+                background: "transparent",
+                color: "var(--danger)",
+                border: "1.5px solid var(--danger)",
                 borderRadius: "8px",
-                padding: "7px 12px",
-                fontFamily: '"Baloo 2", sans-serif',
-                fontWeight: 700,
-                fontSize: "11.5px",
+                width: "30px",
+                height: "30px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
                 cursor: "pointer",
                 opacity: bulkSelection.length === 0 ? 0.5 : 1,
-                whiteSpace: "nowrap",
               }}
             >
-              {confirmingBulkDelete ? "Confirmar?" : "Excluir"}
+              <Trash2 size={14} />
             </button>
             <button
               onClick={exitSelectMode}
+              aria-label="Cancelar seleção"
+              title="Cancelar seleção"
               style={{
-                background: "#23291F",
-                color: "#fff",
-                border: "none",
+                background: "transparent",
+                color: COLORS.ink,
+                border: `1.5px solid ${COLORS.screenBorder}`,
                 borderRadius: "8px",
-                padding: "7px 12px",
-                fontFamily: '"Baloo 2", sans-serif',
-                fontWeight: 700,
-                fontSize: "11.5px",
+                width: "30px",
+                height: "30px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
                 cursor: "pointer",
               }}
             >
-              Cancelar
+              <X size={14} />
             </button>
           </div>
         </div>

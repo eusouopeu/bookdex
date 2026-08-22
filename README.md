@@ -176,7 +176,7 @@ src/
     TechCard.jsx            card da técnica (+ botão Aprofundar)
     DefinitionCard.jsx      card do verbete de conceito (modo def:)
     ListItemCard.jsx        card de item de enumeração (modo list:)
-    WordCard.jsx            card de palavra (modo pal:)
+    WordCard.jsx            card de palavra (modo pal:) + pronúncia por voz do sistema
     PlantCard.jsx           card de planta: foto, ficha e os 4 aspectos sob demanda
     PlantPhoto.jsx          a foto do topo do card de planta (ou o botão de anexar)
     StatBar.jsx             barra de 5 blocos das stats
@@ -196,6 +196,7 @@ src/
     ImportView.jsx          importar JSON, backup, export em PDF, Markdown e Anki
   lib/
     storage.js              get/set/delete/list sobre @capacitor/preferences
+    speech.js                pronúncia via speechSynthesis (escolha de voz por idioma)
     savedModel.js           forma canônica de `saved` e acessos a ela (kind por item)
     plants.js               modelo dos itens do tipo planta (grupo por família, id, texto livre)
     convert.js              conversão de um card entre técnica/conceito/tipo
@@ -365,5 +366,6 @@ teste exercita provider e view juntos, como no app. O CI (`.github/workflows/ci.
 - Modelos usados: `claude-sonnet-5` e `claude-haiku-4-5-20251001`, thinking adaptativo.
   Quem escolhe qual é `src/lib/models.js`; os modos de busca são configuráveis em
   Configurações (ver §6, "Modelos e custo").
-- O app não usa voz: nem busca por voz (a WebView do Android costuma não expor
-  `SpeechRecognition`) nem síntese de fala nos cards de palavra.
+- Sem busca por voz (a WebView do Android costuma não expor `SpeechRecognition`), mas
+  o card de palavra tem pronúncia via `speechSynthesis` do sistema — offline, sem custo
+  de API (`src/lib/speech.js`).

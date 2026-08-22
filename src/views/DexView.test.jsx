@@ -130,10 +130,10 @@ describe("DexView", () => {
     await user.click(screen.getByRole("button", { name: "Selecionar vários itens" }));
     await user.click(screen.getByRole("checkbox", { name: "Selecionar Box breathing" }));
 
-    await user.click(screen.getByRole("button", { name: "Excluir" }));
+    await user.click(screen.getByRole("button", { name: "Excluir selecionados" }));
     expect(screen.getByText("Box breathing")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Confirmar?" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar exclusão" }));
     await waitFor(() => expect(screen.queryByText("Box breathing")).not.toBeInTheDocument());
     expect(screen.getByText("Respiração diafragmática")).toBeInTheDocument();
   });
@@ -146,7 +146,7 @@ describe("DexView", () => {
     await user.click(screen.getByRole("button", { name: "Selecionar vários itens" }));
     await user.click(screen.getByRole("checkbox", { name: "Selecionar Box breathing" }));
     await user.type(screen.getByPlaceholderText("tag..."), "foco");
-    await user.click(screen.getByRole("button", { name: "Marcar" }));
+    await user.click(screen.getByRole("button", { name: "Marcar com a tag" }));
 
     expect(await screen.findByRole("button", { name: "Remover tag foco" })).toBeInTheDocument();
   });
