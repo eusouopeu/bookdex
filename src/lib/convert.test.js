@@ -49,6 +49,12 @@ describe("convertItem", () => {
     expect(back.keyPoints).toBeUndefined();
   });
 
+  it("limpa aspectos gerados sob demanda — pertencem ao kind antigo", () => {
+    const withAspects = { ...listItem, aspects: { deepDive: "algo" } };
+    const converted = convertItem(withAspects, "definition");
+    expect(converted.aspects).toBeUndefined();
+  });
+
   it("é no-op quando o tipo de destino é o atual", () => {
     expect(convertItem(listItem, "list")).toBe(listItem);
   });

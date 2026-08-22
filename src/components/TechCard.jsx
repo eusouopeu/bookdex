@@ -1,11 +1,16 @@
-import { BookOpen, Sparkles, ThumbsDown } from "lucide-react";
-import { COLORS, getTypeColor } from "../theme";
+import { AlertTriangle, BookOpen, Lightbulb, Link2, Sparkles, ThumbsDown } from "lucide-react";
+import { getTypeColor } from "../theme";
 import CardShell, { CardIconButton } from "./CardShell";
 import StatBar from "./StatBar";
 import ShareButton from "./ShareButton";
 import ConvertButton from "./ConvertButton";
 import EnrichPrompt from "./EnrichPrompt";
+import AspectButtons, { BLUE_TINT, aspectButtonStyle } from "./AspectButtons";
+import { TECH_ASPECTS, fetchTechAspect } from "../lib/anthropic";
 import { techniqueCardPdfBlob } from "../lib/cardPdf";
+
+const ASPECT_ICONS = { mistakes: AlertTriangle, why: Lightbulb, combos: Link2 };
+const TECH_ASPECTS_WITH_ICONS = TECH_ASPECTS.map((a) => ({ ...a, icon: ASPECT_ICONS[a.id] }));
 
 export default function TechCard({
   subjectDisplay,
@@ -24,6 +29,7 @@ export default function TechCard({
   onMarkIrrelevant,
   onConvert,
   onEnrich,
+  onAspectGenerated,
 }) {
   const color = getTypeColor(technique.type);
   return (
@@ -56,11 +62,6 @@ export default function TechCard({
           )}
           <ConvertButton kind="technique" onConvert={onConvert} />
           <ShareButton title={technique.name} render={() => techniqueCardPdfBlob(subjectDisplay || "", technique, statLabels)} />
-          {onOpenDetail && (
-            <CardIconButton onClick={onOpenDetail} label={hasDetail ? "Ver guia" : "Aprofundar (gera com IA)"}>
-              {hasDetail ? <BookOpen size={15} /> : <Sparkles size={15} />}
-            </CardIconButton>
-          )}
         </>
       }
     >
@@ -74,10 +75,29 @@ export default function TechCard({
         ))}
       </div>
       {technique.bestFor && (
-        <div style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", fontStyle: "italic" }}>
+        <div style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", fontStyle: "italic", marginBottom: "9px" }}>
           Ideal para: {technique.bestFor}
         </div>
       )}
+      <AspectButtons
+        leading={
+          onOpenDetail && (
+            <button
+              onClick={onOpenDetail}
+              aria-label={hasDetail ? "Ver guia passo a passo" : "Gerar guia passo a passo (com IA)"}
+              title="Passo a passo"
+              style={aspectButtonStyle(hasDetail, false, BLUE_TINT)}
+            >
+              {hasDetail ? <BookOpen size={15} /> : <Sparkles size={15} />}
+            </button>
+          )
+        }
+        aspects={TECH_ASPECTS_WITH_ICONS}
+        saved={technique.aspects}
+        onFetch={(id) => fetchTechAspect(subjectDisplay || "", technique, id)}
+        onGenerated={onAspectGenerated}
+        tint={BLUE_TINT}
+      />
     </CardShell>
   );
 }

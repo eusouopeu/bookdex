@@ -173,8 +173,9 @@ src/
     searchReducer.js        reducer do fluxo de busca (digitar → buscar → resultado/erro)
   components/
     CardShell.jsx           a casca comum de TODO card (moldura, cabeçalho, tags, nota)
-    TechCard.jsx            card da técnica (+ botão Aprofundar)
-    DefinitionCard.jsx      card do verbete de conceito (modo def:)
+    AspectButtons.jsx       fila de botões que geram aspectos sob demanda (planta/técnica/conceito)
+    TechCard.jsx            card da técnica: guia passo a passo + 3 aspectos sob demanda
+    DefinitionCard.jsx      card do verbete de conceito (modo def:): 4 aspectos sob demanda
     ListItemCard.jsx        card de item de enumeração (modo list:)
     WordCard.jsx            card de palavra (modo pal:) + pronúncia por voz do sistema
     PlantCard.jsx           card de planta: foto, ficha e os 4 aspectos sob demanda
@@ -237,6 +238,29 @@ de nota — cada um com sua cópia dos estilos. Isso agora é `components/CardSh
 cada card fica sendo só o que é próprio dele: o miolo e a lista de ações do cabeçalho. A
 pokébola de captura é prop da casca, não um item da lista de ações, pra que nenhum card
 consiga colocá-la fora de ordem.
+
+### Aspectos gerados sob demanda
+
+Planta, técnica e conceito têm uma fila de 3-4 botões-ícone que geram, sob demanda e um
+por vez, um bloco curto (3 a 5 linhas) sobre um aspecto do item — nasceu no card de
+planta (origem, identificação, cultivo, uso medicinal) e o mesmo padrão cobre agora
+técnica (erros comuns, por que funciona, combina com) e conceito (aprofundar, erros de
+interpretação, onde se manifesta, conceitos relacionados). Tocar num aspecto já gerado só
+expande/recolhe; nada é pedido duas vezes, e cada aspecto é uma chamada independente —
+você paga só pelos que tocar.
+
+A mecânica (estado, fetch, expandir, persistir) mora toda em
+`components/AspectButtons.jsx`, reaproveitada pelos três cards — cada um só define a
+lista de aspectos, o ícone de cada um e a função de busca. O card de técnica tem um botão
+a mais À FRENTE da fila (`leading`), pro guia passo a passo: diferente dos outros, ele
+não expande texto ali — abre a página cheia do guia (`DetailPage`), então segue seu
+próprio fluxo (`hasDetail`/`onOpenDetail`/`detailCache`) em vez do fetch genérico.
+
+O texto gerado é persistido no campo `aspects` do item — `{ [aspectId]: texto }` —, o
+mesmo campo pros três kinds (os ids de aspecto de uma técnica não colidem com os de um
+conceito ou planta). `useData().updateItemAspect(subjectKey, itemId, aspectId, texto)` é
+a única função de persistência, cobrindo os três; convertida a `kind` do item, os
+aspectos antigos são descartados (`lib/convert.js`), porque pertenciam ao kind anterior.
 
 ### Modelo dos dados: `kind` é do item
 

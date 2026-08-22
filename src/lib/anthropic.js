@@ -376,6 +376,57 @@ export async function fetchDetail(subjectDisplay, technique) {
   return parsed;
 }
 
+/**
+ * Os três aspectos gerados sob demanda no card de técnica, além do guia
+ * passo a passo (que já tinha seu próprio botão e continua com ele — ver
+ * TechCard). Mesmo padrão dos aspectos de planta: cada um é uma chamada curta
+ * e independente, paga só se o usuário tocar naquele botão.
+ */
+export const TECH_ASPECTS = [
+  {
+    id: "mistakes",
+    label: "Erros comuns",
+    prompt:
+      "Os erros mais comuns de quem está aprendendo esta técnica, e como notar NA HORA se está sendo feita certo ou errado — além do que já foi dito na descrição.",
+  },
+  {
+    id: "why",
+    label: "Por que funciona",
+    prompt:
+      "O mecanismo por trás desta técnica: por que ela produz o efeito que produz, em termos concretos (fisiológicos, cognitivos ou comportamentais, o que se aplicar) — não apenas repetir o que ela faz.",
+  },
+  {
+    id: "combos",
+    label: "Combina com",
+    prompt:
+      "De 2 a 3 outras técnicas do MESMO assunto/domínio que combinam bem com esta, usadas em conjunto ou em sequência, e por que a combinação funciona melhor que cada uma sozinha.",
+  },
+];
+
+export const TECH_ASPECT_SYSTEM_PROMPT = `Você escreve um trecho curto sobre UM aspecto específico de uma técnica, num app estilo Pokédex de técnicas.
+Dado o assunto, o nome da técnica, o tipo e a descrição já mostrada, escreva SÓ sobre o aspecto pedido.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "text": de 3 a 5 linhas de texto corrido em português (aproximadamente 45 a 80 palavras), específico e acionável — nada de conselho genérico.
+- Não repita a descrição já mostrada nem escreva sobre os outros aspectos.
+
+Formato exato (sem campos extras):
+{"text":"..."}`;
+
+export async function fetchTechAspect(subjectDisplay, technique, aspectId) {
+  const aspect = TECH_ASPECTS.find((a) => a.id === aspectId);
+  if (!aspect) throw new Error("Aspecto desconhecido.");
+  const parsed = await sendMessageJSON({
+    system: TECH_ASPECT_SYSTEM_PROMPT,
+    user: `Assunto: ${subjectDisplay}\nTécnica: ${technique.name}\nTipo: ${technique.type || ""}\nDescrição: ${technique.description || ""}\nAspecto pedido: ${aspect.label} — ${aspect.prompt}`,
+    maxTokens: 500,
+    model: modelFor("techAspect"),
+  });
+  if (!parsed.text) throw new Error("Formato inesperado na resposta");
+  return parsed.text;
+}
+
 export const STEP_DEEPDIVE_SYSTEM_PROMPT = `Você aprofunda UM passo específico de um guia de técnica, num app estilo Pokédex.
 Dado o assunto, a técnica e um passo (título + instrução) já mostrados ao usuário, quebre esse passo em uma sub-lista mais granular, explicando COMO executá-lo na prática.
 
@@ -487,6 +538,62 @@ export async function fetchConceptDeepDive(term, category, summary) {
     throw new Error("Formato inesperado na resposta");
   }
   return parsed;
+}
+
+/**
+ * Os quatro aspectos gerados sob demanda no card de conceito (modo def:),
+ * substituindo o antigo botão único de "aprofundar" (que ainda existe para
+ * ListItemCard, via fetchConceptDeepDive acima — tipos não entraram nesta
+ * mudança). Mesmo padrão dos aspectos de planta/técnica.
+ */
+export const CONCEPT_ASPECTS = [
+  {
+    id: "deepen",
+    label: "Aprofundar",
+    prompt:
+      "Um aprofundamento do conceito além da definição já mostrada — mecanismos, nuances ou contexto que a explicação resumida não cobriu.",
+  },
+  {
+    id: "confusion",
+    label: "Erros de interpretação",
+    prompt:
+      "O erro de interpretação mais comum sobre este conceito, e/ou com qual outro termo ele costuma ser confundido — e o que de fato os distingue.",
+  },
+  {
+    id: "examples",
+    label: "Onde se manifesta",
+    prompt:
+      "De 1 a 2 situações concretas do dia a dia (ou de um campo específico) em que este conceito se manifesta claramente, explicando COMO ele aparece em cada uma.",
+  },
+  {
+    id: "related",
+    label: "Conceitos relacionados",
+    prompt:
+      "De 2 a 3 conceitos similares ou complementares a este, e como cada um se relaciona com ele — no que se parecem ou como se complementam.",
+  },
+];
+
+export const CONCEPT_ASPECT_SYSTEM_PROMPT = `Você escreve um trecho curto sobre UM aspecto específico de um conceito, num app estilo Pokédex de conhecimento.
+Dado o termo, a categoria e a definição já mostrada, escreva SÓ sobre o aspecto pedido.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "text": de 3 a 5 linhas de texto corrido em português (aproximadamente 45 a 80 palavras), específico — sem repetir a definição já mostrada nem escrever sobre os outros aspectos.
+
+Formato exato (sem campos extras):
+{"text":"..."}`;
+
+export async function fetchConceptAspect(definition, aspectId) {
+  const aspect = CONCEPT_ASPECTS.find((a) => a.id === aspectId);
+  if (!aspect) throw new Error("Aspecto desconhecido.");
+  const parsed = await sendMessageJSON({
+    system: CONCEPT_ASPECT_SYSTEM_PROMPT,
+    user: `Termo: ${definition.term}\nCategoria: ${definition.category || ""}\nDefinição: ${definition.definition || ""}\nAspecto pedido: ${aspect.label} — ${aspect.prompt}`,
+    maxTokens: 500,
+    model: modelFor("conceptAspect"),
+  });
+  if (!parsed.text) throw new Error("Formato inesperado na resposta");
+  return parsed.text;
 }
 
 export const RELATED_NAMES_SYSTEM_PROMPT = `Você sugere nomes de conceitos ou tipos relacionados a um termo dado, num app estilo Pokédex de conhecimento.

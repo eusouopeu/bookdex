@@ -1,12 +1,16 @@
+import { AlertTriangle, BookOpen, Eye, Link2 } from "lucide-react";
 import { COLORS } from "../theme";
 import CardShell from "./CardShell";
 import ShareButton from "./ShareButton";
 import ConceptExpand from "./ConceptExpand";
-import DeepDiveIconButton from "./DeepDiveIconButton";
-import { useConceptDeepDive } from "../lib/hooks";
 import ConvertButton from "./ConvertButton";
 import EnrichPrompt from "./EnrichPrompt";
+import AspectButtons, { BLUE_TINT } from "./AspectButtons";
+import { CONCEPT_ASPECTS, fetchConceptAspect } from "../lib/anthropic";
 import { definitionCardPdfBlob } from "../lib/cardPdf";
+
+const ASPECT_ICONS = { deepen: BookOpen, confusion: AlertTriangle, examples: Eye, related: Link2 };
+const CONCEPT_ASPECTS_WITH_ICONS = CONCEPT_ASPECTS.map((a) => ({ ...a, icon: ASPECT_ICONS[a.id] }));
 
 /**
  * Verbete de conceito/definição (modo "def:"). Ao contrário do TechCard, não
@@ -25,8 +29,8 @@ export default function DefinitionCard({
   onSelectToggle,
   onConvert,
   onEnrich,
+  onAspectGenerated,
 }) {
-  const deepDive = useConceptDeepDive(definition.term, definition.category, definition.definition);
   return (
     <CardShell
       eyebrow="CONCEITO"
@@ -47,7 +51,6 @@ export default function DefinitionCard({
         <>
           <ConvertButton kind="definition" onConvert={onConvert} />
           <ShareButton title={definition.term} render={() => definitionCardPdfBlob(definition)} />
-          <DeepDiveIconButton hasContent={!!deepDive.data} loading={deepDive.loading} onClick={deepDive.toggle} />
         </>
       }
     >
@@ -101,7 +104,7 @@ export default function DefinitionCard({
       )}
 
       {!!(definition.relatedTerms || []).length && (
-        <div className="flex" style={{ flexWrap: "wrap", gap: "6px", marginBottom: onTagsChange ? "10px" : 0 }}>
+        <div className="flex" style={{ flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
           {definition.relatedTerms.map((t, i) =>
             onSearchRelated ? (
               <button
@@ -139,12 +142,15 @@ export default function DefinitionCard({
         </div>
       )}
 
-      <ConceptExpand
-        term={definition.term}
-        category={definition.category}
-        onAddRelatedCard={onAddRelatedCard}
-        deepDive={deepDive}
+      <AspectButtons
+        aspects={CONCEPT_ASPECTS_WITH_ICONS}
+        saved={definition.aspects}
+        onFetch={(id) => fetchConceptAspect(definition, id)}
+        onGenerated={onAspectGenerated}
+        tint={BLUE_TINT}
       />
+
+      <ConceptExpand term={definition.term} category={definition.category} onAddRelatedCard={onAddRelatedCard} />
     </CardShell>
   );
 }

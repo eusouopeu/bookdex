@@ -47,7 +47,7 @@ export default function CollectionsSection({
   onUpdateTags,
   onUpdateNote,
   onUpdateImages,
-  onUpdatePlantAspect,
+  onUpdateItemAspect,
   onSearchRelated,
 }) {
   const [collapsed, setCollapsed] = useState({});
@@ -150,6 +150,7 @@ export default function CollectionsSection({
           onTagsChange={onUpdateTags ? (tags) => onUpdateTags(ref.subjectKey, item.id, "definition", tags) : undefined}
           onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
           onNoteChange={onUpdateNote ? (note) => onUpdateNote(ref.subjectKey, item.id, "definition", note) : undefined}
+          onAspectGenerated={onUpdateItemAspect ? (aspectId, text) => onUpdateItemAspect(ref.subjectKey, item.id, aspectId, text) : undefined}
         />
       );
     } else if (kind === "plant") {
@@ -161,7 +162,7 @@ export default function CollectionsSection({
           onTagsChange={onUpdateTags ? (tags) => onUpdateTags(ref.subjectKey, item.id, "plant", tags) : undefined}
           onNoteChange={onUpdateNote ? (note) => onUpdateNote(ref.subjectKey, item.id, "plant", note) : undefined}
           onImagesChange={onUpdateImages ? (images) => onUpdateImages(ref.subjectKey, item.id, "plant", images) : undefined}
-          onAspectGenerated={onUpdatePlantAspect ? (aspectId, text) => onUpdatePlantAspect(ref.subjectKey, item.id, aspectId, text) : undefined}
+          onAspectGenerated={onUpdateItemAspect ? (aspectId, text) => onUpdateItemAspect(ref.subjectKey, item.id, aspectId, text) : undefined}
         />
       );
     } else if (kind === "list") {
@@ -187,6 +188,7 @@ export default function CollectionsSection({
           hasDetail={hasDetail ? hasDetail(group.displayName, item) : false}
           onTagsChange={onUpdateTags ? (tags) => onUpdateTags(ref.subjectKey, item.id, "technique", tags) : undefined}
           onNoteChange={onUpdateNote ? (note) => onUpdateNote(ref.subjectKey, item.id, "technique", note) : undefined}
+          onAspectGenerated={onUpdateItemAspect ? (aspectId, text) => onUpdateItemAspect(ref.subjectKey, item.id, aspectId, text) : undefined}
         />
       );
     }

@@ -38,7 +38,9 @@ const FIXED_TIER = {
   detail: "sonnet", // guia passo a passo de uma técnica
   stepDeepDive: "sonnet",
   conceptDeepDive: "sonnet",
-  plantAspect: "sonnet", // texto de 3-5 linhas sobre um aspecto da planta
+  plantAspect: "sonnet", // texto de 3-5 linhas sobre um aspecto da planta/técnica/conceito
+  techAspect: "sonnet",
+  conceptAspect: "sonnet",
   goalSuggestions: "sonnet",
   word: "haiku", // verbete de dicionário: significado, pinyin, radical
   wordEtymology: "haiku",

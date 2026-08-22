@@ -279,8 +279,8 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
       <p style={hintStyle}>
         Haiku custa cerca de um terço do Sonnet ({usd(PRICING[MODELS.haiku].output)} contra{" "}
         {usd(PRICING[MODELS.sonnet].output)} por milhão de tokens de saída) e dá conta de listas e verbetes; Sonnet
-        compensa onde há comparação e julgamento. Guias, aprofundamentos e fichas de aspecto de planta ficam sempre em
-        Sonnet; palavras, sempre em Haiku.
+        compensa onde há comparação e julgamento. Guias e os aspectos gerados sob demanda nos cards (planta, técnica,
+        conceito) ficam sempre em Sonnet; palavras, sempre em Haiku.
       </p>
 
       <h3 style={sectionTitleStyle}>Cache de buscas</h3>

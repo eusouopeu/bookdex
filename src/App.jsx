@@ -486,7 +486,7 @@ export default function App() {
                 onUpdateTags={data.updateItemTags}
                 onUpdateNote={data.updateItemNote}
                 onUpdateImages={data.updateItemImages}
-                onUpdatePlantAspect={data.updatePlantAspect}
+                onUpdateItemAspect={data.updateItemAspect}
                 onSearchRelated={searchRelated}
               />
             )}

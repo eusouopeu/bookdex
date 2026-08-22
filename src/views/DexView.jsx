@@ -84,7 +84,7 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
     addToCollection: onAddToCollection,
     convertItem: onConvertItem,
     enrichItem: onEnrichItem,
-    updatePlantAspect: onUpdatePlantAspect,
+    updateItemAspect: onUpdateItemAspect,
   } = useData();
   const [collapsed, setCollapsed] = useState({});
   const [filterText, setFilterText] = useState("");
@@ -725,6 +725,7 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
                   onNoteChange: onUpdateNote ? (note) => onUpdateNote(key, item.id, kind, note) : undefined,
                   onConvert: selectMode || compareMode ? undefined : (target) => onConvertItem(key, item.id, target),
                   onEnrich: () => onEnrichItem(key, item.id),
+                  onAspectGenerated: (aspectId, text) => onUpdateItemAspect(key, item.id, aspectId, text),
                   ...selectionProps(key, item.id, group.displayName, item, kind),
                 };
                 if (kind === "definition") {
@@ -746,7 +747,6 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
                       plant={item}
                       onToggle={() => onToggleSave("plant", group.displayName, { plant: item })}
                       onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, item.id, kind, images) : undefined}
-                      onAspectGenerated={(aspectId, text) => onUpdatePlantAspect(key, item.id, aspectId, text)}
                     />
                   );
                 }
@@ -897,23 +897,24 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
               <button
                 onClick={() => setPickingCollection(true)}
                 disabled={bulkSelection.length === 0}
-                className="flex items-center gap-1"
+                aria-label="Adicionar a uma coleção"
+                title="Adicionar a uma coleção"
                 style={{
                   background: "transparent",
                   color: COLORS.ink,
                   border: `1.5px solid ${COLORS.screenBorder}`,
                   borderRadius: "8px",
-                  padding: "6px 9px",
-                  fontFamily: '"Baloo 2", sans-serif',
-                  fontWeight: 700,
-                  fontSize: "11px",
+                  width: "30px",
+                  height: "30px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
                   cursor: "pointer",
                   opacity: bulkSelection.length === 0 ? 0.5 : 1,
-                  whiteSpace: "nowrap",
-                  flexShrink: 0,
                 }}
               >
-                <FolderPlus size={12} /> Coleção
+                <FolderPlus size={14} />
               </button>
             )}
             {onArchiveItems && (

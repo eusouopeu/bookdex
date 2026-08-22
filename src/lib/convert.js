@@ -26,6 +26,10 @@ function stripped(item) {
   }
   delete clean.name;
   delete clean.description;
+  // Os ids de aspecto (mistakes/why/combos, deepen/confusion/..., etc.) são
+  // próprios de cada kind — os de um card de técnica não significam nada num
+  // conceito, então não faz sentido carregá-los na conversão.
+  delete clean.aspects;
   return clean;
 }
 

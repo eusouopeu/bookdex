@@ -294,8 +294,14 @@ export function DataProvider({ children }) {
     return groupItems(group).some((it) => it.id === id && itemKind(it, group) === "plant");
   }
 
-  /** Guarda o texto de UM aspecto (origem, identificação, cultivo, uso medicinal). */
-  const updatePlantAspect = (subjectKey, itemId, aspectId, text) =>
+  /**
+   * Guarda o texto de UM aspecto gerado sob demanda num card — origem/
+   * identificação/cultivo/uso medicinal de uma planta, erros comuns/por que
+   * funciona/combina com de uma técnica, ou aprofundar/confusão/exemplos/
+   * relacionados de um conceito. O campo é o mesmo (`aspects`) em qualquer
+   * `kind`, então uma função só cobre os três.
+   */
+  const updateItemAspect = (subjectKey, itemId, aspectId, text) =>
     updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, aspects: { ...(item.aspects || {}), [aspectId]: text } }));
 
   function removeGroup(key) {
@@ -615,7 +621,7 @@ export function DataProvider({ children }) {
     isSaved,
     isPlantSaved,
     toggleSave,
-    updatePlantAspect,
+    updateItemAspect,
     removeGroup,
     bulkRemoveItems,
     bulkAddTag,

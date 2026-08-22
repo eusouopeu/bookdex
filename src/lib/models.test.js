@@ -6,6 +6,8 @@ describe("models", () => {
     const tiers = { technique: "haiku", definition: "haiku", list: "haiku", compare: "haiku", plant: "haiku" };
     expect(modelFor("detail", tiers)).toBe(MODELS.sonnet);
     expect(modelFor("plantAspect", tiers)).toBe(MODELS.sonnet);
+    expect(modelFor("techAspect", tiers)).toBe(MODELS.sonnet);
+    expect(modelFor("conceptAspect", tiers)).toBe(MODELS.sonnet);
     expect(modelFor("word", tiers)).toBe(MODELS.haiku);
     expect(modelFor("enrichment", tiers)).toBe(MODELS.haiku);
   });
