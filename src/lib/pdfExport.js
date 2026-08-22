@@ -1,17 +1,18 @@
 import { jsPDF } from "jspdf";
 import { slug } from "../theme";
-import { groupItems, itemKind, isKnowledgeKind } from "./savedModel";
+import { groupItems, itemKind, categoryOfKind } from "./savedModel";
+import { PLANT_ASPECTS } from "./anthropic";
 
 const MARGIN = 15;
 const PAGE_WIDTH = 210; // A4 mm
 const PAGE_HEIGHT = 297;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 
-/** Assuntos com pelo menos um item do naipe pedido, já com os itens filtrados. */
-function sectionsOf(saved, wantKnowledge) {
+/** Assuntos com pelo menos um item da categoria pedida, já com os itens filtrados. */
+function sectionsOf(saved, category) {
   const out = [];
   for (const group of Object.values(saved || {})) {
-    const items = groupItems(group).filter((it) => isKnowledgeKind(itemKind(it, group)) === wantKnowledge);
+    const items = groupItems(group).filter((it) => categoryOfKind(itemKind(it, group)) === category);
     if (items.length) out.push({ group, items });
   }
   return out;
@@ -60,13 +61,14 @@ export function buildPokedexPdf(saved, detailCache) {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(12);
   doc.setTextColor("#555555");
-  doc.text("Minha Pokédex de técnicas, conceitos e tipos", MARGIN, 70);
+  doc.text("Minha Pokédex de técnicas, conceitos, tipos e plantas", MARGIN, 70);
   doc.text(new Date().toLocaleDateString("pt-BR"), MARGIN, 78);
   doc.addPage();
   y = MARGIN;
 
-  const techniqueSections = sectionsOf(saved, false);
-  const knowledgeSections = sectionsOf(saved, true);
+  const techniqueSections = sectionsOf(saved, "technique");
+  const knowledgeSections = sectionsOf(saved, "knowledge");
+  const plantSections = sectionsOf(saved, "plants");
 
   function writeTechniqueGroup(displayName, techniques) {
     writeHeading(displayName);
@@ -108,6 +110,25 @@ export function buildPokedexPdf(saved, detailCache) {
     });
   }
 
+  function writePlantGroup(displayName, items) {
+    writeHeading(displayName);
+    items.forEach((it) => {
+      writeParagraph(it.commonNames?.[0] || it.scientificName || it.name, { size: 12, style: "bold", gap: 1.5 });
+      if (it.scientificName) writeParagraph(it.scientificName, { size: 9.5, style: "italic", color: "#555555", gap: 1.5 });
+      if ((it.commonNames || []).length > 1) {
+        writeParagraph(`Também: ${it.commonNames.slice(1).join(", ")}`, { size: 9, color: "#666666", gap: 1.5 });
+      }
+      writeParagraph(it.summary, { size: 10 });
+      PLANT_ASPECTS.forEach((aspect) => {
+        const text = (it.aspects || {})[aspect.id];
+        if (!text) return;
+        writeParagraph(`${aspect.label}:`, { size: 10, style: "bold", gap: 1 });
+        writeParagraph(text, { size: 9.5 });
+      });
+      y += 3;
+    });
+  }
+
   if (techniqueSections.length) {
     writeHeading("Técnicas", 20);
     techniqueSections.forEach(({ group, items }) => writeTechniqueGroup(group.displayName, items));
@@ -118,6 +139,13 @@ export function buildPokedexPdf(saved, detailCache) {
     y = MARGIN;
     writeHeading("Conceitos & Tipos", 20);
     knowledgeSections.forEach(({ group, items }) => writeKnowledgeGroup(group.displayName, group, items));
+  }
+
+  if (plantSections.length) {
+    doc.addPage();
+    y = MARGIN;
+    writeHeading("Plantas", 20);
+    plantSections.forEach(({ group, items }) => writePlantGroup(group.displayName, items));
   }
 
   return doc;

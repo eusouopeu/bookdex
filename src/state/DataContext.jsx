@@ -7,7 +7,8 @@ import { findSimilarItem } from "../lib/dedupe";
 import { createCollectionId } from "../lib/collections";
 import { wordLangKey, wordItemId } from "../lib/words";
 import { CURRENT_SCHEMA_VERSION, runMigrations } from "../lib/migrations";
-import { groupItems, itemKind, itemLabel, isKnowledgeKind, withItems, KIND_LABELS } from "../lib/savedModel";
+import { groupItems, itemKind, itemLabel, withItems, categoryOfKind, KIND_LABELS } from "../lib/savedModel";
+import { plantGroupKey, plantItemId, plantToItem } from "../lib/plants";
 import { applyEnrichment, convertItem as convertItemFields } from "../lib/convert";
 
 /**
@@ -255,10 +256,47 @@ export function DataProvider({ children }) {
     );
   }
 
+  /**
+   * Captura/solta uma planta. Diferente dos outros tipos, o "assunto" não vem
+   * de uma busca: é a família botânica (ver lib/plants.js), o que agrupa as
+   * plantas capturadas por parentesco sem o usuário ter que decidir nada.
+   */
+  function togglePlantSave(plant) {
+    const prevSaved = saved;
+    const subjectKey = plantGroupKey(plant);
+    const itemId = plantItemId(plant);
+    const displayName = plant.family || "Plantas";
+    const next = { ...saved };
+    const existing = next[subjectKey];
+    const items = existing ? [...groupItems(existing)] : [];
+
+    const idx = items.findIndex((it) => it.id === itemId && itemKind(it, existing) === "plant");
+    const removed = idx >= 0;
+    if (removed) items.splice(idx, 1);
+    else items.push(plantToItem(plant, itemId));
+
+    if (items.length === 0) delete next[subjectKey];
+    else next[subjectKey] = withItems({ displayName: existing?.displayName || displayName }, items);
+
+    const label = itemLabel({ ...plant, kind: "plant" });
+    commitSaved(next, removed ? `${label} solta da Pokédex.` : `${label} capturada!`, prevSaved);
+  }
+
   function toggleSave(mode, subjectDisplay, payload) {
     if (mode === "technique") toggleTechniqueSave(subjectDisplay, payload.technique, payload.statLabels);
+    else if (mode === "plant") togglePlantSave(payload.plant);
     else toggleKnowledgeSave(mode, subjectDisplay, payload);
   }
+
+  function isPlantSaved(plant) {
+    const group = saved[plantGroupKey(plant)];
+    const id = plantItemId(plant);
+    return groupItems(group).some((it) => it.id === id && itemKind(it, group) === "plant");
+  }
+
+  /** Guarda o texto de UM aspecto (origem, identificação, cultivo, uso medicinal). */
+  const updatePlantAspect = (subjectKey, itemId, aspectId, text) =>
+    updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, aspects: { ...(item.aspects || {}), [aspectId]: text } }));
 
   function removeGroup(key) {
     const group = saved[key];
@@ -445,21 +483,6 @@ export function DataProvider({ children }) {
   const updateWordTags = (langKey, wordId, tags) => updateWordInGroup(langKey, wordId, (w) => ({ ...w, tags }));
   const updateWordNote = (langKey, wordId, note) => updateWordInGroup(langKey, wordId, (w) => ({ ...w, note }));
 
-  /** Componente semântico/fonético identificado sob demanda pra UM hanzi. */
-  function updateWordCharacterComponent(langKey, wordId, charIndex, kind, result) {
-    updateWordInGroup(langKey, wordId, (w) => {
-      const characters = [...(w.characters || [])];
-      if (!characters[charIndex]) return w;
-      characters[charIndex] = {
-        ...characters[charIndex],
-        ...(kind === "semantic"
-          ? { semanticComponent: result.component || "—" }
-          : { phoneticComponent: result.component || "—", phoneticComponentPinyin: result.pinyin || "" }),
-      };
-      return { ...w, characters };
-    });
-  }
-
   /* ------------------------------------------------------------- coleções */
 
   function createCollection(name) {
@@ -563,11 +586,12 @@ export function DataProvider({ children }) {
 
   const counts = useMemo(() => {
     const groups = Object.values(saved);
-    const active = groups.flatMap((g) => activeItems(g).map((it) => itemKind(it, g)));
+    const active = groups.flatMap((g) => activeItems(g).map((it) => categoryOfKind(itemKind(it, g))));
     return {
       total: active.length,
-      techniques: active.filter((kind) => !isKnowledgeKind(kind)).length,
-      knowledge: active.filter(isKnowledgeKind).length,
+      techniques: active.filter((c) => c === "technique").length,
+      knowledge: active.filter((c) => c === "knowledge").length,
+      plants: active.filter((c) => c === "plants").length,
       subjects: groups.length,
       collections: Object.keys(collections || {}).length,
       words: Object.values(words || {}).reduce((sum, g) => sum + g.words.length, 0),
@@ -589,7 +613,9 @@ export function DataProvider({ children }) {
     hasDetail,
     cacheDetail,
     isSaved,
+    isPlantSaved,
     toggleSave,
+    updatePlantAspect,
     removeGroup,
     bulkRemoveItems,
     bulkAddTag,
@@ -604,7 +630,6 @@ export function DataProvider({ children }) {
     removeWordGroup,
     updateWordTags,
     updateWordNote,
-    updateWordCharacterComponent,
     createCollection,
     deleteCollection,
     addToCollection,

@@ -56,6 +56,9 @@ export default defineConfig({
     sourcemap: false,
   },
   test: {
+    // Só o app. `extracted/` guarda código que saiu do Bookdex para virar
+    // outro app e não é compilado nem testado aqui (ver extracted/*/README.md).
+    include: ["src/**/*.test.{js,jsx}"],
     // Testes de lib rodam em Node; os de view precisam de DOM. `jsdom` como
     // ambiente padrão cobre os dois casos sem anotação por arquivo.
     environment: "jsdom",

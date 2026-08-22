@@ -1,8 +1,6 @@
 import { COLORS } from "../theme";
-import PokeballIcon from "./PokeballIcon";
+import CardShell from "./CardShell";
 import ShareButton from "./ShareButton";
-import TagEditor from "./TagEditor";
-import NoteEditor from "./NoteEditor";
 import ConceptExpand from "./ConceptExpand";
 import DeepDiveIconButton from "./DeepDiveIconButton";
 import { useConceptDeepDive } from "../lib/hooks";
@@ -30,74 +28,29 @@ export default function DefinitionCard({
 }) {
   const deepDive = useConceptDeepDive(definition.term, definition.category, definition.definition);
   return (
-    <div
-      onClick={selectable ? onSelectToggle : undefined}
-      style={{
-        background: COLORS.surface,
-        border: `2px solid ${selectable && selected ? COLORS.lensBlue : COLORS.screenBorder}`,
-        borderRadius: "10px",
-        padding: "14px",
-        cursor: selectable ? "pointer" : "default",
-        boxShadow: selectable && selected ? `0 0 0 2px ${COLORS.lensBlue} inset` : "none",
-      }}
-    >
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <div className="flex items-start gap-2">
-          {selectable && (
-            <input
-              type="checkbox"
-              checked={!!selected}
-              onChange={onSelectToggle}
-              onClick={(e) => e.stopPropagation()}
-              style={{ width: "18px", height: "18px", marginTop: "6px", flexShrink: 0 }}
-              aria-label={`Selecionar ${definition.term}`}
-            />
-          )}
-          <div>
-          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "var(--text-faint)" }}>
-            CONCEITO
-          </div>
-          <h3
-            style={{
-              fontFamily: '"Baloo 2", sans-serif',
-              fontWeight: 700,
-              fontSize: "18px",
-              color: COLORS.ink,
-              lineHeight: 1.15,
-              margin: 0,
-            }}
-          >
-            {definition.term}
-          </h3>
-          </div>
-        </div>
-        {!selectable && (
-        <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
+    <CardShell
+      eyebrow="CONCEITO"
+      title={definition.term}
+      titleSize={18}
+      padding="14px"
+      saved={saved}
+      onToggle={onToggle}
+      captureLabel="conceito"
+      tags={definition.tags}
+      onTagsChange={onTagsChange}
+      note={definition.note}
+      onNoteChange={onNoteChange}
+      selectable={selectable}
+      selected={selected}
+      onSelectToggle={onSelectToggle}
+      actions={
+        <>
           <ConvertButton kind="definition" onConvert={onConvert} />
           <ShareButton title={definition.term} render={() => definitionCardPdfBlob(definition)} />
           <DeepDiveIconButton hasContent={!!deepDive.data} loading={deepDive.loading} onClick={deepDive.toggle} />
-          <button
-            onClick={onToggle}
-            aria-label={saved ? "Soltar da Pokédex" : "Capturar conceito"}
-            style={{
-              background: "none",
-              border: "none",
-              cursor: "pointer",
-              padding: "9px",
-              margin: "-9px",
-              flexShrink: 0,
-            }}
-          >
-            <PokeballIcon filled={saved} size={26} />
-          </button>
-        </div>
-        )}
-      </div>
-      {onTagsChange && (
-        <div style={{ marginBottom: "4px" }}>
-          <TagEditor tags={definition.tags || []} onChange={onTagsChange} />
-        </div>
-      )}
+        </>
+      }
+    >
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.45, marginBottom: "12px" }}>
         {definition.definition}
       </p>
@@ -192,10 +145,6 @@ export default function DefinitionCard({
         onAddRelatedCard={onAddRelatedCard}
         deepDive={deepDive}
       />
-
-      <div className="flex items-center" style={{ flexWrap: "wrap" }}>
-        {onNoteChange && <NoteEditor note={definition.note} onChange={onNoteChange} />}
-      </div>
-    </div>
+    </CardShell>
   );
 }

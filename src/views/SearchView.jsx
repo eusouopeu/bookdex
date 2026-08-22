@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Search, RefreshCw, KeyRound, History } from "lucide-react";
+import { Search, RefreshCw, KeyRound, History, DatabaseZap, BookmarkCheck } from "lucide-react";
 import { COLORS, slug, primaryButtonStyle } from "../theme";
 import { PLACEHOLDER_BY_MODE } from "../lib/searchQuery";
 import { useProgressiveMessage } from "../lib/hooks";
@@ -7,7 +7,50 @@ import { fetchDefinition } from "../lib/anthropic";
 import TechCard from "../components/TechCard";
 import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
+import WordCard from "../components/WordCard";
+import PlantCard from "../components/PlantCard";
 import SkeletonList from "../components/Skeleton";
+
+const SOURCE_NOTE = {
+  cache: "Resultado guardado de uma busca anterior — não gastou chamada à API.",
+  saved: "Você já tem esta palavra capturada.",
+  "saved-similar": "Você já tem uma palavra parecida capturada.",
+};
+
+/**
+ * Faixa que explica quando o resultado NÃO veio da rede, com o atalho para
+ * forçar uma busca nova. Sem isso, um resultado de cache passaria por recente
+ * sem o usuário saber que pode pedir outro.
+ */
+function SourceNote({ source, onRedo }) {
+  const note = SOURCE_NOTE[source];
+  if (!note) return null;
+  const fromCache = source === "cache";
+  return (
+    <div
+      className="flex items-center gap-1.5"
+      style={{ marginBottom: "8px", color: "var(--text-muted)", flexWrap: "wrap" }}
+    >
+      {fromCache ? <DatabaseZap size={13} style={{ flexShrink: 0 }} /> : <BookmarkCheck size={13} style={{ flexShrink: 0 }} />}
+      <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px" }}>{note}</span>
+      <button
+        onClick={onRedo}
+        style={{
+          fontFamily: '"Baloo 2", sans-serif',
+          fontWeight: 700,
+          fontSize: "11px",
+          color: COLORS.lensBlue,
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          padding: "2px 4px",
+        }}
+      >
+        Refazer busca
+      </button>
+    </div>
+  );
+}
 
 export default function SearchView({
   query,
@@ -28,6 +71,9 @@ export default function SearchView({
   hasDetail,
   isIrrelevant,
   onMarkIrrelevant,
+  isPlantSaved,
+  onToggleWord,
+  isWordSaved,
 }) {
   // Cards extras criados ao clicar num relacionado da mini-lista ("..."), encadeados
   // abaixo do card que os originou. Reseta a cada novo escaneamento.
@@ -103,7 +149,7 @@ export default function SearchView({
           />
           {loadingMsg}
         </p>
-        <SkeletonList count={searchMode === "definition" ? 1 : 3} />
+        <SkeletonList count={["definition", "word", "plant"].includes(searchMode) ? 1 : 3} />
       </div>
     );
   }
@@ -177,8 +223,18 @@ export default function SearchView({
         <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", maxWidth: "240px", marginTop: "4px" }}>
           {PLACEHOLDER_BY_MODE[searchMode]}
         </p>
-        <p style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", color: "var(--text-muted)", marginTop: "10px" }}>
-          tec: técnicas &nbsp;·&nbsp; def: conceitos &nbsp;·&nbsp; list: tipos &nbsp;·&nbsp; cmp: comparar
+        <p
+          style={{
+            fontFamily: '"JetBrains Mono", monospace',
+            fontSize: "10.5px",
+            color: "var(--text-muted)",
+            marginTop: "10px",
+            lineHeight: 1.6,
+          }}
+        >
+          tec: técnicas &nbsp;·&nbsp; def: conceitos &nbsp;·&nbsp; list: tipos
+          <br />
+          cmp: comparar &nbsp;·&nbsp; pal: palavra &nbsp;·&nbsp; plt: planta
         </p>
 
         {!!(history && history.length) && (
@@ -215,7 +271,35 @@ export default function SearchView({
     );
   }
 
-  const { mode, data } = result;
+  const { mode, data, source } = result;
+  const sourceNote = <SourceNote source={source} onRedo={onRetry} />;
+
+  if (mode === "word") {
+    return (
+      <div key={scanCount} style={{ animation: "flicker 0.4s ease-out" }}>
+        {sourceNote}
+        <WordCard
+          data={data}
+          saved={isWordSaved ? isWordSaved(data.languageCode, data.language, data.word) : false}
+          onToggle={onToggleWord}
+        />
+      </div>
+    );
+  }
+
+  if (mode === "plant") {
+    return (
+      <div key={scanCount} style={{ animation: "flicker 0.4s ease-out" }}>
+        {sourceNote}
+        <PlantCard
+          plant={data}
+          saved={isPlantSaved ? isPlantSaved(data) : false}
+          onToggle={() => onToggleSave("plant", data.family || "Plantas", { plant: data })}
+        />
+      </div>
+    );
+  }
+
   const isEmpty =
     (mode === "list" && (!data.items || data.items.length === 0)) ||
     ((mode === "technique" || mode === "compare") && (!data.techniques || data.techniques.length === 0));
@@ -243,6 +327,7 @@ export default function SearchView({
   if (mode === "definition") {
     return (
       <div key={scanCount} style={{ animation: "flicker 0.4s ease-out" }}>
+        {sourceNote}
         <DefinitionCard
           definition={data}
           saved={isSaved("definition", data.term, slug(data.term))}
@@ -258,6 +343,7 @@ export default function SearchView({
   if (mode === "list") {
     return (
       <div key={scanCount} style={{ animation: "flicker 0.4s ease-out" }}>
+        {sourceNote}
         <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "18px", color: COLORS.ink }}>
           {data.subject}
         </h2>
@@ -269,7 +355,6 @@ export default function SearchView({
           return (
             <div key={item.name + i}>
               <ListItemCard
-                index={i}
                 subjectDisplay={data.subject}
                 item={item}
                 saved={isSaved("list", data.subject, slug(item.name))}
@@ -288,6 +373,7 @@ export default function SearchView({
 
   return (
     <div key={scanCount} style={{ animation: "flicker 0.4s ease-out" }}>
+      {sourceNote}
       <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "18px", color: COLORS.ink }}>
         {data.subject}
       </h2>
@@ -301,7 +387,6 @@ export default function SearchView({
         return (
           <TechCard
             key={t.name + i}
-            index={i}
             subjectDisplay={subjectDisplay}
             technique={t}
             statLabels={data.statLabels}

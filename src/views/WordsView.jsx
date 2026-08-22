@@ -1,66 +1,30 @@
 import { useState } from "react";
-import { Languages, ChevronDown, ChevronRight, Trash2, X, RefreshCw, Type, BookmarkCheck } from "lucide-react";
-import { COLORS, primaryButtonStyle } from "../theme";
-import { fetchWord, MissingApiKeyError } from "../lib/anthropic";
-import { findSavedWord, wordLangKey } from "../lib/words";
+import { Languages, ChevronDown, ChevronRight, Trash2, X, Type } from "lucide-react";
+import { COLORS } from "../theme";
 import WordCard from "../components/WordCard";
-import SkeletonList from "../components/Skeleton";
 import { useData } from "../state/DataContext";
 
 const CONFIRM_THRESHOLD = 3;
 
 /**
- * Categoria "Palavras" dentro da Pokédex: um único campo de busca que primeiro
- * checa se a palavra (ou uma variação próxima — plural, gênero) já está
- * salva e, só se não achar nada, pergunta pra API. Palavras capturadas ficam
- * organizadas em pastas por idioma.
+ * Categoria "Palavras" da Pokédex: só o acervo, em pastas por idioma.
+ *
+ * A busca de palavras tinha um campo próprio aqui dentro — o que dava ao app
+ * dois modelos mentais de busca, um na barra de baixo e outro no meio da
+ * Pokédex. Agora ela é o modo "pal:" da barra única, e esta tela faz o mesmo
+ * que as outras categorias: mostra o que já foi capturado.
  */
-export default function WordsView({ searchEffort }) {
+export default function WordsView() {
   const {
     words,
     storageLoaded,
     toggleWordSave: onToggleWord,
-    isWordSaved,
     removeWordGroup: onRemoveGroup,
     updateWordTags: onUpdateTags,
     updateWordNote: onUpdateNote,
-    updateWordCharacterComponent: onUpdateCharacterComponent,
   } = useData();
-  const [query, setQuery] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [result, setResult] = useState(null);
-  const [foundMatch, setFoundMatch] = useState(null); // { exact } quando o resultado veio das palavras já salvas
   const [collapsed, setCollapsed] = useState({});
   const [confirmingRemove, setConfirmingRemove] = useState(null);
-
-  async function handleSearch() {
-    const term = query.trim();
-    if (!term || loading) return;
-    setError(null);
-
-    const match = findSavedWord(words, term);
-    if (match) {
-      setResult(match.item);
-      setFoundMatch({ exact: match.exact });
-      return;
-    }
-
-    setFoundMatch(null);
-    setLoading(true);
-    try {
-      const data = await fetchWord(term, [], searchEffort);
-      setResult(data);
-    } catch (e) {
-      setError(
-        e instanceof MissingApiKeyError
-          ? "Configure sua API key em Configurações para pesquisar palavras."
-          : e.message || "Não foi possível pesquisar essa palavra agora."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
 
   function requestRemoveGroup(key, count) {
     if (count <= CONFIRM_THRESHOLD || confirmingRemove === key) {
@@ -73,86 +37,14 @@ export default function WordsView({ searchEffort }) {
 
   const groups = Object.entries(words || {}).sort((a, b) => a[1].displayName.localeCompare(b[1].displayName, "pt-BR"));
   const totalWords = Object.values(words || {}).reduce((sum, g) => sum + g.words.length, 0);
-  const resultLangKey = result ? wordLangKey(result.languageCode, result.language) : null;
 
   return (
     <div>
-      <div className="flex gap-2" style={{ marginBottom: "14px" }}>
-        <input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") handleSearch();
-          }}
-          placeholder="Ex.: sinistro, hodgepodge, 明白"
-          enterKeyHint="search"
-          style={{
-            flex: 1,
-            minWidth: 0,
-            borderRadius: "8px",
-            border: `2px solid ${COLORS.screenBorder}`,
-            padding: "10px 12px",
-            minHeight: "42px",
-            fontFamily: "Inter, sans-serif",
-            fontSize: "14px",
-            background: COLORS.surface,
-            color: COLORS.ink,
-            outline: "none",
-          }}
-        />
-        <button
-          onClick={handleSearch}
-          disabled={loading || !query.trim()}
-          style={{ ...primaryButtonStyle, minHeight: "42px", padding: "0 16px", opacity: loading || !query.trim() ? 0.6 : 1 }}
-        >
-          {loading ? "..." : "Buscar"}
-        </button>
-      </div>
-
-      {loading && <SkeletonList count={1} />}
-
-      {error && !loading && (
-        <div
-          className="flex flex-col items-center justify-center text-center"
-          style={{ minHeight: "140px", color: COLORS.screenBorder }}
-        >
-          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--danger)", maxWidth: "260px", marginBottom: "10px" }}>
-            {error}
-          </p>
-          <button onClick={handleSearch} className="flex items-center gap-1.5" style={primaryButtonStyle}>
-            <RefreshCw size={14} /> Tentar novamente
-          </button>
-        </div>
-      )}
-
-      {result && !loading && !error && (
-        <div style={{ marginBottom: "18px", animation: "flicker 0.4s ease-out" }}>
-          {foundMatch && (
-            <div className="flex items-center gap-1.5" style={{ marginBottom: "8px", color: "var(--text-muted)" }}>
-              <BookmarkCheck size={13} style={{ flexShrink: 0 }} />
-              <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px" }}>
-                {foundMatch.exact ? "Já está na sua lista de palavras." : `Você já tem uma palavra parecida salva: "${result.word}".`}
-              </span>
-            </div>
-          )}
-          <WordCard
-            data={result}
-            saved={isWordSaved(result.languageCode, result.language, result.word)}
-            onToggle={onToggleWord}
-            onTagsChange={foundMatch ? (tags) => onUpdateTags(resultLangKey, result.id, tags) : undefined}
-            onNoteChange={foundMatch ? (note) => onUpdateNote(resultLangKey, result.id, note) : undefined}
-            onUpdateCharacterComponent={
-              foundMatch ? (index, kind, value) => onUpdateCharacterComponent(resultLangKey, result.id, index, kind, value) : undefined
-            }
-          />
-        </div>
-      )}
-
-      {storageLoaded && totalWords === 0 && !result && !loading && !error && (
+      {storageLoaded && totalWords === 0 && (
         <div className="flex flex-col items-center justify-center text-center" style={{ minHeight: "260px", color: COLORS.screenBorder }}>
           <Type size={32} strokeWidth={1.5} style={{ marginBottom: "10px" }} />
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", maxWidth: "230px" }}>
-            Nenhuma palavra capturada ainda. Pesquise uma palavra acima e toque na pokébola para guardá-la.
+            Nenhuma palavra capturada ainda. Busque com pal: na barra de baixo e toque na pokébola para guardá-la.
           </p>
         </div>
       )}
@@ -238,7 +130,6 @@ export default function WordsView({ searchEffort }) {
                     onToggle={onToggleWord}
                     onTagsChange={(tags) => onUpdateTags(key, w.id, tags)}
                     onNoteChange={(note) => onUpdateNote(key, w.id, note)}
-                    onUpdateCharacterComponent={(index, kind, value) => onUpdateCharacterComponent(key, w.id, index, kind, value)}
                   />
                 ))}
             </div>

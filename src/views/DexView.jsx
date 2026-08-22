@@ -22,11 +22,13 @@ import { getJSON, KEYS } from "../lib/storage";
 import TechCard from "../components/TechCard";
 import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
+import PlantCard from "../components/PlantCard";
 import CollectionPicker from "../components/CollectionPicker";
-import CollectionsSection from "../components/CollectionsSection";
 import WordsView from "./WordsView";
 import { useData } from "../state/DataContext";
-import { groupItems, itemKind, itemLabel, isKnowledgeKind, withItems } from "../lib/savedModel";
+import { usePrefs } from "../state/PrefsContext";
+import { groupItems, itemKind, itemLabel, categoryOfKind, withItems } from "../lib/savedModel";
+import { plantFreeText } from "../lib/plants";
 
 const BACKUP_REMINDER_DAYS = 14;
 const CONFIRM_THRESHOLD = 3; // grupos com mais itens do que isso pedem confirmação antes de apagar
@@ -36,7 +38,14 @@ const EXAMPLE_SEARCHES = [
   { mode: "technique", term: "técnicas de respiração" },
   { mode: "definition", term: "efeito placebo" },
   { mode: "list", term: "tipos de memória" },
+  { mode: "plant", term: "alecrim" },
 ];
+
+const EMPTY_CATEGORY_MSG = {
+  technique: "Nenhuma técnica capturada ainda. Busque com tec: ou sem prefixo.",
+  knowledge: "Nenhum conceito ou tipo capturado ainda. Busque com def: ou list:.",
+  plants: "Nenhuma planta capturada ainda. Busque com plt: ou identifique uma pela foto.",
+};
 
 function badgeStyle(active) {
   return {
@@ -56,18 +65,8 @@ function badgeStyle(active) {
   };
 }
 
-export default function DexView({
-  category,
-  onCategoryChange,
-  onOpenDetail,
-  onOpenImport,
-  onSearchRelated,
-  onExampleSearch,
-  onOpenCompare,
-  showArchived,
-  onToggleShowArchived,
-  searchEffort,
-}) {
+export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, onExampleSearch, onOpenCompare }) {
+  const { dexCategory: category, showArchived, toggleShowArchived: onToggleShowArchived } = usePrefs();
   const {
     saved,
     detailCache,
@@ -82,12 +81,10 @@ export default function DexView({
     bulkRemoveItems: onBulkRemoveItems,
     bulkAddTag: onBulkAddTag,
     archiveItems: onArchiveItems,
-    createCollection: onCreateCollection,
-    deleteCollection: onDeleteCollection,
     addToCollection: onAddToCollection,
-    removeFromCollection: onRemoveFromCollection,
     convertItem: onConvertItem,
     enrichItem: onEnrichItem,
+    updatePlantAspect: onUpdatePlantAspect,
   } = useData();
   const [collapsed, setCollapsed] = useState({});
   const [filterText, setFilterText] = useState("");
@@ -124,13 +121,12 @@ export default function DexView({
    * mesmo assunto com o recorte dela, e some se não sobrar nada.
    */
   const activeEntries = useMemo(() => {
-    const wantKnowledge = category === "knowledge";
     return entries
       .map(([key, group]) => [
         key,
         withItems(
           group,
-          groupItems(group).filter((it) => isKnowledgeKind(itemKind(it, group)) === wantKnowledge)
+          groupItems(group).filter((it) => categoryOfKind(itemKind(it, group)) === category)
         ),
       ])
       .filter(([, group]) => group.items.length > 0);
@@ -172,6 +168,7 @@ export default function DexView({
       ...(it.keyPoints || []),
       ...(it.relatedTerms || []),
       it.bestFor,
+      it.kind === "plant" ? plantFreeText(it) : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -326,7 +323,7 @@ export default function DexView({
     !bannerDismissed &&
     (lastBackup === null || (daysSinceBackup !== null && daysSinceBackup >= BACKUP_REMINDER_DAYS));
 
-  if (storageLoaded && entries.length === 0 && (category === "technique" || category === "knowledge")) {
+  if (storageLoaded && entries.length === 0 && category !== "words") {
     return (
       <div
         className="flex flex-col items-center justify-center text-center"
@@ -337,7 +334,7 @@ export default function DexView({
           Sua Pokédex está vazia
         </p>
         <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", maxWidth: "230px", marginTop: "4px" }}>
-          Busque um assunto (tec: / def: / list:) e capture o que quiser guardar — ou importe o que você já capturou.
+          Busque um assunto (tec: / def: / list: / plt:) e capture o que quiser guardar — ou importe o que você já capturou.
         </p>
         {onExampleSearch && (
           <div style={{ marginTop: "18px", width: "100%", maxWidth: "280px" }}>
@@ -423,25 +420,8 @@ export default function DexView({
         </div>
       )}
 
-      {category === "collections" ? (
-        <CollectionsSection
-          collections={collections}
-          saved={saved}
-          detailCache={detailCache}
-          onCreateCollection={onCreateCollection}
-          onDeleteCollection={onDeleteCollection}
-          onRemoveFromCollection={onRemoveFromCollection}
-          onAddToCollection={onAddToCollection}
-          onToggleSave={onToggleSave}
-          onOpenDetail={onOpenDetail}
-          hasDetail={hasDetail}
-          onUpdateTags={onUpdateTags}
-          onUpdateNote={onUpdateNote}
-          onUpdateImages={onUpdateImages}
-          onSearchRelated={onSearchRelated}
-        />
-      ) : category === "words" ? (
-        <WordsView searchEffort={searchEffort} />
+      {category === "words" ? (
+        <WordsView />
       ) : (
         <>
       {showArchived && (
@@ -648,9 +628,7 @@ export default function DexView({
         >
           <Library size={32} strokeWidth={1.5} style={{ marginBottom: "10px" }} />
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", maxWidth: "220px" }}>
-            {category === "technique"
-              ? "Nenhuma técnica capturada ainda. Busque com tec: ou sem prefixo."
-              : "Nenhum conceito ou tipo capturado ainda. Busque com def: ou list:."}
+            {EMPTY_CATEGORY_MSG[category]}
           </p>
         </div>
       )}
@@ -756,14 +734,12 @@ export default function DexView({
               )}
             </div>
             {open &&
-              group.items.map((item, i) => {
+              group.items.map((item) => {
                 const kind = itemKind(item, group);
                 const common = {
-                  key: item.id,
                   saved: true,
                   onTagsChange: onUpdateTags ? (tags) => onUpdateTags(key, item.id, kind, tags) : undefined,
                   onNoteChange: onUpdateNote ? (note) => onUpdateNote(key, item.id, kind, note) : undefined,
-                  onImagesChange: onUpdateImages ? (images) => onUpdateImages(key, item.id, kind, images) : undefined,
                   onConvert: selectMode || compareMode ? undefined : (target) => onConvertItem(key, item.id, target),
                   onEnrich: () => onEnrichItem(key, item.id),
                   ...selectionProps(key, item.id, group.displayName, item, kind),
@@ -771,6 +747,7 @@ export default function DexView({
                 if (kind === "definition") {
                   return (
                     <DefinitionCard
+                      key={item.id}
                       {...common}
                       definition={item}
                       onToggle={() => onToggleSave("definition", group.displayName, { definition: item })}
@@ -778,11 +755,23 @@ export default function DexView({
                     />
                   );
                 }
+                if (kind === "plant") {
+                  return (
+                    <PlantCard
+                      key={item.id}
+                      {...common}
+                      plant={item}
+                      onToggle={() => onToggleSave("plant", group.displayName, { plant: item })}
+                      onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, item.id, kind, images) : undefined}
+                      onAspectGenerated={(aspectId, text) => onUpdatePlantAspect(key, item.id, aspectId, text)}
+                    />
+                  );
+                }
                 if (kind === "list") {
                   return (
                     <ListItemCard
+                      key={item.id}
                       {...common}
-                      index={i}
                       subjectDisplay={group.displayName}
                       item={item}
                       onToggle={() => onToggleSave("list", group.displayName, { item })}
@@ -791,8 +780,8 @@ export default function DexView({
                 }
                 return (
                   <TechCard
+                    key={item.id}
                     {...common}
-                    index={i}
                     subjectDisplay={group.displayName}
                     technique={item}
                     statLabels={item.statLabels || []}

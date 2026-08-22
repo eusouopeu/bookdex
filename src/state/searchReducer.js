@@ -33,12 +33,17 @@ export function searchReducer(state, action) {
         needsKey: false,
       };
     case "success":
+      // `source` diz de onde veio o resultado ("network", "cache", "saved",
+      // "saved-similar") — a view usa isso pra avisar que não gastou chamada e
+      // pra oferecer refazer a busca.
       return {
         ...state,
+        query: action.term ?? state.query,
+        mode: action.mode ?? state.mode,
         loading: false,
         error: null,
         needsKey: false,
-        result: { mode: action.mode, data: action.data },
+        result: { mode: action.mode, data: action.data, source: action.source || "network", cacheKey: action.cacheKey || null },
         scanCount: state.scanCount + 1,
       };
     case "failure":

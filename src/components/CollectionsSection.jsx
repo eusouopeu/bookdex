@@ -21,6 +21,7 @@ import { fitsInQr, generateQrDataUrl } from "../lib/qr";
 import TechCard from "./TechCard";
 import DefinitionCard from "./DefinitionCard";
 import ListItemCard from "./ListItemCard";
+import PlantCard from "./PlantCard";
 import QRCodeModal from "./QRCodeModal";
 import GoalSuggestions from "./GoalSuggestions";
 
@@ -46,6 +47,7 @@ export default function CollectionsSection({
   onUpdateTags,
   onUpdateNote,
   onUpdateImages,
+  onUpdatePlantAspect,
   onSearchRelated,
 }) {
   const [collapsed, setCollapsed] = useState({});
@@ -148,26 +150,34 @@ export default function CollectionsSection({
           onTagsChange={onUpdateTags ? (tags) => onUpdateTags(ref.subjectKey, item.id, "definition", tags) : undefined}
           onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
           onNoteChange={onUpdateNote ? (note) => onUpdateNote(ref.subjectKey, item.id, "definition", note) : undefined}
-          onImagesChange={onUpdateImages ? (images) => onUpdateImages(ref.subjectKey, item.id, "definition", images) : undefined}
+        />
+      );
+    } else if (kind === "plant") {
+      card = (
+        <PlantCard
+          plant={item}
+          saved={true}
+          onToggle={() => onToggleSave("plant", group.displayName, { plant: item })}
+          onTagsChange={onUpdateTags ? (tags) => onUpdateTags(ref.subjectKey, item.id, "plant", tags) : undefined}
+          onNoteChange={onUpdateNote ? (note) => onUpdateNote(ref.subjectKey, item.id, "plant", note) : undefined}
+          onImagesChange={onUpdateImages ? (images) => onUpdateImages(ref.subjectKey, item.id, "plant", images) : undefined}
+          onAspectGenerated={onUpdatePlantAspect ? (aspectId, text) => onUpdatePlantAspect(ref.subjectKey, item.id, aspectId, text) : undefined}
         />
       );
     } else if (kind === "list") {
       card = (
         <ListItemCard
-          index={0}
           subjectDisplay={group.displayName}
           item={item}
           saved={true}
           onToggle={() => onToggleSave("list", group.displayName, { item })}
           onTagsChange={onUpdateTags ? (tags) => onUpdateTags(ref.subjectKey, item.id, "list", tags) : undefined}
           onNoteChange={onUpdateNote ? (note) => onUpdateNote(ref.subjectKey, item.id, "list", note) : undefined}
-          onImagesChange={onUpdateImages ? (images) => onUpdateImages(ref.subjectKey, item.id, "list", images) : undefined}
         />
       );
     } else {
       card = (
         <TechCard
-          index={0}
           subjectDisplay={group.displayName}
           technique={item}
           statLabels={item.statLabels || []}
@@ -177,7 +187,6 @@ export default function CollectionsSection({
           hasDetail={hasDetail ? hasDetail(group.displayName, item) : false}
           onTagsChange={onUpdateTags ? (tags) => onUpdateTags(ref.subjectKey, item.id, "technique", tags) : undefined}
           onNoteChange={onUpdateNote ? (note) => onUpdateNote(ref.subjectKey, item.id, "technique", note) : undefined}
-          onImagesChange={onUpdateImages ? (images) => onUpdateImages(ref.subjectKey, item.id, "technique", images) : undefined}
         />
       );
     }
@@ -390,7 +399,7 @@ export default function CollectionsSection({
           <Folder size={32} strokeWidth={1.5} style={{ marginBottom: "10px" }} />
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", maxWidth: "230px" }}>
             Crie coleções para juntar itens de assuntos diferentes — ex.: "prova de sexta". Adicione itens usando o
-            modo de seleção (ícone de check) nas abas Técnicas ou Conceitos &amp; Tipos.
+            modo de seleção (ícone de check) nas abas da Pokédex.
           </p>
         </div>
       )}

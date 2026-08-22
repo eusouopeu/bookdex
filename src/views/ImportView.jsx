@@ -13,7 +13,7 @@ import QRScanner from "../components/QRScanner";
 import { useData } from "../state/DataContext";
 
 export default function ImportView({ onBack }) {
-  const { saved, detailCache, collections, applyImport } = useData();
+  const { saved, detailCache, collections, words, applyImport } = useData();
   const [text, setText] = useState("");
   const [error, setError] = useState(null);
   const [summary, setSummary] = useState(null);
@@ -28,6 +28,7 @@ export default function ImportView({ onBack }) {
   const [scanning, setScanning] = useState(false);
   const fileInput = useRef(null);
   const hasSaved = Object.keys(saved || {}).length > 0;
+  const hasAnything = hasSaved || Object.keys(words || {}).length > 0;
 
   function preview(rawText) {
     setError(null);
@@ -150,7 +151,7 @@ export default function ImportView({ onBack }) {
     setAnkiMsg(null);
     setGeneratingAnki(true);
     try {
-      const csv = buildAnkiCsv(saved, detailCache);
+      const csv = buildAnkiCsv(saved, detailCache, words);
       const fileName = "bookdex-anki.csv";
       if (Capacitor.isNativePlatform()) {
         await Filesystem.writeFile({
@@ -451,7 +452,7 @@ export default function ImportView({ onBack }) {
 
         <button
           onClick={exportAnki}
-          disabled={!hasSaved || generatingAnki}
+          disabled={!hasAnything || generatingAnki}
           className="flex items-center justify-center gap-1.5"
           style={{
             ...primaryButtonStyle,
@@ -460,10 +461,10 @@ export default function ImportView({ onBack }) {
             background: "transparent",
             color: COLORS.ink,
             border: `2px solid ${COLORS.screenBorder}`,
-            opacity: !hasSaved || generatingAnki ? 0.55 : 1,
+            opacity: !hasAnything || generatingAnki ? 0.55 : 1,
           }}
         >
-          <Layers size={16} /> {generatingAnki ? "Gerando CSV..." : `Exportar para Anki (${countAnkiRows(saved)} cartões)`}
+          <Layers size={16} /> {generatingAnki ? "Gerando CSV..." : `Exportar para Anki (${countAnkiRows(saved, words)} cartões)`}
         </button>
         {ankiMsg && (
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{ankiMsg}</p>

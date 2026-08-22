@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { ArrowLeft, Check, Loader2, Plus, Sparkles, Target, Trash2, X } from "lucide-react";
 import { COLORS, primaryButtonStyle } from "../theme";
-import { fetchItemRatings, MissingApiKeyError } from "../lib/anthropic";
+import { fetchItemRatings } from "../lib/effectsApi";
+import { MissingApiKeyError } from "../lib/anthropic";
 import { computeCombinedEffect } from "../lib/effectProfiles";
 import EffectRatingBar from "./EffectRatingBar";
 import EffectSuggestionsPanel from "./EffectSuggestionsPanel";

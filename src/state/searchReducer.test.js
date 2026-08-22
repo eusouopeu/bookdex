@@ -20,7 +20,7 @@ describe("searchReducer", () => {
       { type: "success", mode: "list", data: { items: [] } },
     ]);
     expect(state.loading).toBe(false);
-    expect(state.result).toEqual({ mode: "list", data: { items: [] } });
+    expect(state.result).toEqual({ mode: "list", data: { items: [] }, source: "network", cacheKey: null });
     expect(state.scanCount).toBe(1);
   });
 
@@ -32,8 +32,17 @@ describe("searchReducer", () => {
       { type: "failure", error: "sem rede" },
     ]);
     expect(state).toMatchObject({ loading: false, error: "sem rede" });
-    expect(state.result).toEqual({ mode: "technique", data: { techniques: [] } });
+    expect(state.result).toMatchObject({ mode: "technique", data: { techniques: [] } });
     expect(state.scanCount).toBe(1);
+  });
+
+  it("success marca a origem do resultado quando ele veio do cache", () => {
+    const state = run([
+      { type: "start", mode: "definition", term: "flow" },
+      { type: "success", mode: "definition", term: "flow", data: { term: "Flow" }, source: "cache", cacheKey: "k" },
+    ]);
+    expect(state.result).toMatchObject({ source: "cache", cacheKey: "k" });
+    expect(state.query).toBe("flow");
   });
 
   it("missingKey sinaliza a falta de chave sem virar erro de busca", () => {

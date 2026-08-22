@@ -14,6 +14,12 @@ describe("searchQuery", () => {
     expect(parseSearchQuery("tec: respiração")).toEqual({ mode: "technique", term: "respiração" });
   });
 
+  it("parses the pal: and plt: prefixes into word and plant modes", () => {
+    expect(parseSearchQuery("pal: 明白")).toEqual({ mode: "word", term: "明白" });
+    expect(parseSearchQuery("plt: alecrim")).toEqual({ mode: "plant", term: "alecrim" });
+    expect(hasExplicitPrefix("plt: alecrim")).toBe(true);
+  });
+
   it("defaults to technique mode with no prefix", () => {
     expect(parseSearchQuery("respiração")).toEqual({ mode: "technique", term: "respiração" });
   });

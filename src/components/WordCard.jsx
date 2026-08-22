@@ -1,245 +1,47 @@
-import { useState } from "react";
-import { Loader2, Volume2 } from "lucide-react";
 import { COLORS } from "../theme";
 import { isMandarin } from "../lib/words";
-import { fetchHanziComponent, MissingApiKeyError } from "../lib/anthropic";
-import PokeballIcon from "./PokeballIcon";
+import CardShell from "./CardShell";
 import ShareButton from "./ShareButton";
-import TagEditor from "./TagEditor";
-import NoteEditor from "./NoteEditor";
 import WordEtymology from "./WordEtymology";
 import { wordCardPdfBlob } from "../lib/cardPdf";
-import { isSpeechSupported, speak } from "../lib/speech";
-
-const SEMANTIC_COLOR = { bg: "rgba(106,153,85,0.15)", border: "#6A9955" };
-const PHONETIC_COLOR = { bg: "rgba(142,124,195,0.15)", border: "#8E7CC3" };
-
-function pillStyle(color) {
-  return {
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "2px",
-    fontFamily: "Inter, sans-serif",
-    fontSize: "11px",
-    color: COLORS.ink,
-    background: color.bg,
-    border: `1.5px solid ${color.border}`,
-    borderRadius: "8px",
-    padding: "3px 8px",
-    lineHeight: 1.3,
-  };
-}
-
-const hanziTagStyle = { fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "13.75px" };
-
-function SemanticTag({ value }) {
-  if (!value) return null;
-  return (
-    <span style={pillStyle(SEMANTIC_COLOR)}>
-      <span style={hanziTagStyle}>{value}</span>
-    </span>
-  );
-}
-
-function PhoneticTag({ value, pinyin }) {
-  if (!value) return null;
-  return (
-    <span style={pillStyle(PHONETIC_COLOR)}>
-      <span style={hanziTagStyle}>{value}</span>
-      {pinyin && <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px" }}>({pinyin})</span>}
-    </span>
-  );
-}
-
-function sfButtonStyle(color, loading) {
-  return {
-    width: "22px",
-    height: "22px",
-    borderRadius: "6px",
-    border: `1.5px solid ${color}`,
-    background: "transparent",
-    color,
-    fontFamily: '"JetBrains Mono", monospace',
-    fontWeight: 700,
-    fontSize: "11px",
-    cursor: loading ? "default" : "pointer",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-    opacity: loading ? 0.6 : 1,
-  };
-}
 
 /**
- * Card de uma palavra pesquisada/salva na aba "Palavras" — significado (sempre
- * em português), radical (não-mandarim, já com origem+significado) ou pinyin
- * + decomposição por hanzi (mandarim). Os componentes semântico ("S") e
- * fonético ("F") de cada hanzi são identificados só sob demanda — cada
- * caractere tem seus próprios botões, que somem assim que o componente já
- * foi identificado pra ele.
+ * Card de uma palavra pesquisada/salva — significado (sempre em português),
+ * radical com origem (não-mandarim) ou pinyin + o sentido de cada hanzi
+ * (mandarim).
+ *
+ * A identificação dos componentes semântico e fonético de cada hanzi saiu do
+ * app: rendia pouco perto do custo de uma chamada por caractere. O que sobrou
+ * do mandarim é a decomposição simples — hanzi, pinyin e significado —, que já
+ * vem pronta no próprio verbete.
  */
-export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteChange, onUpdateCharacterComponent }) {
+export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteChange }) {
   const mandarin = isMandarin(data.languageCode);
-  const baseCharacters = mandarin ? data.characters || [] : [];
-  const [overrides, setOverrides] = useState({}); // { [index]: { semanticComponent, phoneticComponent, phoneticComponentPinyin } }
-  const [loadingKey, setLoadingKey] = useState(null); // "<index>-<kind>"
-  const [componentError, setComponentError] = useState(null);
-  const [speechError, setSpeechError] = useState(null);
-  const speechSupported = isSpeechSupported();
-
-  /** Fala a palavra (ou um hanzi) no idioma do card, usando a voz do sistema. */
-  function pronounce(text) {
-    const result = speak(text, data.languageCode || data.language);
-    setSpeechError(
-      result === "unsupported"
-        ? "Este dispositivo não tem síntese de voz."
-        : result === "no-voice"
-          ? `Nenhuma voz de ${data.language} instalada neste dispositivo.`
-          : null
-    );
-  }
-
-  const characters = baseCharacters.map((c, i) => ({ ...c, ...(overrides[i] || {}) }));
+  const characters = mandarin ? data.characters || [] : [];
   const isCompound = characters.length > 1;
 
-  async function fetchComponent(index, kind) {
-    const key = `${index}-${kind}`;
-    if (loadingKey) return;
-    setLoadingKey(key);
-    setComponentError(null);
-    try {
-      const hanzi = characters[index].hanzi;
-      const res = await fetchHanziComponent(hanzi, kind, data.word);
-      setOverrides((prev) => ({
-        ...prev,
-        [index]: {
-          ...prev[index],
-          ...(kind === "semantic"
-            ? { semanticComponent: res.component || "—" }
-            : { phoneticComponent: res.component || "—", phoneticComponentPinyin: res.pinyin || "" }),
-        },
-      }));
-      if (onUpdateCharacterComponent) onUpdateCharacterComponent(index, kind, res);
-    } catch (err) {
-      setComponentError(err instanceof MissingApiKeyError ? "Configure sua API key em Configurações." : err.message || "Falhou.");
-    } finally {
-      setLoadingKey(null);
-    }
-  }
-
-  function sfButtons(index, c) {
-    return (
-      <div className="flex gap-1" style={{ flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-        {!c.semanticComponent && (
-          <button
-            onClick={() => fetchComponent(index, "semantic")}
-            disabled={!!loadingKey}
-            aria-label={`Identificar componente semântico de ${c.hanzi}`}
-            title="Identificar componente semântico"
-            style={sfButtonStyle(SEMANTIC_COLOR.border, loadingKey === `${index}-semantic`)}
-          >
-            {loadingKey === `${index}-semantic` ? <Loader2 size={11} style={{ animation: "spin 0.9s linear infinite" }} /> : "S"}
-          </button>
-        )}
-        {!c.phoneticComponent && (
-          <button
-            onClick={() => fetchComponent(index, "phonetic")}
-            disabled={!!loadingKey}
-            aria-label={`Identificar componente fonético de ${c.hanzi}`}
-            title="Identificar componente fonético"
-            style={sfButtonStyle(PHONETIC_COLOR.border, loadingKey === `${index}-phonetic`)}
-          >
-            {loadingKey === `${index}-phonetic` ? <Loader2 size={11} style={{ animation: "spin 0.9s linear infinite" }} /> : "F"}
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  function toggleWithCharacters() {
-    if (!onToggle) return;
-    onToggle(mandarin && baseCharacters.length ? { ...data, characters } : data);
-  }
-
   return (
-    <div
-      style={{
-        background: COLORS.surface,
-        border: `2px solid ${COLORS.screenBorder}`,
-        borderRadius: "10px",
-        padding: "14px",
-        marginBottom: "10px",
-      }}
-    >
-      <div className="flex items-start justify-between gap-2 mb-1">
-        <div>
-          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "var(--text-faint)" }}>
-            {(data.language || "").toUpperCase()}
+    <CardShell
+      eyebrow={(data.language || "").toUpperCase()}
+      title={data.word}
+      titleSize={18}
+      padding="14px"
+      subtitle={
+        mandarin && data.pinyin ? (
+          <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "13px", color: "var(--text-muted)", marginTop: "2px" }}>
+            {data.pinyin}
           </div>
-          <h3
-            style={{
-              fontFamily: '"Baloo 2", sans-serif',
-              fontWeight: 700,
-              fontSize: "18px",
-              color: COLORS.ink,
-              lineHeight: 1.15,
-              margin: 0,
-            }}
-          >
-            {data.word}
-          </h3>
-          {mandarin && data.pinyin && (
-            <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "13px", color: "var(--text-muted)", marginTop: "2px" }}>
-              {data.pinyin}
-            </div>
-          )}
-        </div>
-        <div className="flex items-center" style={{ flexShrink: 0, gap: "18px" }}>
-          {speechSupported && (
-            <button
-              onClick={() => pronounce(data.word)}
-              aria-label={`Ouvir a pronúncia de ${data.word}`}
-              title="Ouvir a pronúncia"
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "9px",
-                margin: "-9px",
-                flexShrink: 0,
-                color: COLORS.screenBorder,
-              }}
-            >
-              <Volume2 size={16} />
-            </button>
-          )}
-          <ShareButton title={data.word} render={() => wordCardPdfBlob({ ...data, characters })} />
-          {onToggle && (
-            <button
-              onClick={toggleWithCharacters}
-              aria-label={saved ? "Soltar das Palavras" : "Capturar palavra"}
-              style={{
-                background: "none",
-                border: "none",
-                cursor: "pointer",
-                padding: "9px",
-                margin: "-9px",
-                flexShrink: 0,
-              }}
-            >
-              <PokeballIcon filled={saved} size={26} />
-            </button>
-          )}
-        </div>
-      </div>
-
-      {onTagsChange && (
-        <div style={{ marginBottom: "4px" }}>
-          <TagEditor tags={data.tags || []} onChange={onTagsChange} />
-        </div>
-      )}
-
+        ) : null
+      }
+      saved={saved}
+      onToggle={onToggle ? () => onToggle(data) : undefined}
+      captureLabel="palavra"
+      tags={data.tags}
+      onTagsChange={onTagsChange}
+      note={data.note}
+      onNoteChange={onNoteChange}
+      actions={<ShareButton title={data.word} render={() => wordCardPdfBlob(data)} />}
+    >
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text)", lineHeight: 1.45, marginBottom: "10px" }}>
         {data.meaning}
       </p>
@@ -263,21 +65,6 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
         </div>
       )}
 
-      {mandarin && characters.length === 1 && (
-        <div style={{ marginBottom: "8px" }}>
-          <div className="flex items-center justify-between gap-2">
-            <div />
-            {sfButtons(0, characters[0])}
-          </div>
-          {(characters[0].semanticComponent || characters[0].phoneticComponent) && (
-            <div className="flex" style={{ flexWrap: "wrap", gap: "6px", marginTop: "4px" }}>
-              <SemanticTag value={characters[0].semanticComponent} />
-              <PhoneticTag value={characters[0].phoneticComponent} pinyin={characters[0].phoneticComponentPinyin} />
-            </div>
-          )}
-        </div>
-      )}
-
       {mandarin && isCompound && (
         <div style={{ marginBottom: "8px" }}>
           <div style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "11px", color: COLORS.ink, marginBottom: "6px" }}>
@@ -294,62 +81,27 @@ export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteCh
                   background: "rgba(0,0,0,0.02)",
                 }}
               >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex items-baseline gap-2" style={{ minWidth: 0, flexWrap: "wrap" }}>
-                    <span style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "16px", color: COLORS.ink }}>
-                      {c.hanzi}
+                <div className="flex items-baseline gap-2" style={{ minWidth: 0, flexWrap: "wrap" }}>
+                  <span style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "16px", color: COLORS.ink }}>
+                    {c.hanzi}
+                  </span>
+                  {c.pinyin && (
+                    <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11.5px", color: "var(--text-muted)" }}>
+                      {c.pinyin}
                     </span>
-                    {c.pinyin && (
-                      <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11.5px", color: "var(--text-muted)" }}>
-                        {c.pinyin}
-                      </span>
-                    )}
-                    {c.meaning && (
-                      <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text)" }}>— {c.meaning}</span>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1" style={{ flexShrink: 0 }}>
-                    {speechSupported && (
-                      <button
-                        onClick={() => pronounce(c.hanzi)}
-                        aria-label={`Ouvir a pronúncia de ${c.hanzi}`}
-                        title="Ouvir a pronúncia"
-                        style={{ ...sfButtonStyle(COLORS.screenBorder, false), color: COLORS.screenBorder }}
-                      >
-                        <Volume2 size={11} />
-                      </button>
-                    )}
-                    {sfButtons(i, c)}
-                  </div>
+                  )}
+                  {c.meaning && (
+                    <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text)" }}>— {c.meaning}</span>
+                  )}
                 </div>
-                {(c.semanticComponent || c.phoneticComponent) && (
-                  <div className="flex" style={{ flexWrap: "wrap", gap: "6px", marginTop: "6px" }}>
-                    <SemanticTag value={c.semanticComponent} />
-                    <PhoneticTag value={c.phoneticComponent} pinyin={c.phoneticComponentPinyin} />
-                  </div>
-                )}
               </div>
             ))}
           </div>
         </div>
       )}
 
-      {speechError && (
-        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "6px" }}>{speechError}</p>
-      )}
-
-      {componentError && (
-        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--danger)", marginBottom: "6px" }}>{componentError}</p>
-      )}
-
       {/* Etimologia desligada pra mandarim por enquanto — ver pedido do usuário. */}
       {!mandarin && <WordEtymology word={data.word} language={data.language} />}
-
-      {onNoteChange && (
-        <div className="flex items-center" style={{ flexWrap: "wrap" }}>
-          <NoteEditor note={data.note} onChange={onNoteChange} />
-        </div>
-      )}
-    </div>
+    </CardShell>
   );
 }

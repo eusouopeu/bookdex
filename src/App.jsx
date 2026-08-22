@@ -1,29 +1,24 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import { Settings as SettingsIcon, Upload, WifiOff, Mic, MicOff, History } from "lucide-react";
+import { Settings as SettingsIcon, Upload, WifiOff, History, Camera } from "lucide-react";
 import { COLORS, THEME_VARS, slug, tabStyle, iconButtonStyle } from "./theme";
-import { getJSON, setJSON, KEYS } from "./lib/storage";
 import {
   fetchTechniques,
   fetchDefinition,
   fetchList,
   fetchCompare,
+  fetchWord,
+  fetchPlantByName,
+  fetchPlantFromPhoto,
   hasCredentials,
-  getSearchEffort,
-  setSearchEffort as persistSearchEffort,
+  searchModelFor,
   MissingApiKeyError,
 } from "./lib/anthropic";
 import { parseSearchQuery, hasExplicitPrefix, splitCompareTerms, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
-import { recordVisit } from "./lib/gamification";
-import { createProfileId, createCriterionId, createItemId, clampRating, initEffectProfiles } from "./lib/effectProfiles";
-import {
-  initRelevanceState,
-  markIrrelevant as markIrrelevantState,
-  unmarkIrrelevant as unmarkIrrelevantState,
-  isMarkedIrrelevant,
-  avoidListForSubject,
-  tasteAvoidList,
-} from "./lib/relevance";
+import { cacheKey, readCache, writeCache, loadSearchCache, saveSearchCache } from "./lib/searchCache";
+import { findSavedWord } from "./lib/words";
+import { readAndCompressImage } from "./lib/imageUtils";
 import { useData } from "./state/DataContext";
+import { usePrefs } from "./state/PrefsContext";
 import { searchReducer, initialSearchState } from "./state/searchReducer";
 
 import SearchView from "./views/SearchView";
@@ -32,20 +27,30 @@ import DetailPage from "./views/DetailPage";
 import SettingsView from "./views/SettingsView";
 import ImportView from "./views/ImportView";
 import CompareView from "./views/CompareView";
-import EffectsSection from "./components/EffectsSection";
+import CollectionsSection from "./components/CollectionsSection";
 
 const SEARCH_MODES = [
   { mode: "technique", label: "Técnicas" },
   { mode: "list", label: "Tipos" },
   { mode: "definition", label: "Conceito" },
   { mode: "compare", label: "Comparar" },
+  { mode: "word", label: "Palavra" },
+  { mode: "plant", label: "Planta" },
 ];
-const MAX_HISTORY = 8;
-const MODE_LABELS_SHORT = { technique: "téc", definition: "def", list: "list", compare: "cmp" };
+const MODE_LABELS_SHORT = {
+  technique: "téc",
+  definition: "def",
+  list: "list",
+  compare: "cmp",
+  word: "pal",
+  plant: "plt",
+};
+const CRITERIA_MODES = ["technique", "list", "compare"];
 
 export default function App() {
   const data = useData();
-  const { detailCache, counts, toast, showToast, dismissToast } = data;
+  const { detailCache, words, counts, toast, showToast, dismissToast } = data;
+  const prefs = usePrefs();
 
   const [view, setView] = useState("search");
   const [lastTab, setLastTab] = useState("search");
@@ -55,60 +60,42 @@ export default function App() {
   const [search, dispatch] = useReducer(searchReducer, initialSearchState);
   const { query, criteria, mode: searchMode, loading, error, needsKey, result, scanCount } = search;
 
-  const [listening, setListening] = useState(false);
-  const recognitionRef = useRef(null);
-  const [history, setHistory] = useState([]);
   const [showHistorySuggestions, setShowHistorySuggestions] = useState(false);
-
   const [hasKey, setHasKey] = useState(true);
   const [isOnline, setIsOnline] = useState(typeof navigator === "undefined" || navigator.onLine);
-  const [theme, setTheme] = useState("light");
-  const [offlineQueue, setOfflineQueue] = useState([]);
-  const offlineQueueRef = useRef([]);
-  const [gamification, setGamification] = useState(null);
-  const [relevance, setRelevance] = useState(initRelevanceState());
-  const [dexCategory, setDexCategory] = useState("technique"); // technique | knowledge | words | collections
-  const [effectProfiles, setEffectProfiles] = useState(initEffectProfiles());
-  const [searchEffort, setSearchEffortState] = useState("medium");
-  const [showArchived, setShowArchived] = useState(false);
+  const [searchCache, setSearchCache] = useState({});
+  const photoInput = useRef(null);
+
+  // A busca é disparada de dentro de listeners e de callbacks antigos (fila
+  // offline, atalho de compartilhamento); a ref garante que eles chamem SEMPRE
+  // a versão atual, com o estado atual, sem re-registrar listener.
+  const searchRef = useRef(null);
 
   useEffect(() => {
     (async () => {
-      setHistory(await getJSON(KEYS.searchHistory, []));
-      setTheme(await getJSON(KEYS.theme, "light"));
-      setOfflineQueue(await getJSON(KEYS.offlineQueue, []));
-      setEffectProfiles(await getJSON(KEYS.effectProfiles, initEffectProfiles()));
-      setRelevance(await getJSON(KEYS.irrelevantItems, initRelevanceState()));
-      setSearchEffortState(await getSearchEffort());
-      const savedTab = await getJSON(KEYS.lastTab, "search");
-      if (savedTab === "search" || savedTab === "dex" || savedTab === "effects") {
-        setLastTab(savedTab);
-        setView(savedTab);
-      }
-      const gState = await getJSON(KEYS.gamification, null);
-      const nextG = recordVisit(gState);
-      setGamification(nextG);
-      setJSON(KEYS.gamification, nextG).catch(() => {});
+      setSearchCache(await loadSearchCache());
       setHasKey(await hasCredentials());
     })();
   }, []);
 
   useEffect(() => {
-    offlineQueueRef.current = offlineQueue;
-  }, [offlineQueue]);
+    if (prefs.initialTab) {
+      setLastTab(prefs.initialTab);
+      setView(prefs.initialTab);
+    }
+  }, [prefs.initialTab]);
 
   useEffect(() => {
     async function goOnline() {
       setIsOnline(true);
-      const queue = offlineQueueRef.current;
+      const queue = prefs.offlineQueueRef.current;
       if (queue.length) {
         showToast(`Conexão restabelecida — buscando ${queue.length} item(ns) da fila...`);
         for (const item of queue) {
           // eslint-disable-next-line no-await-in-loop
-          await handleSearch({ mode: item.mode, term: item.term });
+          await searchRef.current?.({ mode: item.mode, term: item.term });
         }
-        setOfflineQueue([]);
-        setJSON(KEYS.offlineQueue, []).catch(() => {});
+        prefs.clearOfflineQueue();
       }
     }
     function goOffline() {
@@ -123,165 +110,55 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function addToHistory(mode, term) {
-    setHistory((prev) => {
-      const next = [
-        { mode, term },
-        ...prev.filter((h) => !(h.mode === mode && h.term.toLowerCase() === term.toLowerCase())),
-      ].slice(0, MAX_HISTORY);
-      setJSON(KEYS.searchHistory, next).catch(() => {});
-      return next;
-    });
-  }
-
-  /* --------------------------------------------------------- perfis de efeito */
-
-  function persistEffectProfiles(next) {
-    setJSON(KEYS.effectProfiles, next).catch(() => {});
-  }
-
-  function createEffectProfile(name) {
-    const clean = (name || "").trim();
-    if (!clean) return null;
-    const id = createProfileId();
-    setEffectProfiles((prev) => {
-      const next = { ...prev, [id]: { id, name: clean, createdAt: Date.now(), criteria: [], items: [] } };
-      persistEffectProfiles(next);
-      return next;
-    });
-    showToast(`Perfil "${clean}" criado.`);
-    return id;
-  }
-
-  function deleteEffectProfile(id) {
-    setEffectProfiles((prev) => {
-      const profile = prev[id];
-      if (!profile) return prev;
-      const next = { ...prev };
-      delete next[id];
-      persistEffectProfiles(next);
-      showToast(`Perfil "${profile.name}" excluído.`);
-      return next;
-    });
-  }
-
-  function addEffectCriterion(profileId, label) {
-    const clean = (label || "").trim();
-    if (!clean) return;
-    setEffectProfiles((prev) => {
-      const profile = prev[profileId];
-      if (!profile) return prev;
-      if (profile.criteria.some((c) => c.label.toLowerCase() === clean.toLowerCase())) return prev;
-      const id = createCriterionId(profile.criteria.map((c) => c.id), clean);
-      const next = { ...prev, [profileId]: { ...profile, criteria: [...profile.criteria, { id, label: clean }] } };
-      persistEffectProfiles(next);
-      return next;
-    });
-  }
-
-  function removeEffectCriterion(profileId, criterionId) {
-    setEffectProfiles((prev) => {
-      const profile = prev[profileId];
-      if (!profile) return prev;
-      const criteria = profile.criteria.filter((c) => c.id !== criterionId);
-      const items = profile.items.map((it) => {
-        const ratings = { ...it.ratings };
-        const reasons = { ...(it.reasons || {}) };
-        delete ratings[criterionId];
-        delete reasons[criterionId];
-        return { ...it, ratings, reasons };
-      });
-      const next = { ...prev, [profileId]: { ...profile, criteria, items } };
-      persistEffectProfiles(next);
-      return next;
-    });
-  }
-
-  function addEffectItem(profileId, { name, ratings, reasons, note }) {
-    const clean = (name || "").trim();
-    if (!clean) return;
-    setEffectProfiles((prev) => {
-      const profile = prev[profileId];
-      if (!profile) return prev;
-      const id = createItemId(profile.items.map((it) => it.id), clean);
-      const item = { id, name: clean, active: true, ratings: ratings || {}, reasons: reasons || {}, note: note || "" };
-      const next = { ...prev, [profileId]: { ...profile, items: [...profile.items, item] } };
-      persistEffectProfiles(next);
-      return next;
-    });
-    showToast(`"${clean}" adicionado(a) ao perfil.`);
-  }
-
-  function updateEffectItems(profileId, mutate) {
-    setEffectProfiles((prev) => {
-      const profile = prev[profileId];
-      if (!profile) return prev;
-      const next = { ...prev, [profileId]: { ...profile, items: mutate(profile.items) } };
-      persistEffectProfiles(next);
-      return next;
-    });
-  }
-
-  const removeEffectItem = (profileId, itemId) =>
-    updateEffectItems(profileId, (items) => items.filter((it) => it.id !== itemId));
-  const toggleEffectItemActive = (profileId, itemId) =>
-    updateEffectItems(profileId, (items) => items.map((it) => (it.id === itemId ? { ...it, active: !it.active } : it)));
-  const updateEffectItemRating = (profileId, itemId, criterionId, value) =>
-    updateEffectItems(profileId, (items) =>
-      items.map((it) => (it.id === itemId ? { ...it, ratings: { ...it.ratings, [criterionId]: clampRating(value) } } : it))
-    );
-  const updateEffectItemNote = (profileId, itemId, note) =>
-    updateEffectItems(profileId, (items) => items.map((it) => (it.id === itemId ? { ...it, note } : it)));
-
-  /* ------------------------------------------------------------ preferências */
-
-  function changeSearchEffort(effort) {
-    setSearchEffortState(effort);
-    persistSearchEffort(effort).catch(() => {});
-  }
-
-  function changeTheme(next) {
-    setTheme(next);
-    setJSON(KEYS.theme, next).catch(() => {});
-  }
-
-  /* --------------------------------------------------------------- relevância */
-
-  function markItemIrrelevant(subjectDisplay, mode, item) {
-    const subjectSlug = slug(subjectDisplay);
-    const itemId = slug(item.name || item.term);
-    const name = item.name || item.term;
-    setRelevance((prev) => {
-      const next = markIrrelevantState(prev, { subjectSlug, itemId, name, mode, subjectDisplay });
-      setJSON(KEYS.irrelevantItems, next).catch(() => {});
-      return next;
-    });
-    showToast(`"${name}" marcado(a) como pouco relevante.`, () => {
-      setRelevance((prev) => {
-        const next = unmarkIrrelevantState(prev, subjectSlug, itemId);
-        setJSON(KEYS.irrelevantItems, next).catch(() => {});
-        return next;
-      });
-    });
-  }
-
-  function isItemIrrelevant(subjectDisplay, itemName) {
-    return isMarkedIrrelevant(relevance, slug(subjectDisplay), slug(itemName));
-  }
+  /**
+   * Texto compartilhado de outro app (Android share target). O MainActivity
+   * repassa o texto como `?shared=`; aqui ele vira uma busca já disparada, e o
+   * parâmetro sai da URL pra não repetir a busca a cada recarga.
+   */
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const shared = params.get("shared");
+    if (!shared) return;
+    window.history.replaceState({}, "", window.location.pathname);
+    const { mode, term } = hasExplicitPrefix(shared)
+      ? parseSearchQuery(shared)
+      : { mode: "definition", term: shared.trim().slice(0, 120) };
+    if (term) {
+      goTab("search");
+      searchRef.current?.({ mode, term });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* -------------------------------------------------------------------- busca */
 
-  function enqueueOfflineSearch(mode, term) {
-    setOfflineQueue((prev) => {
-      const next = [...prev.filter((q) => !(q.mode === mode && q.term.toLowerCase() === term.toLowerCase())), { mode, term }];
-      setJSON(KEYS.offlineQueue, next).catch(() => {});
-      return next;
-    });
-    dispatch({ type: "queuedOffline", mode, term });
-    showToast(`Sem internet — "${term}" foi enfileirado(a) e será buscado(a) ao reconectar.`);
+  function persistCache(next) {
+    setSearchCache(next);
+    saveSearchCache(next).catch(() => {});
   }
 
-  async function handleSearch(override) {
+  /** Executa a chamada de rede do modo pedido. Sem cache, sem estado. */
+  async function runSearch(mode, term, critList) {
+    const avoid = prefs.avoidListFor(term);
+    const effort = prefs.searchEffort;
+    if (mode === "definition") return await fetchDefinition(term, avoid, effort);
+    if (mode === "list") return await fetchList(term, avoid, effort, critList);
+    if (mode === "word") return await fetchWord(term, avoid);
+    if (mode === "plant") return await fetchPlantByName(term, avoid, effort);
+    if (mode === "compare") {
+      const names = splitCompareTerms(term);
+      if (names.length < 2) throw new Error('Informe pelo menos 2 itens separados por vírgula, ex.: "melatonina, magnésio".');
+      if (names.length > 3) throw new Error("No máximo 3 itens por comparação.");
+      return await fetchCompare(names, avoid, critList, effort);
+    }
+    return await fetchTechniques(term, avoid, critList, effort);
+  }
+
+  /**
+   * `force` pula o cache e refaz a chamada — é o que o botão "Refazer busca"
+   * usa. Sem ele, um termo já buscado nos mesmos parâmetros volta de graça.
+   */
+  async function handleSearch(override, { force = false } = {}) {
     let mode, term;
     if (override) {
       ({ mode, term } = override);
@@ -292,25 +169,42 @@ export default function App() {
       term = query.trim();
     }
     if (!term || loading) return;
+
+    // Palavra já capturada não gasta chamada: o verbete salvo é a resposta.
+    if (mode === "word" && !force) {
+      const match = findSavedWord(words, term);
+      if (match) {
+        dispatch({ type: "success", mode, term, data: match.item, source: match.exact ? "saved" : "saved-similar" });
+        prefs.addToHistory(mode, term);
+        return;
+      }
+    }
+
+    const critList = criteria.split(",").map((c) => c.trim()).filter(Boolean);
+    const key = cacheKey({ mode, term, criteria: critList, effort: prefs.searchEffort, model: await searchModelFor(mode) });
+
+    if (!force) {
+      const hit = readCache(searchCache, key);
+      if (hit) {
+        dispatch({ type: "success", mode, term, data: hit.data, source: "cache", cacheKey: key });
+        prefs.addToHistory(mode, term);
+        return;
+      }
+    }
+
     if (typeof navigator !== "undefined" && !navigator.onLine) {
-      enqueueOfflineSearch(mode, term);
+      prefs.enqueueOffline(mode, term);
+      dispatch({ type: "queuedOffline", mode, term });
+      showToast(`Sem internet — "${term}" foi enfileirado(a) e será buscado(a) ao reconectar.`);
       return;
     }
+
     dispatch({ type: "start", mode, term });
     try {
-      let payload;
-      const avoid = [...avoidListForSubject(relevance, slug(term)), ...tasteAvoidList(relevance)];
-      const critList = criteria.split(",").map((c) => c.trim()).filter(Boolean);
-      if (mode === "definition") payload = await fetchDefinition(term, avoid, searchEffort);
-      else if (mode === "list") payload = await fetchList(term, avoid, searchEffort, critList);
-      else if (mode === "compare") {
-        const names = splitCompareTerms(term);
-        if (names.length < 2) throw new Error('Informe pelo menos 2 itens separados por vírgula, ex.: "melatonina, magnésio".');
-        if (names.length > 3) throw new Error("No máximo 3 itens por comparação.");
-        payload = await fetchCompare(names, avoid, critList, searchEffort);
-      } else payload = await fetchTechniques(term, avoid, critList, searchEffort);
-      dispatch({ type: "success", mode, data: payload });
-      addToHistory(mode, term);
+      const payload = await runSearch(mode, term, critList);
+      dispatch({ type: "success", mode, term, data: payload, source: "network", cacheKey: key });
+      persistCache(writeCache(searchCache, key, payload));
+      prefs.addToHistory(mode, term);
     } catch (e) {
       console.error(e);
       if (e instanceof MissingApiKeyError) dispatch({ type: "missingKey" });
@@ -318,41 +212,30 @@ export default function App() {
     }
   }
 
+  searchRef.current = handleSearch;
+
+  /** Identificação de planta por foto — não passa por cache (a foto é única). */
+  async function handlePhotoSearch(e) {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file || loading) return;
+    dispatch({ type: "start", mode: "plant", term: "foto" });
+    try {
+      const dataUrl = await readAndCompressImage(file);
+      const plant = await fetchPlantFromPhoto([dataUrl], prefs.searchEffort);
+      dispatch({ type: "success", mode: "plant", term: plant.commonNames?.[0] || "foto", data: plant, source: "network" });
+    } catch (err) {
+      console.error(err);
+      if (err instanceof MissingApiKeyError) dispatch({ type: "missingKey" });
+      else dispatch({ type: "failure", error: err.message || "Não foi possível identificar a planta desta foto." });
+    }
+  }
+
   function searchRelated(mode, term) {
     setDetailTarget(null);
     setCompareTarget(null);
-    setLastTab("search");
-    setView("search");
-    setJSON(KEYS.lastTab, "search").catch(() => {});
+    goTab("search");
     handleSearch({ mode, term });
-  }
-
-  function toggleVoiceSearch() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      showToast("Busca por voz não é suportada neste navegador.");
-      return;
-    }
-    if (listening) {
-      recognitionRef.current?.stop();
-      return;
-    }
-    const recognition = new SpeechRecognition();
-    recognition.lang = "pt-BR";
-    recognition.interimResults = false;
-    recognition.maxAlternatives = 1;
-    recognition.onstart = () => setListening(true);
-    recognition.onend = () => setListening(false);
-    recognition.onerror = () => {
-      setListening(false);
-      showToast("Não foi possível ouvir. Tente novamente.");
-    };
-    recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript.trim();
-      if (transcript) handleSearch({ mode: searchMode, term: transcript });
-    };
-    recognitionRef.current = recognition;
-    recognition.start();
   }
 
   /* ---------------------------------------------------------------- navegação */
@@ -372,7 +255,7 @@ export default function App() {
     setCompareTarget(null);
     setLastTab(tab);
     setView(tab);
-    setJSON(KEYS.lastTab, tab).catch(() => {});
+    prefs.rememberTab(tab);
   }
 
   function openScreen(screen) {
@@ -387,12 +270,11 @@ export default function App() {
     setView(lastTab);
   }
 
-  const effectProfilesCount = Object.keys(effectProfiles || {}).length;
-  const isTab = view === "search" || view === "dex" || view === "effects";
+  const isTab = view === "search" || view === "dex" || view === "collections";
   const showSearchBar = view === "search" && !detailTarget && !compareTarget;
   const showDexNav = view === "dex" && !detailTarget && !compareTarget;
   const matchingHistory = query.trim()
-    ? history.filter((h) => h.term.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 5)
+    ? prefs.history.filter((h) => h.term.toLowerCase().includes(query.trim().toLowerCase())).slice(0, 5)
     : [];
   const detailKey = detailTarget
     ? `${slug(detailTarget.subjectDisplay)}:${detailTarget.technique.id || slug(detailTarget.technique.name)}`
@@ -411,7 +293,7 @@ export default function App() {
     >
       <style>{`
         :root {
-          ${Object.entries(THEME_VARS[theme] || THEME_VARS.light)
+          ${Object.entries(THEME_VARS[prefs.theme] || THEME_VARS.light)
             .map(([k, v]) => `${k}: ${v};`)
             .join("\n          ")}
         }
@@ -492,8 +374,8 @@ export default function App() {
             <button onClick={() => goTab("dex")} style={tabStyle(view === "dex")}>
               POKÉDEX ({counts.total})
             </button>
-            <button onClick={() => goTab("effects")} style={tabStyle(view === "effects")}>
-              EFEITOS ({effectProfilesCount})
+            <button onClick={() => goTab("collections")} style={tabStyle(view === "collections")}>
+              COLEÇÕES ({counts.collections})
             </button>
           </div>
         </div>
@@ -562,51 +444,54 @@ export default function App() {
                 needsKey={needsKey || (!hasKey && !result)}
                 result={result}
                 scanCount={scanCount}
-                history={history}
+                history={prefs.history}
                 isSaved={data.isSaved}
+                isPlantSaved={data.isPlantSaved}
+                isWordSaved={data.isWordSaved}
                 onToggleSave={data.toggleSave}
+                onToggleWord={data.toggleWordSave}
                 onOpenDetail={openDetail}
-                onRetry={() => handleSearch()}
+                onRetry={() => handleSearch(null, { force: true })}
                 onRunHistoryTerm={(mode, term) => handleSearch({ mode, term })}
                 onGoSettings={() => openScreen("settings")}
                 onSearchRelated={searchRelated}
                 hasDetail={data.hasDetail}
-                isIrrelevant={isItemIrrelevant}
-                onMarkIrrelevant={markItemIrrelevant}
+                isIrrelevant={prefs.isItemIrrelevant}
+                onMarkIrrelevant={(subject, mode, item) => prefs.markItemIrrelevant(subject, mode, item, showToast)}
               />
             )}
 
             {!detailTarget && !compareTarget && view === "dex" && (
               <DexView
-                category={dexCategory}
-                onCategoryChange={setDexCategory}
                 onOpenDetail={openDetail}
                 onOpenImport={() => openScreen("import")}
                 onSearchRelated={searchRelated}
                 onExampleSearch={(mode, term) => searchRelated(mode, term)}
                 onOpenCompare={openCompare}
-                showArchived={showArchived}
-                onToggleShowArchived={() => setShowArchived((v) => !v)}
-                searchEffort={searchEffort}
+              />
+            )}
+
+            {!detailTarget && !compareTarget && view === "collections" && (
+              <CollectionsSection
+                collections={data.collections}
+                saved={data.saved}
+                detailCache={detailCache}
+                onCreateCollection={data.createCollection}
+                onDeleteCollection={data.deleteCollection}
+                onRemoveFromCollection={data.removeFromCollection}
+                onAddToCollection={data.addToCollection}
+                onToggleSave={data.toggleSave}
+                onOpenDetail={openDetail}
+                hasDetail={data.hasDetail}
+                onUpdateTags={data.updateItemTags}
+                onUpdateNote={data.updateItemNote}
+                onUpdateImages={data.updateItemImages}
+                onUpdatePlantAspect={data.updatePlantAspect}
+                onSearchRelated={searchRelated}
               />
             )}
 
             {compareTarget && <CompareView items={compareTarget} onBack={() => setCompareTarget(null)} />}
-
-            {!detailTarget && !compareTarget && view === "effects" && (
-              <EffectsSection
-                profiles={effectProfiles}
-                onCreateProfile={createEffectProfile}
-                onDeleteProfile={deleteEffectProfile}
-                onAddCriterion={addEffectCriterion}
-                onRemoveCriterion={removeEffectCriterion}
-                onAddItem={addEffectItem}
-                onRemoveItem={removeEffectItem}
-                onToggleItemActive={toggleEffectItemActive}
-                onUpdateItemRating={updateEffectItemRating}
-                onUpdateItemNote={updateEffectItemNote}
-              />
-            )}
 
             {!detailTarget && view === "settings" && (
               <SettingsView
@@ -616,14 +501,8 @@ export default function App() {
                   setHasKey(ok);
                   if (ok) dispatch({ type: "clearNeedsKey" });
                 }}
-                theme={theme}
-                onThemeChange={changeTheme}
-                gamification={gamification}
-                totalSavedCount={counts.total}
-                prefetchDetailsEnabled={data.prefetchDetailsEnabled}
-                onPrefetchDetailsChange={data.changePrefetchDetails}
-                searchEffort={searchEffort}
-                onSearchEffortChange={changeSearchEffort}
+                searchCache={searchCache}
+                onClearSearchCache={() => persistCache({})}
               />
             )}
 
@@ -692,13 +571,13 @@ export default function App() {
         >
           {showSearchBar ? (
             <div style={{ width: "100%", minWidth: 0 }}>
-              <div className="flex gap-1.5" style={{ marginBottom: "6px" }}>
+              <div className="flex gap-1.5" style={{ marginBottom: "6px", flexWrap: "wrap" }}>
                 {SEARCH_MODES.map(({ mode, label }) => (
                   <button
                     key={mode}
                     onClick={() => dispatch({ type: "setMode", mode })}
                     style={{
-                      flex: 1,
+                      flex: "1 1 28%",
                       padding: "5px 8px",
                       minHeight: "26px",
                       borderRadius: "999px",
@@ -789,29 +668,38 @@ export default function App() {
                     outline: "none",
                   }}
                 />
-                {(window.SpeechRecognition || window.webkitSpeechRecognition) && (
-                  <button
-                    onClick={toggleVoiceSearch}
-                    disabled={loading}
-                    aria-label={listening ? "Parar busca por voz" : "Buscar por voz"}
-                    title={listening ? "Parar busca por voz" : "Buscar por voz"}
-                    style={{
-                      background: listening ? COLORS.shellRedDark : "rgba(255,255,255,0.18)",
-                      color: COLORS.white,
-                      border: "none",
-                      borderRadius: "8px",
-                      minWidth: "40px",
-                      minHeight: "40px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      cursor: loading ? "default" : "pointer",
-                      flexShrink: 0,
-                      animation: listening ? "lensPulse 1s ease-in-out infinite" : "none",
-                    }}
-                  >
-                    {listening ? <MicOff size={17} /> : <Mic size={17} />}
-                  </button>
+                {searchMode === "plant" && (
+                  <>
+                    <button
+                      onClick={() => photoInput.current && photoInput.current.click()}
+                      disabled={loading}
+                      aria-label="Identificar planta por foto"
+                      title="Identificar planta por foto"
+                      style={{
+                        background: "rgba(255,255,255,0.18)",
+                        color: COLORS.white,
+                        border: "none",
+                        borderRadius: "8px",
+                        minWidth: "40px",
+                        minHeight: "40px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: loading ? "default" : "pointer",
+                        flexShrink: 0,
+                      }}
+                    >
+                      <Camera size={17} />
+                    </button>
+                    <input
+                      ref={photoInput}
+                      type="file"
+                      accept="image/*"
+                      capture="environment"
+                      onChange={handlePhotoSearch}
+                      style={{ display: "none" }}
+                    />
+                  </>
                 )}
                 <button
                   onClick={() => handleSearch()}
@@ -835,7 +723,7 @@ export default function App() {
                   {loading ? "..." : "ESCANEAR"}
                 </button>
               </div>
-              {(searchMode === "technique" || searchMode === "list" || searchMode === "compare") && (
+              {CRITERIA_MODES.includes(searchMode) && (
                 <input
                   value={criteria}
                   onChange={(e) => dispatch({ type: "setCriteria", criteria: e.target.value })}
@@ -859,24 +747,11 @@ export default function App() {
               )}
             </div>
           ) : showDexNav ? (
-            <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
-              <button onClick={() => setDexCategory("technique")} style={tabStyle(dexCategory === "technique")}>
-                TÉCNICAS ({counts.techniques})
-              </button>
-              <button onClick={() => setDexCategory("knowledge")} style={tabStyle(dexCategory === "knowledge")}>
-                CONCEITOS ({counts.knowledge})
-              </button>
-              <button onClick={() => setDexCategory("words")} style={tabStyle(dexCategory === "words")}>
-                PALAVRAS ({counts.words})
-              </button>
-              <button onClick={() => setDexCategory("collections")} style={tabStyle(dexCategory === "collections")}>
-                COLEÇÕES ({counts.collections})
-              </button>
-            </div>
+            <DexCategoryNav counts={counts} />
           ) : (
             <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", color: "rgba(255,255,255,0.75)", textAlign: "center" }}>
-              {view === "effects"
-                ? `${effectProfilesCount} perfil(is) de efeito`
+              {view === "collections"
+                ? `${counts.collections} coleção(ões)`
                 : isTab || detailTarget
                   ? `${counts.total} item(ns) registrado(s) em ${counts.subjects} assunto(s)`
                   : "Bookdex"}
@@ -884,6 +759,31 @@ export default function App() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * As categorias da Pokédex vivem na barra de baixo (aqui) mas quem filtra por
+ * elas é o DexView, do outro lado da tela — por isso a categoria corrente mora
+ * no PrefsContext, e não em nenhum dos dois.
+ */
+function DexCategoryNav({ counts }) {
+  const { dexCategory, setDexCategory } = usePrefs();
+  return (
+    <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
+      <button onClick={() => setDexCategory("technique")} style={tabStyle(dexCategory === "technique")}>
+        TÉCNICAS ({counts.techniques})
+      </button>
+      <button onClick={() => setDexCategory("knowledge")} style={tabStyle(dexCategory === "knowledge")}>
+        CONCEITOS ({counts.knowledge})
+      </button>
+      <button onClick={() => setDexCategory("plants")} style={tabStyle(dexCategory === "plants")}>
+        PLANTAS ({counts.plants})
+      </button>
+      <button onClick={() => setDexCategory("words")} style={tabStyle(dexCategory === "words")}>
+        PALAVRAS ({counts.words})
+      </button>
     </div>
   );
 }

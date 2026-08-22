@@ -16,6 +16,7 @@ vi.mock("../lib/anthropic", async (importOriginal) => ({
 
 import { seedStorage, storageState } from "../test/storageMock";
 import DexView from "./DexView";
+import { usePrefs } from "../state/PrefsContext";
 import { renderWithData } from "../test/renderWithData";
 
 const SEED = {
@@ -55,21 +56,34 @@ const SEED = {
   "schema-version": 3,
 };
 
+const NOOP_PROPS = {
+  onOpenDetail: () => {},
+  onOpenImport: () => {},
+  onSearchRelated: () => {},
+  onExampleSearch: () => {},
+  onOpenCompare: () => {},
+};
+
+/**
+ * A categoria da Pokédex mora no PrefsContext (a barra de baixo, que a troca,
+ * fica do outro lado da tela). O teste troca de aba pelo mesmo botão que o
+ * usuário usaria — daí o `<CategorySwitch>` em volta da view.
+ */
+function CategorySwitch({ children }) {
+  const { setDexCategory } = usePrefs();
+  return (
+    <>
+      <button onClick={() => setDexCategory("knowledge")}>ir para conceitos</button>
+      {children}
+    </>
+  );
+}
+
 function renderDex(props = {}) {
   return renderWithData(
-    <DexView
-      category="technique"
-      onCategoryChange={() => {}}
-      onOpenDetail={() => {}}
-      onOpenImport={() => {}}
-      onSearchRelated={() => {}}
-      onExampleSearch={() => {}}
-      onOpenCompare={() => {}}
-      showArchived={false}
-      onToggleShowArchived={() => {}}
-      searchEffort="medium"
-      {...props}
-    />
+    <CategorySwitch>
+      <DexView {...NOOP_PROPS} {...props} />
+    </CategorySwitch>
   );
 }
 
@@ -139,7 +153,7 @@ describe("DexView", () => {
 
   it("converte uma técnica em conceito: o card sai da aba Técnicas e reaparece em Conceitos", async () => {
     const user = userEvent.setup();
-    const { rerender } = renderDex();
+    renderDex();
     await screen.findByText("Box breathing");
 
     await user.click(screen.getAllByRole("button", { name: "Converter este card em outro tipo" })[1]);
@@ -147,20 +161,7 @@ describe("DexView", () => {
 
     await waitFor(() => expect(screen.queryByText("Box breathing")).not.toBeInTheDocument());
 
-    rerender(
-      <DexView
-        category="knowledge"
-        onCategoryChange={() => {}}
-        onOpenDetail={() => {}}
-        onOpenImport={() => {}}
-        onSearchRelated={() => {}}
-        onExampleSearch={() => {}}
-        onOpenCompare={() => {}}
-        showArchived={false}
-        onToggleShowArchived={() => {}}
-        searchEffort="medium"
-      />
-    );
+    await user.click(screen.getByRole("button", { name: "ir para conceitos" }));
     expect(await screen.findByText("Box breathing")).toBeInTheDocument();
     expect(screen.getByText("CONCEITO")).toBeInTheDocument();
     expect(screen.queryByText("Respiração diafragmática")).not.toBeInTheDocument();

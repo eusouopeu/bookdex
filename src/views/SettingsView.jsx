@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Eye, EyeOff, Gauge, Sun, Moon, Flame, Award, Download } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Gauge, Sun, Moon, Download, DatabaseZap, Wallet } from "lucide-react";
 import { COLORS, primaryButtonStyle } from "../theme";
 import {
   getApiKey,
@@ -7,20 +7,21 @@ import {
   getProxyUrl,
   setProxyUrl,
   looksLikeApiKey,
-  MODEL,
-  getUsageStats,
-  resetUsageStats,
   SEARCH_EFFORT_OPTIONS,
 } from "../lib/anthropic";
-import { ACHIEVEMENTS, computeUnlocked } from "../lib/gamification";
-
-// Preço aproximado do Sonnet (USD por milhão de tokens) só para dar uma ideia de custo.
-const PRICE_PER_M_INPUT = 3;
-const PRICE_PER_M_OUTPUT = 15;
-
-function estimateCostUSD(usage) {
-  return (usage.inputTokens / 1e6) * PRICE_PER_M_INPUT + (usage.outputTokens / 1e6) * PRICE_PER_M_OUTPUT;
-}
+import { MODELS, TIER_LABELS, SEARCH_MODE_TIERS, PRICING } from "../lib/models";
+import {
+  getUsageStats,
+  resetUsageStats,
+  getMonthlyBudget,
+  setMonthlyBudget,
+  costOfByModel,
+  totalsOf,
+  monthSpend,
+} from "../lib/usage";
+import { countValid } from "../lib/searchCache";
+import { useData } from "../state/DataContext";
+import { usePrefs } from "../state/PrefsContext";
 
 const inputStyle = {
   width: "100%",
@@ -35,6 +36,37 @@ const inputStyle = {
   outline: "none",
 };
 
+const sectionTitleStyle = {
+  fontFamily: '"Baloo 2", sans-serif',
+  fontWeight: 800,
+  fontSize: "14px",
+  color: COLORS.ink,
+  marginBottom: "8px",
+};
+
+const hintStyle = {
+  fontFamily: "Inter, sans-serif",
+  fontSize: "11px",
+  color: "var(--text-muted)",
+  marginBottom: "16px",
+  lineHeight: 1.4,
+};
+
+function segmentStyle(active) {
+  return {
+    flex: 1,
+    minHeight: "40px",
+    borderRadius: "8px",
+    border: `2px solid ${COLORS.screenBorder}`,
+    background: active ? COLORS.screenBorder : "transparent",
+    color: active ? COLORS.white : COLORS.ink,
+    fontFamily: '"Baloo 2", sans-serif',
+    fontWeight: 700,
+    fontSize: "12.5px",
+    cursor: "pointer",
+  };
+}
+
 function looksLikeUrl(url) {
   if (!url) return true;
   try {
@@ -45,18 +77,14 @@ function looksLikeUrl(url) {
   }
 }
 
-export default function SettingsView({
-  onBack,
-  onCredentialsChanged,
-  theme,
-  onThemeChange,
-  gamification,
-  totalSavedCount,
-  prefetchDetailsEnabled,
-  onPrefetchDetailsChange,
-  searchEffort,
-  onSearchEffortChange,
-}) {
+function usd(value) {
+  return `US$ ${value < 0.01 && value > 0 ? value.toFixed(4) : value.toFixed(2)}`;
+}
+
+export default function SettingsView({ onBack, onCredentialsChanged, searchCache, onClearSearchCache }) {
+  const { prefetchDetailsEnabled, changePrefetchDetails } = useData();
+  const { theme, changeTheme, searchEffort, changeSearchEffort, searchTiers, changeSearchTier } = usePrefs();
+
   const [key, setKey] = useState("");
   const [proxy, setProxy] = useState("");
   const [reveal, setReveal] = useState(false);
@@ -64,12 +92,17 @@ export default function SettingsView({
   const [loaded, setLoaded] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [usage, setUsage] = useState(null);
+  const [budget, setBudget] = useState(0);
+  const [budgetDraft, setBudgetDraft] = useState("");
 
   useEffect(() => {
     (async () => {
       setKey(await getApiKey());
       setProxy(await getProxyUrl());
       setUsage(await getUsageStats());
+      const b = await getMonthlyBudget();
+      setBudget(b);
+      setBudgetDraft(b ? String(b) : "");
       setLoaded(true);
     })();
   }, []);
@@ -77,6 +110,15 @@ export default function SettingsView({
   async function handleResetUsage() {
     await resetUsageStats();
     setUsage(await getUsageStats());
+  }
+
+  async function saveBudget() {
+    const value = Number(String(budgetDraft).replace(",", "."));
+    await setMonthlyBudget(value);
+    const saved = await getMonthlyBudget();
+    setBudget(saved);
+    setBudgetDraft(saved ? String(saved) : "");
+    setStatus({ ok: true, msg: saved ? `Teto mensal de ${usd(saved)} ativado.` : "Teto mensal desligado." });
   }
 
   async function save() {
@@ -110,6 +152,10 @@ export default function SettingsView({
 
   if (!loaded) return null;
 
+  const totals = usage ? totalsOf(usage.byModel) : null;
+  const spentThisMonth = usage ? monthSpend(usage) : 0;
+  const cachedCount = countValid(searchCache);
+
   return (
     <div>
       <button
@@ -138,53 +184,19 @@ export default function SettingsView({
         dispositivo e nunca é enviada para outro lugar.
       </p>
 
-      <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, marginBottom: "8px" }}>
-        Aparência
-      </h3>
+      <h3 style={sectionTitleStyle}>Aparência</h3>
       <div className="flex gap-2" style={{ marginBottom: "16px" }}>
-        <button
-          onClick={() => onThemeChange && onThemeChange("light")}
-          className="flex items-center justify-center gap-1.5"
-          style={{
-            flex: 1,
-            minHeight: "40px",
-            borderRadius: "8px",
-            border: `2px solid ${COLORS.screenBorder}`,
-            background: theme === "light" ? COLORS.screenBorder : "transparent",
-            color: theme === "light" ? COLORS.white : COLORS.ink,
-            fontFamily: '"Baloo 2", sans-serif',
-            fontWeight: 700,
-            fontSize: "12.5px",
-            cursor: "pointer",
-          }}
-        >
+        <button onClick={() => changeTheme("light")} className="flex items-center justify-center gap-1.5" style={segmentStyle(theme === "light")}>
           <Sun size={15} /> Claro
         </button>
-        <button
-          onClick={() => onThemeChange && onThemeChange("dark")}
-          className="flex items-center justify-center gap-1.5"
-          style={{
-            flex: 1,
-            minHeight: "40px",
-            borderRadius: "8px",
-            border: `2px solid ${COLORS.screenBorder}`,
-            background: theme === "dark" ? COLORS.screenBorder : "transparent",
-            color: theme === "dark" ? COLORS.white : COLORS.ink,
-            fontFamily: '"Baloo 2", sans-serif',
-            fontWeight: 700,
-            fontSize: "12.5px",
-            cursor: "pointer",
-          }}
-        >
+        <button onClick={() => changeTheme("dark")} className="flex items-center justify-center gap-1.5" style={segmentStyle(theme === "dark")}>
           <Moon size={15} /> Escuro
         </button>
       </div>
 
-      <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, marginBottom: "8px" }}>
-        Guias offline
-      </h3>
+      <h3 style={sectionTitleStyle}>Guias offline</h3>
       <button
-        onClick={() => onPrefetchDetailsChange && onPrefetchDetailsChange(!prefetchDetailsEnabled)}
+        onClick={() => changePrefetchDetails(!prefetchDetailsEnabled)}
         className="flex items-center gap-2"
         style={{
           width: "100%",
@@ -225,89 +237,117 @@ export default function SettingsView({
           />
         </span>
       </button>
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.4 }}>
+      <p style={hintStyle}>
         Baixa o guia "Aprofundar" em segundo plano assim que você captura uma técnica, pra ele já estar disponível
         offline depois. Gasta uma chamada extra à API por técnica capturada.
       </p>
 
-      <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, marginBottom: "8px" }}>
-        Esforço de busca
-      </h3>
+      <h3 style={sectionTitleStyle}>Esforço de busca</h3>
       <div className="flex gap-2" style={{ marginBottom: "6px" }}>
         {SEARCH_EFFORT_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            onClick={() => onSearchEffortChange && onSearchEffortChange(opt.value)}
-            className="flex items-center justify-center"
-            style={{
-              flex: 1,
-              minHeight: "40px",
-              borderRadius: "8px",
-              border: `2px solid ${COLORS.screenBorder}`,
-              background: searchEffort === opt.value ? COLORS.screenBorder : "transparent",
-              color: searchEffort === opt.value ? COLORS.white : COLORS.ink,
-              fontFamily: '"Baloo 2", sans-serif',
-              fontWeight: 700,
-              fontSize: "12.5px",
-              cursor: "pointer",
-            }}
-          >
+          <button key={opt.value} onClick={() => changeSearchEffort(opt.value)} style={segmentStyle(searchEffort === opt.value)}>
             {opt.label}
           </button>
         ))}
       </div>
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.4 }}>
-        Controla o capricho das buscas (Técnicas, Conceito, Tipos e Comparar) — {SEARCH_EFFORT_OPTIONS.find((o) => o.value === searchEffort)?.hint}.
-        Guias ("Aprofundar") continuam sempre no esforço padrão.
+      <p style={hintStyle}>
+        Controla o capricho das buscas — {SEARCH_EFFORT_OPTIONS.find((o) => o.value === searchEffort)?.hint}. Guias
+        ("Aprofundar") continuam sempre no esforço padrão.
       </p>
 
-      {gamification && (
-        <div style={{ marginBottom: "20px" }}>
-          <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, marginBottom: "8px" }}>
-            Progresso
-          </h3>
-          <div
-            className="flex items-center gap-2"
-            style={{
-              background: "rgba(255,201,71,0.2)",
-              border: `2px solid ${COLORS.gold}`,
-              borderRadius: "10px",
-              padding: "10px 12px",
-              marginBottom: "10px",
-            }}
-          >
-            <Flame size={18} style={{ color: "#B5651D", flexShrink: 0 }} />
-            <span style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: COLORS.ink }}>
-              <strong>{gamification.streak || 0}</strong> dia(s) seguido(s) de uso
-              {gamification.longestStreak > gamification.streak ? ` · recorde: ${gamification.longestStreak}` : ""}
-            </span>
-          </div>
-          <div className="flex" style={{ flexWrap: "wrap", gap: "6px" }}>
-            {ACHIEVEMENTS.map((a) => {
-              const unlocked = computeUnlocked(gamification, totalSavedCount || 0).includes(a.id);
-              return (
-                <div
-                  key={a.id}
-                  title={a.desc}
-                  className="flex items-center gap-1"
+      <h3 style={sectionTitleStyle}>Modelo por modo de busca</h3>
+      <div style={{ marginBottom: "6px" }}>
+        {SEARCH_MODE_TIERS.map(({ mode, label }) => (
+          <div key={mode} className="flex items-center gap-2" style={{ marginBottom: "6px" }}>
+            <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: COLORS.ink }}>{label}</span>
+            <div className="flex gap-1" style={{ flexShrink: 0 }}>
+              {["haiku", "sonnet"].map((tier) => (
+                <button
+                  key={tier}
+                  onClick={() => changeSearchTier(mode, tier)}
+                  aria-label={`${label}: usar ${TIER_LABELS[tier]}`}
                   style={{
-                    fontFamily: '"JetBrains Mono", monospace',
-                    fontSize: "10px",
-                    padding: "4px 9px",
-                    borderRadius: "999px",
-                    border: `1.5px solid ${unlocked ? COLORS.gold : COLORS.screenBorder}`,
-                    background: unlocked ? "rgba(255,201,71,0.25)" : "transparent",
-                    color: unlocked ? "#7A5A00" : "var(--text-faint)",
-                    opacity: unlocked ? 1 : 0.6,
+                    ...segmentStyle(searchTiers[mode] === tier),
+                    flex: "none",
+                    minWidth: "72px",
+                    minHeight: "34px",
+                    fontSize: "11.5px",
                   }}
                 >
-                  <Award size={11} /> {a.label}
-                </div>
-              );
-            })}
+                  {TIER_LABELS[tier]}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        ))}
+      </div>
+      <p style={hintStyle}>
+        Haiku custa cerca de um terço do Sonnet ({usd(PRICING[MODELS.haiku].output)} contra{" "}
+        {usd(PRICING[MODELS.sonnet].output)} por milhão de tokens de saída) e dá conta de listas e verbetes; Sonnet
+        compensa onde há comparação e julgamento. Guias, aprofundamentos e fichas de aspecto de planta ficam sempre em
+        Sonnet; palavras, sempre em Haiku.
+      </p>
+
+      <h3 style={sectionTitleStyle}>Cache de buscas</h3>
+      <div
+        className="flex items-center gap-2"
+        style={{
+          border: `2px solid ${COLORS.screenBorder}`,
+          borderRadius: "8px",
+          padding: "10px 12px",
+          marginBottom: "6px",
+        }}
+      >
+        <DatabaseZap size={16} style={{ color: COLORS.ink, flexShrink: 0 }} />
+        <span style={{ flex: 1, fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: COLORS.ink }}>
+          {cachedCount} busca(s) guardada(s)
+        </span>
+        <button
+          onClick={onClearSearchCache}
+          disabled={!cachedCount}
+          style={{
+            ...primaryButtonStyle,
+            background: "transparent",
+            color: COLORS.ink,
+            border: `2px solid ${COLORS.screenBorder}`,
+            padding: "6px 12px",
+            minHeight: "34px",
+            fontSize: "11.5px",
+            opacity: cachedCount ? 1 : 0.5,
+          }}
+        >
+          Limpar
+        </button>
+      </div>
+      <p style={hintStyle}>
+        Repetir uma busca já feita (mesmo termo, critérios, esforço e modelo) devolve o resultado guardado, sem gastar
+        chamada. As entradas valem 30 dias, e todo resultado de cache traz o atalho "Refazer busca".
+      </p>
+
+      <h3 style={sectionTitleStyle}>Teto mensal de gasto</h3>
+      <div className="flex gap-2" style={{ marginBottom: "6px" }}>
+        <input
+          value={budgetDraft}
+          onChange={(e) => setBudgetDraft(e.target.value)}
+          inputMode="decimal"
+          placeholder="Ex.: 5 (0 ou vazio desliga)"
+          style={{ ...inputStyle, flex: 1 }}
+        />
+        <button onClick={saveBudget} style={{ ...primaryButtonStyle, flexShrink: 0 }}>
+          Aplicar
+        </button>
+      </div>
+      <div className="flex items-center gap-1.5" style={{ marginBottom: "6px" }}>
+        <Wallet size={14} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+        <span style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)" }}>
+          Este mês: {usd(spentThisMonth)}
+          {budget ? ` de ${usd(budget)}` : " (sem teto)"}
+        </span>
+      </div>
+      <p style={hintStyle}>
+        Em dólares, por mês corrido. Atingido o teto, o app para de chamar a API até você subir o limite ou o mês virar —
+        o que já está capturado continua acessível. O histórico mensal não é apagado pelo botão de zerar contador.
+      </p>
 
       <label
         style={{
@@ -353,8 +393,9 @@ export default function SettingsView({
           {reveal ? <EyeOff size={16} /> : <Eye size={16} />}
         </button>
       </div>
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "16px", lineHeight: 1.4 }}>
-        Crie uma chave em console.anthropic.com → API Keys. Modelo usado: <code>{MODEL}</code>.
+      <p style={hintStyle}>
+        Crie uma chave em console.anthropic.com → API Keys. Modelos usados: <code>{MODELS.sonnet}</code> e{" "}
+        <code>{MODELS.haiku}</code>.
       </p>
 
       <label
@@ -379,7 +420,7 @@ export default function SettingsView({
         spellCheck={false}
         style={inputStyle}
       />
-      <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", margin: "6px 0 18px", lineHeight: 1.4 }}>
+      <p style={{ ...hintStyle, margin: "6px 0 18px" }}>
         Deixe vazio para falar direto com a API. Preencha só se a chamada direta for bloqueada por CORS — ver README.
       </p>
 
@@ -431,44 +472,63 @@ export default function SettingsView({
       )}
 
       {usage && (
-        <div
-          style={{
-            marginTop: "22px",
-            borderTop: `2px solid ${COLORS.screenBorder}`,
-            paddingTop: "14px",
-          }}
-        >
+        <div style={{ marginTop: "22px", borderTop: `2px solid ${COLORS.screenBorder}`, paddingTop: "14px" }}>
           <div className="flex items-center gap-1.5" style={{ marginBottom: "8px" }}>
             <Gauge size={15} style={{ color: COLORS.ink }} />
-            <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, margin: 0 }}>
-              Uso da API
-            </h3>
+            <h3 style={{ ...sectionTitleStyle, margin: 0 }}>Uso da API</h3>
           </div>
-          {usage.calls === 0 ? (
+          {totals.calls === 0 ? (
             <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)" }}>
               Nenhuma chamada registrada ainda neste aparelho.
             </p>
           ) : (
-            <ul
-              style={{
-                fontFamily: "Inter, sans-serif",
-                fontSize: "12px",
-                color: "var(--text)",
-                lineHeight: 1.6,
-                margin: "0 0 10px",
-                paddingLeft: "18px",
-              }}
-            >
-              <li>{usage.calls} chamada(s) à API</li>
-              <li>
-                {usage.inputTokens.toLocaleString("pt-BR")} tokens de entrada ·{" "}
-                {usage.outputTokens.toLocaleString("pt-BR")} de saída
-              </li>
-              <li>
-                Custo estimado: ~US$ {estimateCostUSD(usage).toFixed(3)}{" "}
-                <span style={{ color: "var(--text-muted)" }}>(preço de lista do Sonnet, pode variar)</span>
-              </li>
-            </ul>
+            <>
+              <table
+                style={{
+                  width: "100%",
+                  borderCollapse: "collapse",
+                  fontFamily: "Inter, sans-serif",
+                  fontSize: "11.5px",
+                  color: "var(--text)",
+                  marginBottom: "8px",
+                }}
+              >
+                <thead>
+                  <tr style={{ color: "var(--text-muted)", textAlign: "left" }}>
+                    <th style={{ fontWeight: 400, paddingBottom: "4px" }}>Modelo</th>
+                    <th style={{ fontWeight: 400, textAlign: "right" }}>Chamadas</th>
+                    <th style={{ fontWeight: 400, textAlign: "right" }}>Tokens (E/S)</th>
+                    <th style={{ fontWeight: 400, textAlign: "right" }}>Custo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(usage.byModel).map(([model, b]) => (
+                    <tr key={model} style={{ borderTop: `1px solid ${COLORS.screenBorder}` }}>
+                      <td style={{ padding: "5px 0", fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px" }}>
+                        {model === MODELS.sonnet ? "Sonnet" : model === MODELS.haiku ? "Haiku" : model}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{b.calls}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {(b.inputTokens || 0).toLocaleString("pt-BR")}/{(b.outputTokens || 0).toLocaleString("pt-BR")}
+                      </td>
+                      <td style={{ textAlign: "right" }}>{usd(costOfByModel({ [model]: b }))}</td>
+                    </tr>
+                  ))}
+                  <tr style={{ borderTop: `2px solid ${COLORS.screenBorder}`, fontWeight: 600 }}>
+                    <td style={{ padding: "5px 0" }}>Total</td>
+                    <td style={{ textAlign: "right" }}>{totals.calls}</td>
+                    <td style={{ textAlign: "right" }}>
+                      {totals.inputTokens.toLocaleString("pt-BR")}/{totals.outputTokens.toLocaleString("pt-BR")}
+                    </td>
+                    <td style={{ textAlign: "right" }}>{usd(costOfByModel(usage.byModel))}</td>
+                  </tr>
+                </tbody>
+              </table>
+              <p style={{ ...hintStyle, marginBottom: "10px" }}>
+                Preço de lista, pode variar. O contador vale desde{" "}
+                {usage.since ? new Date(usage.since).toLocaleDateString("pt-BR") : "a primeira chamada"}.
+              </p>
+            </>
           )}
           <button
             onClick={handleResetUsage}

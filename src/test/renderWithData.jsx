@@ -1,5 +1,6 @@
 import { render } from "@testing-library/react";
 import { DataProvider } from "../state/DataContext";
+import { PrefsProvider } from "../state/PrefsContext";
 
 /**
  * Renderiza uma view dentro do DataProvider real (com o storage já mockado
@@ -7,5 +8,12 @@ import { DataProvider } from "../state/DataContext";
  * falso que não pega quebra de contrato entre provider e view.
  */
 export function renderWithData(ui, options) {
-  return render(ui, { wrapper: ({ children }) => <DataProvider>{children}</DataProvider>, ...options });
+  return render(ui, {
+    wrapper: ({ children }) => (
+      <DataProvider>
+        <PrefsProvider>{children}</PrefsProvider>
+      </DataProvider>
+    ),
+    ...options,
+  });
 }

@@ -4,17 +4,18 @@
  * para Obsidian, Notion ou qualquer editor de texto puro.
  */
 import { slug } from "../theme";
-import { groupItems, itemKind, isKnowledgeKind } from "./savedModel";
+import { groupItems, itemKind, categoryOfKind } from "./savedModel";
+import { PLANT_ASPECTS } from "./anthropic";
 
 /**
  * Como um assunto pode misturar técnicas, conceitos e tipos, cada seção do
  * arquivo pega só os itens do seu naipe e ignora os assuntos que ficaram sem
  * nenhum.
  */
-function sectionsOf(saved, wantKnowledge) {
+function sectionsOf(saved, category) {
   const out = [];
   for (const group of Object.values(saved || {})) {
-    const items = groupItems(group).filter((it) => isKnowledgeKind(itemKind(it, group)) === wantKnowledge);
+    const items = groupItems(group).filter((it) => categoryOfKind(itemKind(it, group)) === category);
     if (items.length) out.push({ group, items });
   }
   return out;
@@ -59,11 +60,26 @@ function writeKnowledgeItem(lines, group, it) {
   lines.push("---", "");
 }
 
+function writePlant(lines, it) {
+  lines.push(`### ${it.commonNames?.[0] || it.scientificName || it.name}`, "");
+  if (it.scientificName) lines.push(`*${it.scientificName}*`, "");
+  if ((it.commonNames || []).length > 1) lines.push(`Também conhecida como: ${it.commonNames.slice(1).join(", ")}`, "");
+  if (it.summary) lines.push(it.summary, "");
+  for (const aspect of PLANT_ASPECTS) {
+    const text = (it.aspects || {})[aspect.id];
+    if (text) lines.push(`**${aspect.label}:** ${text}`, "");
+  }
+  if (it.tags?.length) lines.push(`Tags: ${it.tags.map((tag) => `\`${tag}\``).join(" ")}`, "");
+  if (it.note) lines.push(`Nota pessoal: ${it.note}`, "");
+  lines.push("---", "");
+}
+
 export function buildPokedexMarkdown(saved, detailCache) {
   const lines = ["# Bookdex — minha Pokédex", "", `_Exportado em ${new Date().toLocaleDateString("pt-BR")}_`, ""];
 
-  const techniqueSections = sectionsOf(saved, false);
-  const knowledgeSections = sectionsOf(saved, true);
+  const techniqueSections = sectionsOf(saved, "technique");
+  const knowledgeSections = sectionsOf(saved, "knowledge");
+  const plantSections = sectionsOf(saved, "plants");
 
   if (techniqueSections.length) {
     lines.push("## Técnicas", "");
@@ -78,6 +94,14 @@ export function buildPokedexMarkdown(saved, detailCache) {
     for (const { group, items } of knowledgeSections) {
       lines.push(`## ${group.displayName}`, "");
       for (const it of items) writeKnowledgeItem(lines, group, it);
+    }
+  }
+
+  if (plantSections.length) {
+    lines.push("## Plantas", "");
+    for (const { group, items } of plantSections) {
+      lines.push(`## ${group.displayName}`, "");
+      for (const it of items) writePlant(lines, it);
     }
   }
 

@@ -4,6 +4,7 @@
  * cards, no lugar do texto simples ou da imagem PNG.
  */
 import { jsPDF } from "jspdf";
+import { PLANT_ASPECTS } from "./anthropic";
 
 const MARGIN = 18;
 const CONTENT_WIDTH = 210 - MARGIN * 2;
@@ -121,13 +122,49 @@ export function wordCardPdfBlob(data) {
   if (isZh && (data.characters || []).length) {
     y = writeHeading(doc, "Por caractere", y);
     for (const c of data.characters) {
-      const comps = [c.semanticComponent && `S: ${c.semanticComponent}`, c.phoneticComponent && `F: ${c.phoneticComponent}`]
-        .filter(Boolean)
-        .join("   ");
-      y = writeParagraph(doc, `${c.hanzi} (${c.pinyin || ""})${c.meaning ? ` — ${c.meaning}` : ""}`, y, { size: 11, style: "bold", gap: 2 });
-      if (comps) y = writeParagraph(doc, comps, y, { size: 10, color: "#5c6b52" });
-      y += 2;
+      y = writeParagraph(doc, `${c.hanzi} (${c.pinyin || ""})${c.meaning ? ` — ${c.meaning}` : ""}`, y, { size: 11, style: "bold", gap: 4 });
     }
+  }
+  writeFooter(doc);
+  return doc.output("blob");
+}
+
+/**
+ * Card de planta: a foto (quando existe) abre a página em tamanho fixo, e só
+ * os aspectos já gerados entram — o PDF não dispara chamada nenhuma.
+ */
+export function plantCardPdfBlob(plant, aspects) {
+  const doc = newDoc();
+  let y = 22;
+  if (plant.images && plant.images[0]) {
+    const w = CONTENT_WIDTH;
+    const h = 70;
+    try {
+      doc.addImage(plant.images[0], "JPEG", MARGIN, y, w, h, undefined, "FAST");
+      y += h + 8;
+    } catch {
+      /* imagem ilegível: segue sem ela em vez de derrubar o PDF inteiro */
+    }
+  }
+  y = writeMeta(doc, plant.family || "Planta", y);
+  y = writeTitle(doc, plant.commonNames?.[0] || plant.scientificName || "", y);
+  if (plant.scientificName) y = writeParagraph(doc, plant.scientificName, y, { size: 11, style: "italic", color: "#5c6b52" });
+  if ((plant.commonNames || []).length > 1) {
+    y = writeParagraph(doc, `Também conhecida como: ${plant.commonNames.slice(1).join(", ")}`, y, { size: 10, color: "#5c6b52" });
+  }
+  y += 2;
+  y = writeParagraph(doc, plant.summary || "", y);
+  if (plant.idNote) y = writeParagraph(doc, plant.idNote, y, { size: 10, style: "italic", color: "#5c6b52" });
+
+  for (const aspect of PLANT_ASPECTS) {
+    const text = (aspects || plant.aspects || {})[aspect.id];
+    if (!text) continue;
+    if (y > 250) {
+      doc.addPage();
+      y = 22;
+    }
+    y = writeHeading(doc, aspect.label, y);
+    y = writeParagraph(doc, text, y, { size: 10.5 });
   }
   writeFooter(doc);
   return doc.output("blob");

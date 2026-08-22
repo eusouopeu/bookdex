@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Check, Loader2, Sparkles } from "lucide-react";
 import { COLORS, primaryButtonStyle } from "../theme";
-import { fetchEffectSuggestions, MissingApiKeyError } from "../lib/anthropic";
+import { fetchEffectSuggestions } from "../lib/effectsApi";
+import { MissingApiKeyError } from "../lib/anthropic";
 
 /**
  * Painel de sugestões de adição/substituição pra um perfil de efeito: você

@@ -11,12 +11,14 @@
  * Plano B (opcional): se o usuário configurar uma URL de proxy em Configurações,
  * a requisição vai para lá em vez de api.anthropic.com. Ver README.
  */
-import { get, set, getJSON, setJSON, KEYS } from "./storage";
+import { get, set, KEYS } from "./storage";
+import { MODELS, modelFor, getSearchTiers } from "./models";
+import { assertWithinBudget, trackUsage } from "./usage";
 
-// Sempre Sonnet, com thinking adaptativo ligado. O esforço de saída das buscas
-// (técnicas/conceito/tipos/comparação) é configurável pelo usuário; o resto das
-// chamadas (guias, aprofundamentos, sugestões) permanece fixo em "medium".
-export const MODEL = "claude-sonnet-5";
+// Thinking adaptativo ligado em todas as chamadas. O MODELO de cada tarefa vem
+// de lib/models.js (fixo para tarefas que não são busca, escolhido pelo usuário
+// para os modos de busca); o esforço de saída das buscas é configurável, e o
+// resto das chamadas (guias, aprofundamentos) fica fixo em "medium".
 const DEFAULT_EFFORT = "medium";
 const API_URL = "https://api.anthropic.com/v1/messages";
 
@@ -70,27 +72,6 @@ export function looksLikeApiKey(key) {
   return /^sk-ant-[\w-]{10,}$/.test((key || "").trim());
 }
 
-const EMPTY_USAGE = { calls: 0, inputTokens: 0, outputTokens: 0, since: null };
-
-export async function getUsageStats() {
-  return await getJSON(KEYS.usageStats, EMPTY_USAGE);
-}
-
-export async function resetUsageStats() {
-  await setJSON(KEYS.usageStats, { ...EMPTY_USAGE, since: Date.now() });
-}
-
-async function trackUsage(usage) {
-  if (!usage) return;
-  const current = await getUsageStats();
-  await setJSON(KEYS.usageStats, {
-    calls: (current.calls || 0) + 1,
-    inputTokens: (current.inputTokens || 0) + (usage.input_tokens || 0),
-    outputTokens: (current.outputTokens || 0) + (usage.output_tokens || 0),
-    since: current.since || Date.now(),
-  });
-}
-
 function extractJson(text) {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
@@ -99,11 +80,36 @@ function extractJson(text) {
 }
 
 /**
- * Envia uma mensagem e devolve o texto concatenado dos blocos de resposta.
+ * Quebra um data URL de imagem no par que a API espera. Só JPEG/PNG/WebP/GIF
+ * são aceitos — o compressor de `lib/imageUtils.js` sempre entrega JPEG.
  */
-export async function sendMessage({ system, user, maxTokens = 1000, effort = DEFAULT_EFFORT }) {
+function imageBlock(dataUrl) {
+  const match = /^data:(image\/(?:jpeg|png|webp|gif));base64,(.+)$/.exec(dataUrl || "");
+  if (!match) throw new Error("Formato de imagem não suportado.");
+  return { type: "image", source: { type: "base64", media_type: match[1], data: match[2] } };
+}
+
+/**
+ * Envia uma mensagem e devolve o texto concatenado dos blocos de resposta.
+ *
+ * `images` (data URLs) vira bloco de imagem ANTES do texto — é a ordem que a
+ * API recomenda quando a pergunta é sobre a imagem.
+ */
+export async function sendMessage({
+  system,
+  user,
+  images,
+  maxTokens = 1000,
+  effort = DEFAULT_EFFORT,
+  model = MODELS.sonnet,
+}) {
+  await assertWithinBudget();
   const [apiKey, proxyUrl] = await Promise.all([getApiKey(), getProxyUrl()]);
   if (!apiKey && !proxyUrl) throw new MissingApiKeyError();
+
+  const content = (images || []).length
+    ? [...images.map(imageBlock), { type: "text", text: user }]
+    : user;
 
   const url = proxyUrl || API_URL;
   const headers = { "Content-Type": "application/json" };
@@ -124,12 +130,12 @@ export async function sendMessage({ system, user, maxTokens = 1000, effort = DEF
       method: "POST",
       headers,
       body: JSON.stringify({
-        model: MODEL,
+        model,
         max_tokens: maxTokens,
         system,
         thinking: { type: "adaptive" },
         output_config: { effort },
-        messages: [{ role: "user", content: user }],
+        messages: [{ role: "user", content }],
       }),
     });
   } catch (e) {
@@ -156,7 +162,7 @@ export async function sendMessage({ system, user, maxTokens = 1000, effort = DEF
   }
 
   const data = await response.json();
-  trackUsage(data.usage).catch(() => {});
+  trackUsage(data.model || model, data.usage).catch(() => {});
   return (data.content || [])
     .filter((b) => b.type === "text")
     .map((b) => b.text)
@@ -170,6 +176,11 @@ export async function sendMessageJSON(opts) {
   const text = await sendMessage(opts);
   const cleaned = text.replace(/```json|```/g, "").trim();
   return JSON.parse(extractJson(cleaned));
+}
+
+/** Modelo escolhido pelo usuário para um MODO DE BUSCA (ver lib/models.js). */
+export async function searchModelFor(mode) {
+  return modelFor(mode, await getSearchTiers());
 }
 
 /* Prompts ----------------------------------------------------------------- */
@@ -262,6 +273,7 @@ export async function fetchTechniques(subject, avoid, criteria, effort) {
     user: subject + avoidNote(avoid),
     maxTokens: 1000,
     effort,
+    model: await searchModelFor("technique"),
   });
   if (!parsed.subject || !Array.isArray(parsed.statLabels) || !Array.isArray(parsed.techniques)) {
     throw new Error("Formato inesperado na resposta");
@@ -275,6 +287,7 @@ export async function fetchDefinition(term, avoid, effort) {
     user: term + avoidNote(avoid),
     maxTokens: 900,
     effort,
+    model: await searchModelFor("definition"),
   });
   if (!parsed.term || !parsed.definition) {
     throw new Error("Formato inesperado na resposta");
@@ -295,6 +308,7 @@ export async function fetchList(subject, avoid, effort, criteria) {
     user: subject + avoidNote(avoid) + criteriaNote(criteria),
     maxTokens: 1000,
     effort,
+    model: await searchModelFor("list"),
   });
   if (!parsed.subject || !Array.isArray(parsed.items)) {
     throw new Error("Formato inesperado na resposta");
@@ -341,6 +355,7 @@ export async function fetchCompare(names, avoid, criteria, effort) {
     user: names.join(" vs ") + avoidNote(avoid),
     maxTokens: 1000,
     effort,
+    model: await searchModelFor("compare"),
   });
   if (!parsed.subject || !Array.isArray(parsed.statLabels) || !Array.isArray(parsed.techniques)) {
     throw new Error("Formato inesperado na resposta");
@@ -353,6 +368,7 @@ export async function fetchDetail(subjectDisplay, technique) {
     system: DETAIL_SYSTEM_PROMPT,
     user: `Assunto: ${subjectDisplay}\nTécnica: ${technique.name}\nTipo: ${technique.type}\nResumo: ${technique.description}`,
     maxTokens: 1200,
+    model: modelFor("detail"),
   });
   if (!parsed.overview || !Array.isArray(parsed.steps)) {
     throw new Error("Formato inesperado na resposta");
@@ -375,6 +391,7 @@ export async function fetchStepDeepDive(subjectDisplay, technique, step) {
     system: STEP_DEEPDIVE_SYSTEM_PROMPT,
     user: `Assunto: ${subjectDisplay}\nTécnica: ${technique.name}\nPasso: ${step.title}\nInstrução: ${step.detail}`,
     maxTokens: 500,
+    model: modelFor("stepDeepDive"),
   });
   if (!Array.isArray(parsed.substeps)) {
     throw new Error("Formato inesperado na resposta");
@@ -437,6 +454,7 @@ export async function fetchItemEnrichment(targetKind, subjectDisplay, item) {
     system,
     user: `Assunto: ${subjectDisplay}\nItem: ${label}\nCategoria: ${item.category || ""}\nJá temos: ${body}`,
     maxTokens: 600,
+    model: modelFor("enrichment"),
   });
   if (!parsed || typeof parsed !== "object") {
     throw new Error("Formato inesperado na resposta");
@@ -463,6 +481,7 @@ export async function fetchConceptDeepDive(term, category, summary) {
     system: CONCEPT_DEEPDIVE_SYSTEM_PROMPT,
     user: `Termo: ${term}\nCategoria: ${category || ""}\nJá explicado: ${summary || ""}`,
     maxTokens: 500,
+    model: modelFor("conceptDeepDive"),
   });
   if (!parsed.deepDive) {
     throw new Error("Formato inesperado na resposta");
@@ -485,6 +504,7 @@ export async function fetchRelatedConceptNames(term, category) {
     system: RELATED_NAMES_SYSTEM_PROMPT,
     user: `Termo: ${term}\nCategoria: ${category || ""}`,
     maxTokens: 300,
+    model: modelFor("relatedNames"),
   });
   if (!Array.isArray(parsed.related)) {
     throw new Error("Formato inesperado na resposta");
@@ -512,68 +532,7 @@ export async function fetchGoalSuggestions(areaName, direction, target, existing
     system: GOAL_SUGGESTIONS_SYSTEM_PROMPT,
     user: `Área: ${areaName}\nObjetivo: quero ${direction} ${target}.${existingNote}`,
     maxTokens: 700,
-  });
-  if (!Array.isArray(parsed.suggestions)) {
-    throw new Error("Formato inesperado na resposta");
-  }
-  return parsed.suggestions;
-}
-
-export const EFFECT_RATING_SYSTEM_PROMPT = `Você avalia o efeito de um item (suplemento, alimento, exercício ou prática) em critérios definidos pelo usuário, para um app pessoal de acompanhamento de efeitos.
-Dado o nome do item, o domínio/contexto e uma lista de critérios, avalie o quanto esse item TIPICAMENTE afeta CADA critério.
-
-Regras obrigatórias:
-- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
-- "value": nota de -5 a +5 por critério — negativo significa que o item PIORA/REDUZ aquele critério, positivo que MELHORA/AUMENTA, 0 que não tem efeito relevante conhecido.
-- Seja realista e criterioso, baseado em conhecimento geral — não infle notas, e use valores negativos sempre que fizer sentido (ex.: um estimulante pode reduzir um critério como "calma").
-- "reason": justificativa de até 12 palavras por critério, explicando a nota.
-- Retorne EXATAMENTE um item em "ratings" para cada critério informado, na mesma ordem.
-
-Formato exato (sem campos extras):
-{"ratings":[{"criterion":"...","value":0,"reason":"..."}]}`;
-
-/** Avalia UM item novo (suplemento/alimento/exercício/prática) nos critérios atuais de um perfil de efeito. */
-export async function fetchItemRatings(itemName, domainContext, criteriaLabels) {
-  const parsed = await sendMessageJSON({
-    system: EFFECT_RATING_SYSTEM_PROMPT,
-    user: `Domínio: ${domainContext}\nItem: ${itemName}\nCritérios (nesta ordem): ${criteriaLabels.join(", ")}`,
-    maxTokens: 600,
-  });
-  if (!Array.isArray(parsed.ratings)) {
-    throw new Error("Formato inesperado na resposta");
-  }
-  return parsed.ratings;
-}
-
-export const EFFECT_SUGGESTIONS_SYSTEM_PROMPT = `Você sugere adições ou substituições pra uma combinação de suplementos/alimentos ou exercícios/práticas, buscando um objetivo específico do usuário em critérios que ele mesmo definiu.
-Dado o domínio, os itens atualmente ativos na combinação (com suas notas em cada critério) e o(s) critério(s)-alvo com a direção desejada, sugira de 3 a 6 itens novos (adições) ou trocas de um item já ativo.
-
-Regras obrigatórias:
-- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
-- "name": nome do item sugerido.
-- "kind": "adicao" (some à combinação atual, sem tirar nada) ou "substituicao" (troca por um item específico já ativo).
-- "replaces": nome EXATO de um item já ativo informado, obrigatório se "kind" for "substituicao"; string vazia "" se for "adicao".
-- "estimatedRatings": nota de -5 a +5 pra CADA critério-alvo informado, na mesma ordem.
-- "reason": justificativa de até 18 palavras, mencionando o principal trade-off ou efeito colateral, se houver.
-
-Formato exato (sem campos extras):
-{"suggestions":[{"name":"...","kind":"adicao","replaces":"","estimatedRatings":[0],"reason":"..."}]}`;
-
-/**
- * Sugere adições/substituições pra um perfil de efeito, dado os itens ativos
- * e os critérios-alvo (cada um com direção "mais"/"menos").
- */
-export async function fetchEffectSuggestions(domainContext, activeItems, targetCriteria) {
-  const activeSummary = (activeItems || [])
-    .map((it) => `${it.name} (${Object.entries(it.ratings || {}).map(([c, v]) => `${c}: ${v > 0 ? "+" : ""}${v}`).join(", ")})`)
-    .join("; ");
-  const targetSummary = targetCriteria.map((t) => `${t.direction} ${t.label}`).join(", ");
-  const parsed = await sendMessageJSON({
-    system: EFFECT_SUGGESTIONS_SYSTEM_PROMPT,
-    user: `Domínio: ${domainContext}\nItens ativos: ${activeSummary || "nenhum"}\nObjetivo: quero ${targetSummary}\nCritérios-alvo (nesta ordem): ${targetCriteria
-      .map((t) => t.label)
-      .join(", ")}`,
-    maxTokens: 900,
+    model: modelFor("goalSuggestions"),
   });
   if (!Array.isArray(parsed.suggestions)) {
     throw new Error("Formato inesperado na resposta");
@@ -592,43 +551,26 @@ Regras obrigatórias:
 - "meaning": o significado da palavra, SEMPRE em português, claro e direto (1-2 frases), mesmo que a palavra não seja portuguesa.
 - "pinyin": OBRIGATÓRIO se o idioma for mandarim ("languageCode" "zh") — a romanização pinyin completa da palavra, com marcação de tom (ex.: "míngbái"). Nos demais idiomas, string vazia "".
 - "radical": APENAS se o idioma NÃO for mandarim: o radical, raiz ou morfema base da palavra, incluindo OBRIGATORIAMENTE a língua de origem, a forma original e o significado original dessa forma, neste formato: "<radical> — do <idioma de origem> <forma original>, que significa \"<significado original>\"" (ex.: "gat- — do latim cattus, que significa \"gato\""). Mandarim NUNCA usa este campo (string vazia "").
-- "characters": OBRIGATÓRIO se o idioma for mandarim, mesmo com um hanzi só — um array com UMA entrada por hanzi, na mesma ordem em que aparecem na palavra, cada uma com "hanzi" (o caractere), "pinyin" (pinyin desse caractere isolado, com tom) e "meaning" (significado desse caractere isolado, em português). NÃO inclua componente semântico nem fonético aqui — eles são identificados sob demanda, separadamente, quando o usuário pedir. Nos demais idiomas, array vazio [].
+- "characters": OBRIGATÓRIO se o idioma for mandarim, mesmo com um hanzi só — um array com UMA entrada por hanzi, na mesma ordem em que aparecem na palavra, cada uma com "hanzi" (o caractere), "pinyin" (pinyin desse caractere isolado, com tom) e "meaning" (significado desse caractere isolado, em português). Nada além desses três campos. Nos demais idiomas, array vazio [].
 
 Formato exato (sem campos extras):
 {"word":"...","language":"...","languageCode":"...","meaning":"...","pinyin":"","radical":"","characters":[]}`;
 
-export async function fetchWord(word, avoid, effort) {
+/**
+ * Verbete de uma palavra. Fixo em Haiku: depois que a identificação dos
+ * componentes semântico/fonético dos hanzi saiu do app, o que sobrou —
+ * idioma, significado, pinyin, radical e o sentido de cada caractere — é
+ * consulta de dicionário, não análise, e não justifica o modelo maior. Por
+ * isso também ignora o "esforço de busca" configurado.
+ */
+export async function fetchWord(word, avoid) {
   const parsed = await sendMessageJSON({
     system: WORD_SYSTEM_PROMPT,
     user: word + avoidNote(avoid),
     maxTokens: 900,
-    effort,
+    model: modelFor("word"),
   });
   if (!parsed.word || !parsed.language || !parsed.meaning) {
-    throw new Error("Formato inesperado na resposta");
-  }
-  return parsed;
-}
-
-export const HANZI_COMPONENT_SYSTEM_PROMPT = `Você identifica o componente semântico ou o componente fonético de UM caractere chinês (hanzi) específico, para um app de vocabulário de mandarim.
-Dado o caractere, a palavra em que ele aparece (contexto) e o tipo de componente pedido ("semantic" ou "phonetic"), identifique APENAS esse componente — nada além dele.
-
-Regras obrigatórias:
-- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
-- Se o tipo pedido for "semantic": "component" é SOMENTE o caractere do componente semântico (o radical gráfico que indica o campo de significado) — sem explicação, sem tradução, só o caractere. "pinyin" fica string vazia "".
-- Se o tipo pedido for "phonetic": "component" é SOMENTE o caractere do componente fonético, e "pinyin" é o pinyin (com tom) desse componente isolado — a pronúncia que ele sugere.
-- Se o caractere não tiver um componente desse tipo claramente identificável (ex.: ele mesmo já é um radical/pictograma puro), retorne "component" como string vazia "".
-
-Formato exato (sem campos extras):
-{"component":"...","pinyin":"..."}`;
-
-export async function fetchHanziComponent(hanzi, kind, wordContext) {
-  const parsed = await sendMessageJSON({
-    system: HANZI_COMPONENT_SYSTEM_PROMPT,
-    user: `Caractere: ${hanzi}\nPalavra (contexto): ${wordContext || hanzi}\nTipo pedido: ${kind}`,
-    maxTokens: 200,
-  });
-  if (typeof parsed.component !== "string") {
     throw new Error("Formato inesperado na resposta");
   }
   return parsed;
@@ -652,9 +594,148 @@ export async function fetchWordEtymology(word, language) {
     system: WORD_ETYMOLOGY_SYSTEM_PROMPT,
     user: `Palavra: ${word}\nIdioma: ${language || ""}`,
     maxTokens: 700,
+    model: modelFor("wordEtymology"),
   });
   if (!parsed.summary || !Array.isArray(parsed.lineage)) {
     throw new Error("Formato inesperado na resposta");
   }
   return parsed;
+}
+
+/* Plantas ----------------------------------------------------------------- */
+
+const PLANT_FIELDS_RULE = `- "scientificName": o nome científico (binômio latino), com a inicial do gênero maiúscula (ex.: "Rosmarinus officinalis"). Se houver dúvida entre espécies próximas, escolha a mais provável e diga isso em "note".
+- "commonNames": de 2 a 5 nomes populares mais usados em português do Brasil, do mais comum para o menos comum. Se a planta for conhecida por um nome só, retorne só ele.
+- "family": a família botânica (ex.: "Lamiaceae").
+- "summary": de 2 a 3 frases em português descrevendo a planta — o que ela é, onde costuma ser encontrada e para que é mais conhecida. Sem repetir os nomes populares em lista.
+- "note": string vazia "" quando a identificação for direta; quando houver incerteza ou confusão comum com outra planta, 1 frase dizendo qual e como diferenciar.`;
+
+export const PLANT_NAME_SYSTEM_PROMPT = `Você é um botânico escrevendo fichas de plantas para um app estilo Pokédex.
+Dado o nome (popular ou científico) de uma planta em português, identifique-a e preencha a ficha.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+${PLANT_FIELDS_RULE}
+
+Formato exato (sem campos extras):
+{"scientificName":"...","commonNames":["..."],"family":"...","summary":"...","note":""}`;
+
+export const PLANT_PHOTO_SYSTEM_PROMPT = `Você é um botânico identificando plantas por foto para um app estilo Pokédex.
+Dada uma ou mais fotos de uma planta, identifique a espécie e preencha a ficha.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+${PLANT_FIELDS_RULE}
+- Baseie-se SÓ no que é visível na foto (folha, caule, flor, fruto, porte, nervuras, disposição). Não invente detalhes que a imagem não mostra.
+- Se a foto não permitir chegar à espécie, vá até onde der (gênero ou família) e escreva isso em "note", explicando que parte da planta faltou fotografar para fechar a identificação.
+- Se a imagem não tiver planta nenhuma, retorne "scientificName" como string vazia "" e explique em "note".
+
+Formato exato (sem campos extras):
+{"scientificName":"...","commonNames":["..."],"family":"...","summary":"...","note":""}`;
+
+function normalizePlant(parsed) {
+  if (!parsed || typeof parsed !== "object") throw new Error("Formato inesperado na resposta");
+  // `note` da API vira `idNote`: o campo `note` de um item salvo é a anotação
+  // pessoal do usuário, e as duas coisas não podem ocupar o mesmo nome.
+  return {
+    scientificName: parsed.scientificName || "",
+    commonNames: Array.isArray(parsed.commonNames) ? parsed.commonNames.filter(Boolean) : [],
+    family: parsed.family || "",
+    summary: parsed.summary || "",
+    idNote: parsed.note || "",
+  };
+}
+
+export async function fetchPlantByName(name, avoid, effort) {
+  const parsed = await sendMessageJSON({
+    system: PLANT_NAME_SYSTEM_PROMPT,
+    user: name + avoidNote(avoid),
+    maxTokens: 700,
+    effort,
+    model: await searchModelFor("plant"),
+  });
+  const plant = normalizePlant(parsed);
+  if (!plant.scientificName && !plant.commonNames.length) {
+    throw new Error("Não consegui identificar essa planta. Tente outro nome.");
+  }
+  return plant;
+}
+
+/**
+ * Identificação por foto. As imagens chegam como data URLs já comprimidos
+ * (lib/imageUtils.js) e são devolvidas junto com a ficha, porque é a foto do
+ * usuário que vai no topo do card — não uma imagem buscada em lugar nenhum.
+ */
+export async function fetchPlantFromPhoto(images, effort) {
+  if (!images || !images.length) throw new Error("Nenhuma foto para identificar.");
+  const parsed = await sendMessageJSON({
+    system: PLANT_PHOTO_SYSTEM_PROMPT,
+    user: "Identifique esta planta.",
+    images,
+    maxTokens: 700,
+    effort,
+    model: await searchModelFor("plant"),
+  });
+  const plant = normalizePlant(parsed);
+  if (!plant.scientificName && !plant.commonNames.length) {
+    throw new Error(plant.idNote || "Não consegui identificar a planta desta foto.");
+  }
+  return { ...plant, images };
+}
+
+/**
+ * Os quatro aspectos que os botões-ícone do card de planta geram sob demanda.
+ * Cada um é uma chamada curta e independente — o card nasce só com o resumo, e
+ * o usuário paga por aspecto, quando quiser aquele aspecto.
+ */
+export const PLANT_ASPECTS = [
+  {
+    id: "origin",
+    label: "Origem e história",
+    prompt:
+      'De onde a planta é originária (região/bioma) e desde quando há registro de uso humano dela — épocas, povos e para quê era usada no começo. Se a data for incerta, diga "há registros desde..." em vez de inventar precisão.',
+  },
+  {
+    id: "identification",
+    label: "Como identificar",
+    prompt:
+      "Características concretas que permitem reconhecer e distinguir esta planta no campo: forma, tamanho e borda das folhas, disposição no caule, cor e formato da flor, cheiro ao amassar a folha, textura, porte. Cite ao menos uma planta com que ela costuma ser confundida e o traço que separa as duas.",
+  },
+  {
+    id: "cultivation",
+    label: "Solo, clima e ciclo",
+    prompt:
+      "Tipo de solo (textura, drenagem, pH), clima e luminosidade que a planta pede, e o calendário dela no Brasil: época de semeadura/plantio, de floração e de frutificação. Se o ciclo variar muito por região, diga isso e dê a referência do Sudeste.",
+  },
+  {
+    id: "medicinal",
+    label: "Usos medicinais",
+    prompt:
+      "Usos medicinais atribuídos à planta, qual parte é usada e de que forma (chá, tintura, tópico). Separe o que tem respaldo em estudos do que é uso tradicional sem comprovação, e cite contraindicações ou toxicidade conhecidas.",
+  },
+];
+
+export const PLANT_ASPECT_SYSTEM_PROMPT = `Você é um botânico escrevendo um trecho curto sobre UM aspecto específico de uma planta, num app estilo Pokédex.
+Dado o nome científico da planta, seus nomes populares e o aspecto pedido, escreva SÓ sobre esse aspecto.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- "text": de 3 a 5 linhas de texto corrido em português (aproximadamente 45 a 80 palavras), específico e verificável — nomes, números, épocas, medidas. Nada de conselho genérico.
+- Não repita o resumo geral da planta nem escreva sobre outros aspectos.
+- Se algum ponto pedido não se aplicar a esta planta, diga isso em uma oração curta em vez de preencher com genérico.
+
+Formato exato (sem campos extras):
+{"text":"..."}`;
+
+export async function fetchPlantAspect(plant, aspectId) {
+  const aspect = PLANT_ASPECTS.find((a) => a.id === aspectId);
+  if (!aspect) throw new Error("Aspecto desconhecido.");
+  const parsed = await sendMessageJSON({
+    system: PLANT_ASPECT_SYSTEM_PROMPT,
+    user: `Planta: ${plant.scientificName || ""}\nNomes populares: ${(plant.commonNames || []).join(", ")}\nFamília: ${plant.family || ""}\nAspecto pedido: ${aspect.label} — ${aspect.prompt}`,
+    maxTokens: 500,
+    model: modelFor("plantAspect"),
+  });
+  if (!parsed.text) throw new Error("Formato inesperado na resposta");
+  return parsed.text;
 }
