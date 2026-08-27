@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 import { COLORS } from "../theme";
 import { missingFields, needsEnrichment } from "../lib/convert";
+import { estimateCost, formatCost } from "../lib/models";
 
 const FIELD_LABELS = {
   stats: "as barras de avaliação",
@@ -55,6 +56,7 @@ export default function EnrichPrompt({ item, onEnrich }) {
       <button
         onClick={run}
         disabled={loading}
+        title={`~${formatCost(estimateCost("enrichment"))}`}
         className="flex items-center gap-1"
         style={{
           background: COLORS.lensBlue,

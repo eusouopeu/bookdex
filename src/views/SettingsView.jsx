@@ -339,6 +339,25 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
           {budget ? ` de ${usd(budget)}` : " (sem teto)"}
         </span>
       </div>
+      {budget > 0 && spentThisMonth / budget >= 0.8 && (
+        <p
+          style={{
+            fontFamily: "Inter, sans-serif",
+            fontSize: "11.5px",
+            color: spentThisMonth / budget >= 1 ? "var(--danger)" : "#7A5A00",
+            background: spentThisMonth / budget >= 1 ? "rgba(198,40,40,0.1)" : "rgba(255,201,71,0.2)",
+            border: `1.5px solid ${spentThisMonth / budget >= 1 ? "var(--danger)" : COLORS.gold}`,
+            borderRadius: "8px",
+            padding: "7px 10px",
+            marginBottom: "6px",
+            lineHeight: 1.4,
+          }}
+        >
+          {spentThisMonth / budget >= 1
+            ? "Teto mensal atingido — novas chamadas ficam bloqueadas até você subir o limite ou o mês virar."
+            : `Já ${Math.round((spentThisMonth / budget) * 100)}% do teto mensal gasto.`}
+        </p>
+      )}
       <label
         style={{
           display: "block",

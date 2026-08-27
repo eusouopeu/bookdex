@@ -96,3 +96,37 @@ export function costOf(model, inputTokens, outputTokens) {
   const price = PRICING[model] || PRICING[MODELS.sonnet];
   return (inputTokens / 1e6) * price.input + (outputTokens / 1e6) * price.output;
 }
+
+/**
+ * Tokens típicos (entrada, saída) de cada tarefa, medidos por amostragem —
+ * não é exato (a resposta real varia), só o suficiente pra mostrar uma
+ * estimativa de custo ANTES de tocar no botão que gasta a chamada.
+ */
+const ESTIMATED_TOKENS = {
+  detail: { input: 400, output: 1200 },
+  stepDeepDive: { input: 350, output: 400 },
+  conceptDeepDive: { input: 300, output: 350 },
+  plantAspect: { input: 300, output: 220 },
+  techAspect: { input: 300, output: 220 },
+  conceptAspect: { input: 300, output: 220 },
+  goalSuggestions: { input: 250, output: 400 },
+  enrichment: { input: 300, output: 300 },
+  technique: { input: 250, output: 1000 },
+  definition: { input: 200, output: 500 },
+  list: { input: 200, output: 700 },
+  compare: { input: 300, output: 1000 },
+  plant: { input: 200, output: 400 },
+};
+
+/** Estimativa de custo (USD) de uma tarefa, com o tier atual de busca (quando se aplica). */
+export function estimateCost(task, searchTiers) {
+  const tokens = ESTIMATED_TOKENS[task];
+  if (!tokens) return 0;
+  return costOf(modelFor(task, searchTiers), tokens.input, tokens.output);
+}
+
+/** "US$ 0,004" — formato curto pra caber num tooltip/rótulo de botão. */
+export function formatCost(usd) {
+  if (usd < 0.01) return `US$ ${usd.toFixed(3)}`;
+  return `US$ ${usd.toFixed(2)}`;
+}

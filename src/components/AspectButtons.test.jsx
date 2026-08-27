@@ -65,15 +65,11 @@ describe("AspectButtons", () => {
     expect(await screen.findByText("Configure sua API key em Configurações.")).toBeInTheDocument();
   });
 
-  it("renderiza o botão leading antes dos aspectos", () => {
-    render(
-      <AspectButtons
-        leading={<button aria-label="Botão extra">extra</button>}
-        aspects={ASPECTS}
-        onFetch={vi.fn()}
-        tint={BLUE_TINT}
-      />
+  it("mostra o custo estimado no tooltip de um aspecto ainda não gerado", () => {
+    render(<AspectButtons aspects={ASPECTS} onFetch={vi.fn()} tint={BLUE_TINT} costLabel="US$ 0,003" />);
+    expect(screen.getByRole("button", { name: "Aspecto A (gera com IA)" })).toHaveAttribute(
+      "title",
+      "Aspecto A (~US$ 0,003)"
     );
-    expect(screen.getByRole("button", { name: "Botão extra" })).toBeInTheDocument();
   });
 });

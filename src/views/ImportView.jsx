@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { ArrowLeft, FileJson, ClipboardPaste, Download, BookOpenText, Layers, FileText, QrCode } from "lucide-react";
+import { ArrowLeft, FileJson, ClipboardPaste, Download, QrCode } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { COLORS, primaryButtonStyle } from "../theme";
@@ -11,6 +11,32 @@ import { buildPokedexMarkdown, countMarkdownItems } from "../lib/markdownExport"
 import { shareOrDownloadFile } from "../lib/share";
 import QRScanner from "../components/QRScanner";
 import { useData } from "../state/DataContext";
+import { groupItems, itemKind, categoryOfKind, withItems } from "../lib/savedModel";
+
+const EXPORT_FORMATS = [
+  { id: "pdf", label: "PDF" },
+  { id: "markdown", label: "Markdown" },
+  { id: "anki", label: "Anki (CSV)" },
+];
+
+const EXPORT_SCOPES = [
+  { id: "all", label: "Tudo" },
+  { id: "technique", label: "Técnicas" },
+  { id: "knowledge", label: "Conceitos" },
+  { id: "plants", label: "Plantas" },
+  { id: "words", label: "Palavras" },
+];
+
+/** Filtra `saved` pra só os itens da categoria pedida ("all" não filtra nada). */
+function filterSavedByScope(saved, scope) {
+  if (scope === "all" || scope === "words") return saved;
+  const out = {};
+  for (const [key, group] of Object.entries(saved || {})) {
+    const items = groupItems(group).filter((it) => categoryOfKind(itemKind(it, group)) === scope);
+    if (items.length) out[key] = withItems(group, items);
+  }
+  return out;
+}
 
 export default function ImportView({ onBack }) {
   const { saved, detailCache, collections, words, applyImport } = useData();
@@ -19,16 +45,12 @@ export default function ImportView({ onBack }) {
   const [summary, setSummary] = useState(null);
   const [pending, setPending] = useState(null); // { payload, stats } aguardando confirmação
   const [backupMsg, setBackupMsg] = useState(null);
-  const [pdfMsg, setPdfMsg] = useState(null);
-  const [generatingPdf, setGeneratingPdf] = useState(false);
-  const [ankiMsg, setAnkiMsg] = useState(null);
-  const [generatingAnki, setGeneratingAnki] = useState(false);
-  const [mdMsg, setMdMsg] = useState(null);
-  const [generatingMd, setGeneratingMd] = useState(false);
+  const [exportFormat, setExportFormat] = useState("pdf");
+  const [exportScope, setExportScope] = useState("all");
+  const [exportMsg, setExportMsg] = useState(null);
+  const [generatingExport, setGeneratingExport] = useState(false);
   const [scanning, setScanning] = useState(false);
   const fileInput = useRef(null);
-  const hasSaved = Object.keys(saved || {}).length > 0;
-  const hasAnything = hasSaved || Object.keys(words || {}).length > 0;
 
   function preview(rawText) {
     setError(null);
@@ -121,87 +143,69 @@ export default function ImportView({ onBack }) {
     }
   }
 
-  async function exportPdf() {
-    setPdfMsg(null);
-    setGeneratingPdf(true);
+  // PDF/Markdown não sabem exportar palavras — só o Anki cobre os dois acervos.
+  const availableScopes = exportFormat === "anki" ? EXPORT_SCOPES : EXPORT_SCOPES.filter((s) => s.id !== "words");
+  const effectiveScope = availableScopes.some((s) => s.id === exportScope) ? exportScope : "all";
+
+  /**
+   * Um export só, com formato × escopo escolhidos na UI, em vez de 4 botões
+   * separados espalhados pela tela — cada um sabia gerar um formato só, todos
+   * sempre exportando a Pokédex inteira. O escopo filtra `saved` antes de
+   * passar pros builders (que já sabem separar por categoria internamente);
+   * "Palavras" só faz sentido pro Anki, que é o único formato que já lida com
+   * `words`.
+   */
+  async function runExport() {
+    setExportMsg(null);
+    setGeneratingExport(true);
     try {
-      const doc = buildPokedexPdf(saved, detailCache);
-      const fileName = "bookdex-pokedex.pdf";
-      if (Capacitor.isNativePlatform()) {
-        const base64 = doc.output("datauristring").split(",")[1];
-        await Filesystem.writeFile({
-          path: fileName,
-          data: base64,
-          directory: Directory.Documents,
-          recursive: true,
-        });
-        setPdfMsg(`Salvo em Documentos/${fileName}.`);
-      } else {
-        doc.save(fileName);
-        setPdfMsg("Download iniciado.");
+      const scopedSaved = filterSavedByScope(saved, effectiveScope);
+      const scopedWords = effectiveScope === "all" || effectiveScope === "words" ? words : {};
+
+      if (exportFormat === "pdf") {
+        const doc = buildPokedexPdf(scopedSaved, detailCache);
+        const fileName = "bookdex-pokedex.pdf";
+        if (Capacitor.isNativePlatform()) {
+          const base64 = doc.output("datauristring").split(",")[1];
+          await Filesystem.writeFile({ path: fileName, data: base64, directory: Directory.Documents, recursive: true });
+          setExportMsg(`Salvo em Documentos/${fileName}.`);
+        } else {
+          doc.save(fileName);
+          setExportMsg("Download iniciado.");
+        }
+        return;
       }
+      if (exportFormat === "anki") {
+        const csv = buildAnkiCsv(scopedSaved, detailCache, scopedWords);
+        await saveOrDownload("bookdex-anki.csv", csv, "text/csv", Encoding.UTF8, "Bookdex — export Anki", "Importe em Anki → Arquivo → Importar.");
+        return;
+      }
+      const md = buildPokedexMarkdown(scopedSaved, detailCache);
+      await saveOrDownload("bookdex-pokedex.md", md, "text/markdown", Encoding.UTF8, "Bookdex — export Markdown");
     } catch (e) {
-      setPdfMsg(`Falha ao gerar o PDF: ${e.message || e}`);
+      setExportMsg(`Falha ao exportar: ${e.message || e}`);
     } finally {
-      setGeneratingPdf(false);
+      setGeneratingExport(false);
     }
   }
 
-  async function exportAnki() {
-    setAnkiMsg(null);
-    setGeneratingAnki(true);
-    try {
-      const csv = buildAnkiCsv(saved, detailCache, words);
-      const fileName = "bookdex-anki.csv";
-      if (Capacitor.isNativePlatform()) {
-        await Filesystem.writeFile({
-          path: fileName,
-          data: csv,
-          directory: Directory.Documents,
-          encoding: Encoding.UTF8,
-          recursive: true,
-        });
-        setAnkiMsg(`Salvo em Documentos/${fileName}. Importe em Anki → Arquivo → Importar.`);
-      } else {
-        const outcome = await shareOrDownloadFile(fileName, csv, "text/csv", "Bookdex — export Anki");
-        setAnkiMsg(
-          outcome === "shared"
-            ? "Compartilhado."
-            : "Download iniciado. Importe em Anki → Arquivo → Importar."
-        );
-      }
-    } catch (e) {
-      setAnkiMsg(`Falha ao gerar o CSV: ${e.message || e}`);
-    } finally {
-      setGeneratingAnki(false);
+  async function saveOrDownload(fileName, content, mime, encoding, shareTitle, nativeSuffix = "") {
+    if (Capacitor.isNativePlatform()) {
+      await Filesystem.writeFile({ path: fileName, data: content, directory: Directory.Documents, encoding, recursive: true });
+      setExportMsg(`Salvo em Documentos/${fileName}.${nativeSuffix ? ` ${nativeSuffix}` : ""}`);
+    } else {
+      const outcome = await shareOrDownloadFile(fileName, content, mime, shareTitle);
+      setExportMsg(outcome === "shared" ? "Compartilhado." : `Download iniciado.${nativeSuffix ? ` ${nativeSuffix}` : ""}`);
     }
   }
 
-  async function exportMarkdown() {
-    setMdMsg(null);
-    setGeneratingMd(true);
-    try {
-      const md = buildPokedexMarkdown(saved, detailCache);
-      const fileName = "bookdex-pokedex.md";
-      if (Capacitor.isNativePlatform()) {
-        await Filesystem.writeFile({
-          path: fileName,
-          data: md,
-          directory: Directory.Documents,
-          encoding: Encoding.UTF8,
-          recursive: true,
-        });
-        setMdMsg(`Salvo em Documentos/${fileName}.`);
-      } else {
-        const outcome = await shareOrDownloadFile(fileName, md, "text/markdown", "Bookdex — export Markdown");
-        setMdMsg(outcome === "shared" ? "Compartilhado." : "Download iniciado.");
-      }
-    } catch (e) {
-      setMdMsg(`Falha ao gerar o Markdown: ${e.message || e}`);
-    } finally {
-      setGeneratingMd(false);
-    }
-  }
+  const scopeCount =
+    effectiveScope === "words"
+      ? Object.values(words || {}).reduce((sum, g) => sum + (g.words || []).length, 0)
+      : exportFormat === "anki"
+        ? countAnkiRows(filterSavedByScope(saved, effectiveScope), effectiveScope === "all" ? words : {})
+        : countMarkdownItems(filterSavedByScope(saved, effectiveScope));
+  const exportDisabled = generatingExport || scopeCount === 0;
 
   return (
     <div>
@@ -425,69 +429,65 @@ export default function ImportView({ onBack }) {
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{backupMsg}</p>
         )}
 
-        <button
-          onClick={exportPdf}
-          disabled={!hasSaved || generatingPdf}
-          className="flex items-center justify-center gap-1.5"
-          style={{
-            ...primaryButtonStyle,
-            width: "100%",
-            marginTop: "10px",
-            background: "transparent",
-            color: COLORS.ink,
-            border: `2px solid ${COLORS.screenBorder}`,
-            opacity: !hasSaved || generatingPdf ? 0.55 : 1,
-          }}
-        >
-          <BookOpenText size={16} /> {generatingPdf ? "Gerando PDF..." : "Exportar Pokédex em PDF"}
-        </button>
-        {!hasSaved && (
-          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginTop: "6px" }}>
-            Capture algo antes de exportar o livro em PDF.
-          </p>
-        )}
-        {pdfMsg && (
-          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{pdfMsg}</p>
-        )}
+        <h3 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "14px", color: COLORS.ink, margin: "18px 0 8px" }}>
+          Exportar
+        </h3>
+
+        <div className="flex" style={{ flexWrap: "wrap", gap: "6px", marginBottom: "8px" }}>
+          {EXPORT_FORMATS.map((f) => (
+            <button
+              key={f.id}
+              onClick={() => setExportFormat(f.id)}
+              style={{
+                flex: "1 1 auto",
+                padding: "7px 10px",
+                borderRadius: "999px",
+                border: `1.5px solid ${exportFormat === f.id ? COLORS.lensBlue : COLORS.screenBorder}`,
+                background: exportFormat === f.id ? COLORS.lensBlue : "transparent",
+                color: exportFormat === f.id ? "#fff" : COLORS.ink,
+                fontFamily: '"Baloo 2", sans-serif',
+                fontWeight: 700,
+                fontSize: "11.5px",
+                cursor: "pointer",
+              }}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex" style={{ flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
+          {availableScopes.map((s) => (
+            <button
+              key={s.id}
+              onClick={() => setExportScope(s.id)}
+              style={{
+                padding: "4px 9px",
+                borderRadius: "999px",
+                border: `1.5px solid ${COLORS.screenBorder}`,
+                background: effectiveScope === s.id ? COLORS.screenBorder : "transparent",
+                color: effectiveScope === s.id ? "#fff" : COLORS.screenBorder,
+                fontFamily: '"JetBrains Mono", monospace',
+                fontSize: "10.5px",
+                cursor: "pointer",
+              }}
+            >
+              {s.label}
+            </button>
+          ))}
+        </div>
 
         <button
-          onClick={exportAnki}
-          disabled={!hasAnything || generatingAnki}
+          onClick={runExport}
+          disabled={exportDisabled}
           className="flex items-center justify-center gap-1.5"
-          style={{
-            ...primaryButtonStyle,
-            width: "100%",
-            marginTop: "10px",
-            background: "transparent",
-            color: COLORS.ink,
-            border: `2px solid ${COLORS.screenBorder}`,
-            opacity: !hasAnything || generatingAnki ? 0.55 : 1,
-          }}
+          style={{ ...primaryButtonStyle, width: "100%", opacity: exportDisabled ? 0.55 : 1 }}
         >
-          <Layers size={16} /> {generatingAnki ? "Gerando CSV..." : `Exportar para Anki (${countAnkiRows(saved, words)} cartões)`}
+          <Download size={16} />
+          {generatingExport ? "Gerando..." : `Exportar (${scopeCount} ${effectiveScope === "words" ? "palavra(s)" : "item(ns)"})`}
         </button>
-        {ankiMsg && (
-          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{ankiMsg}</p>
-        )}
-
-        <button
-          onClick={exportMarkdown}
-          disabled={!hasSaved || generatingMd}
-          className="flex items-center justify-center gap-1.5"
-          style={{
-            ...primaryButtonStyle,
-            width: "100%",
-            marginTop: "10px",
-            background: "transparent",
-            color: COLORS.ink,
-            border: `2px solid ${COLORS.screenBorder}`,
-            opacity: !hasSaved || generatingMd ? 0.55 : 1,
-          }}
-        >
-          <FileText size={16} /> {generatingMd ? "Gerando Markdown..." : `Exportar em Markdown (${countMarkdownItems(saved)} itens)`}
-        </button>
-        {mdMsg && (
-          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{mdMsg}</p>
+        {exportMsg && (
+          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text-muted)", marginTop: "8px" }}>{exportMsg}</p>
         )}
       </div>
     </div>

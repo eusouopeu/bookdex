@@ -8,6 +8,7 @@ import EnrichPrompt from "./EnrichPrompt";
 import AspectButtons, { BLUE_TINT } from "./AspectButtons";
 import { CONCEPT_ASPECTS, fetchConceptAspect } from "../lib/anthropic";
 import { definitionCardPdfBlob } from "../lib/cardPdf";
+import { estimateCost, formatCost } from "../lib/models";
 
 const ASPECT_ICONS = { deepen: BookOpen, confusion: AlertTriangle, examples: Eye, related: Link2 };
 const CONCEPT_ASPECTS_WITH_ICONS = CONCEPT_ASPECTS.map((a) => ({ ...a, icon: ASPECT_ICONS[a.id] }));
@@ -148,6 +149,7 @@ export default function DefinitionCard({
         onFetch={(id) => fetchConceptAspect(definition, id)}
         onGenerated={onAspectGenerated}
         tint={BLUE_TINT}
+        costLabel={formatCost(estimateCost("conceptAspect"))}
       />
 
       <ConceptExpand term={definition.term} category={definition.category} onAddRelatedCard={onAddRelatedCard} />

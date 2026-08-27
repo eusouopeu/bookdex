@@ -1,29 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
-import {
-  BookOpen,
-  ChevronDown,
-  ChevronRight,
-  Library,
-  Search,
-  X,
-  Download,
-  Trash2,
-  ArrowUpDown,
-  Scale,
-  Tag,
-  CheckSquare,
-  Check,
-  FolderPlus,
-  Archive,
-  ArchiveRestore,
-} from "lucide-react";
+import { BookOpen, ChevronDown, ChevronRight, Library, Search, X, Download, Trash2 } from "lucide-react";
 import { COLORS, slug } from "../theme";
 import { getJSON, KEYS } from "../lib/storage";
+import { useDebouncedValue } from "../lib/hooks";
 import TechCard from "../components/TechCard";
 import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
 import PlantCard from "../components/PlantCard";
 import CollectionPicker from "../components/CollectionPicker";
+import DexFilterBar from "../components/DexFilterBar";
+import { CompareBanner, CompareBar, SelectBar } from "../components/DexSelectionToolbar";
 import WordsView from "./WordsView";
 import { useData } from "../state/DataContext";
 import { usePrefs } from "../state/PrefsContext";
@@ -47,23 +33,6 @@ const EMPTY_CATEGORY_MSG = {
   plants: "Nenhuma planta capturada ainda. Busque com plt: ou identifique uma pela foto.",
 };
 
-function badgeStyle(active) {
-  return {
-    flex: 1,
-    padding: "8px 10px",
-    minHeight: "38px",
-    borderRadius: "999px",
-    border: `2px solid ${COLORS.screenBorder}`,
-    cursor: "pointer",
-    fontFamily: '"Baloo 2", sans-serif',
-    fontWeight: 700,
-    fontSize: "11.5px",
-    letterSpacing: "0.01em",
-    background: active ? COLORS.screenBorder : "transparent",
-    color: active ? COLORS.white : COLORS.screenBorder,
-    transition: "background 0.15s ease, color 0.15s ease",
-  };
-}
 
 export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, onExampleSearch, onOpenCompare }) {
   const { dexCategory: category, showArchived, toggleShowArchived: onToggleShowArchived } = usePrefs();
@@ -174,8 +143,31 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
       .join(" ");
   }
 
+  /**
+   * Índice `"${subjectKey}:${itemId}" → texto normalizado` de tudo que a
+   * busca da Pokédex olha (nome, texto livre, guia inteiro quando é técnica).
+   * Antes isso era recalculado a cada tecla digitada, para TODO item — com um
+   * acervo grande isso trava a digitação. Agora só recalcula quando os dados
+   * mudam (`saved`/`detailCache`), e o filtro em si é uma leitura de mapa.
+   */
+  const searchIndex = useMemo(() => {
+    const idx = new Map();
+    for (const [key, group] of activeEntries) {
+      for (const it of group.items) {
+        const kind = itemKind(it, group);
+        const parts = [itemLabel(it), itemFreeText(it)];
+        if (kind === "technique") parts.push(guideText(group.displayName, it));
+        idx.set(`${key}:${it.id}`, slug(parts.filter(Boolean).join(" ")));
+      }
+    }
+    return idx;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeEntries, detailCache]);
+
+  const debouncedFilterText = useDebouncedValue(filterText, 200);
+
   function filterEntries(list) {
-    const q = slug(filterText.trim());
+    const q = slug(debouncedFilterText.trim());
     return list
       .map(([key, group]) => {
         const subjectMatches = !q || slug(group.displayName).includes(q);
@@ -184,10 +176,7 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
           if (showArchived && !it.archived) return false;
           if (activeTag && !(it.tags || []).includes(activeTag)) return false;
           if (!q || subjectMatches) return true;
-          if (slug(itemLabel(it)).includes(q)) return true;
-          if (slug(itemFreeText(it)).includes(q)) return true;
-          if (itemKind(it, group) === "technique" && slug(guideText(group.displayName, it)).includes(q)) return true;
-          return false;
+          return (searchIndex.get(`${key}:${it.id}`) || "").includes(q);
         });
         if (finalItems.length === 0) return null;
         return [key, withItems(group, finalItems)];
@@ -441,168 +430,32 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
         </div>
       )}
 
-      {compareMode && (
-        <div
-          style={{
-            background: "rgba(46,134,222,0.1)",
-            border: `2px solid ${COLORS.lensBlue}`,
-            borderRadius: "10px",
-            padding: "8px 10px",
-            marginBottom: "10px",
-            fontFamily: "Inter, sans-serif",
-            fontSize: "11.5px",
-            color: COLORS.ink,
-          }}
-        >
-          Selecione de 2 a {MAX_COMPARE} técnicas para comparar lado a lado ({compareSelection.length}/{MAX_COMPARE}).
-        </div>
-      )}
+      {compareMode && <CompareBanner count={compareSelection.length} max={MAX_COMPARE} />}
 
-      <div className="flex items-center gap-2" style={{ marginBottom: "10px", position: "relative" }}>
-        <Search size={14} style={{ position: "absolute", left: "11px", color: COLORS.screenBorder, pointerEvents: "none" }} />
-        <input
-          value={filterText}
-          onChange={(e) => setFilterText(e.target.value)}
-          placeholder="Buscar na sua Pokédex..."
-          style={{
-            width: "100%",
-            borderRadius: "8px",
-            border: `2px solid ${COLORS.screenBorder}`,
-            padding: "9px 12px 9px 32px",
-            minHeight: "38px",
-            fontFamily: "Inter, sans-serif",
-            fontSize: "12.5px",
-            background: COLORS.surface,
-            color: COLORS.ink,
-            outline: "none",
-          }}
-        />
-        {filterText && (
-          <button
-            onClick={() => setFilterText("")}
-            aria-label="Limpar busca"
-            style={{ position: "absolute", right: "8px", background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, padding: "4px" }}
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
-
-      {allTags.length > 0 && (
-        <div className="flex items-center" style={{ flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
-          <Tag size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-          {allTags.map((tag) => (
-            <button
-              key={tag}
-              onClick={() => setActiveTag((t) => (t === tag ? null : tag))}
-              style={{
-                fontFamily: '"JetBrains Mono", monospace',
-                fontSize: "10.5px",
-                padding: "3px 9px",
-                borderRadius: "999px",
-                border: `1.5px solid ${COLORS.lensBlue}`,
-                background: activeTag === tag ? COLORS.lensBlue : "transparent",
-                color: activeTag === tag ? COLORS.white : COLORS.lensBlue,
-                cursor: "pointer",
-              }}
-            >
-              {tag}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="flex items-center gap-2" style={{ marginBottom: "16px", justifyContent: "space-between" }}>
-        <div className="flex items-center gap-1.5" style={{ minWidth: 0 }}>
-          <ArrowUpDown size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-          <select
-            value={sortBy}
-            onChange={(e) => setSortBy(e.target.value)}
-            aria-label="Ordenar por"
-            style={{
-              borderRadius: "999px",
-              border: `1.5px solid ${COLORS.screenBorder}`,
-              background: COLORS.surface,
-              color: COLORS.ink,
-              fontFamily: '"Baloo 2", sans-serif',
-              fontWeight: 700,
-              fontSize: "11px",
-              padding: "6px 10px",
-              minHeight: "30px",
-              cursor: "pointer",
-              outline: "none",
-            }}
-          >
-            <option value="recent">Recentes</option>
-            <option value="name">Nome</option>
-          </select>
-        </div>
-
-        {((category === "technique" && onOpenCompare) || onBulkRemoveItems || onToggleShowArchived) && (
-          <div className="flex gap-2" style={{ flexShrink: 0 }}>
-            {onToggleShowArchived && (
-              <button
-                onClick={onToggleShowArchived}
-                aria-label={showArchived ? "Ver itens ativos" : "Ver itens arquivados"}
-                title={showArchived ? "Ver itens ativos" : "Ver itens arquivados"}
-                style={{
-                  ...badgeStyle(showArchived),
-                  flex: "none",
-                  width: "34px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 0,
-                }}
-              >
-                {showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-              </button>
-            )}
-            {category === "technique" && onOpenCompare && (
-              <button
-                onClick={() => {
-                  exitSelectMode();
-                  compareMode ? exitCompareMode() : setCompareMode(true);
-                }}
-                aria-label="Comparar técnicas salvas"
-                title="Comparar técnicas salvas"
-                style={{
-                  ...badgeStyle(compareMode),
-                  flex: "none",
-                  width: "34px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 0,
-                }}
-              >
-                <Scale size={14} />
-              </button>
-            )}
-            {onBulkRemoveItems && (
-              <button
-                onClick={() => {
-                  exitCompareMode();
-                  selectMode ? exitSelectMode() : setSelectMode(true);
-                }}
-                aria-label="Selecionar vários itens"
-                title="Selecionar vários itens"
-                style={{
-                  ...badgeStyle(selectMode),
-                  flex: "none",
-                  width: "34px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  padding: 0,
-                }}
-              >
-                <CheckSquare size={14} />
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+      <DexFilterBar
+        filterText={filterText}
+        onFilterTextChange={setFilterText}
+        allTags={allTags}
+        activeTag={activeTag}
+        onToggleTag={(tag) => setActiveTag((t) => (t === tag ? null : tag))}
+        sortBy={sortBy}
+        onSortByChange={setSortBy}
+        category={category}
+        showArchived={showArchived}
+        onToggleShowArchived={onToggleShowArchived}
+        compareMode={compareMode}
+        onToggleCompare={() => {
+          exitSelectMode();
+          compareMode ? exitCompareMode() : setCompareMode(true);
+        }}
+        selectMode={selectMode}
+        onToggleSelect={() => {
+          exitCompareMode();
+          selectMode ? exitSelectMode() : setSelectMode(true);
+        }}
+        canCompare={!!onOpenCompare}
+        canBulkSelect={!!onBulkRemoveItems}
+      />
 
       {activeEntries.length === 0 && (
         <div
@@ -779,212 +632,24 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
       })}
 
       {compareMode && (
-        <div
-          style={{
-            position: "sticky",
-            bottom: "4px",
-            display: "flex",
-            justifyContent: "center",
-            marginTop: "14px",
-          }}
-        >
-          <div className="flex gap-2">
-            <button
-              onClick={launchCompare}
-              disabled={compareSelection.length < 2}
-              style={{
-                background: COLORS.lensBlue,
-                color: "#fff",
-                border: "none",
-                borderRadius: "999px",
-                padding: "10px 18px",
-                fontFamily: '"Baloo 2", sans-serif',
-                fontWeight: 700,
-                fontSize: "12.5px",
-                cursor: compareSelection.length < 2 ? "default" : "pointer",
-                opacity: compareSelection.length < 2 ? 0.5 : 1,
-                boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
-              }}
-            >
-              Comparar ({compareSelection.length})
-            </button>
-            <button
-              onClick={exitCompareMode}
-              style={{
-                background: "#23291F",
-                color: "#fff",
-                border: "none",
-                borderRadius: "999px",
-                padding: "10px 16px",
-                fontFamily: '"Baloo 2", sans-serif',
-                fontWeight: 700,
-                fontSize: "12.5px",
-                cursor: "pointer",
-                boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
+        <CompareBar count={compareSelection.length} onLaunch={launchCompare} onCancel={exitCompareMode} />
       )}
 
       {selectMode && (
-        <div
-          style={{
-            position: "sticky",
-            bottom: "4px",
-            display: "flex",
-            justifyContent: "center",
-            marginTop: "14px",
-          }}
-        >
-          <div
-            className="flex items-center"
-            style={{
-              gap: "5px",
-              background: COLORS.surface,
-              border: `2px solid ${COLORS.screenBorder}`,
-              borderRadius: "10px",
-              padding: "7px 6px",
-              boxShadow: "0 4px 10px rgba(0,0,0,0.25)",
-              flexWrap: "wrap",
-              justifyContent: "center",
-              maxWidth: "100%",
-            }}
-          >
-            <span style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "12px", color: COLORS.ink, whiteSpace: "nowrap" }}>
-              {bulkSelection.length} selecionado(s)
-            </span>
-            <input
-              value={bulkTagDraft}
-              onChange={(e) => setBulkTagDraft(e.target.value)}
-              placeholder="tag..."
-              style={{
-                width: "50px",
-                minWidth: 0,
-                borderRadius: "8px",
-                border: `1.5px solid ${COLORS.screenBorder}`,
-                padding: "5px 6px",
-                fontFamily: '"JetBrains Mono", monospace',
-                fontSize: "10.5px",
-                outline: "none",
-              }}
-            />
-            <button
-              onClick={applyBulkTag}
-              disabled={bulkSelection.length === 0 || !bulkTagDraft.trim()}
-              aria-label="Marcar com a tag"
-              title="Marcar com a tag"
-              style={{
-                background: COLORS.lensBlue,
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                width: "30px",
-                height: "30px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                cursor: "pointer",
-                opacity: bulkSelection.length === 0 || !bulkTagDraft.trim() ? 0.5 : 1,
-              }}
-            >
-              <Check size={14} />
-            </button>
-            {onAddToCollection && (
-              <button
-                onClick={() => setPickingCollection(true)}
-                disabled={bulkSelection.length === 0}
-                aria-label="Adicionar a uma coleção"
-                title="Adicionar a uma coleção"
-                style={{
-                  background: "transparent",
-                  color: COLORS.ink,
-                  border: `1.5px solid ${COLORS.screenBorder}`,
-                  borderRadius: "8px",
-                  width: "30px",
-                  height: "30px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  cursor: "pointer",
-                  opacity: bulkSelection.length === 0 ? 0.5 : 1,
-                }}
-              >
-                <FolderPlus size={14} />
-              </button>
-            )}
-            {onArchiveItems && (
-              <button
-                onClick={applyBulkArchive}
-                disabled={bulkSelection.length === 0}
-                aria-label={showArchived ? "Desarquivar selecionados" : "Arquivar selecionados"}
-                title={showArchived ? "Desarquivar selecionados" : "Arquivar selecionados"}
-                style={{
-                  background: "transparent",
-                  color: COLORS.ink,
-                  border: `1.5px solid ${COLORS.screenBorder}`,
-                  borderRadius: "8px",
-                  width: "30px",
-                  height: "30px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  flexShrink: 0,
-                  cursor: "pointer",
-                  opacity: bulkSelection.length === 0 ? 0.5 : 1,
-                }}
-              >
-                {showArchived ? <ArchiveRestore size={14} /> : <Archive size={14} />}
-              </button>
-            )}
-            <button
-              onClick={applyBulkDelete}
-              disabled={bulkSelection.length === 0}
-              aria-label={confirmingBulkDelete ? "Confirmar exclusão" : "Excluir selecionados"}
-              title={confirmingBulkDelete ? "Confirmar exclusão" : "Excluir selecionados"}
-              style={{
-                background: "transparent",
-                color: "var(--danger)",
-                border: "1.5px solid var(--danger)",
-                borderRadius: "8px",
-                width: "30px",
-                height: "30px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                cursor: "pointer",
-                opacity: bulkSelection.length === 0 ? 0.5 : 1,
-              }}
-            >
-              <Trash2 size={14} />
-            </button>
-            <button
-              onClick={exitSelectMode}
-              aria-label="Cancelar seleção"
-              title="Cancelar seleção"
-              style={{
-                background: "transparent",
-                color: COLORS.ink,
-                border: `1.5px solid ${COLORS.screenBorder}`,
-                borderRadius: "8px",
-                width: "30px",
-                height: "30px",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
-                cursor: "pointer",
-              }}
-            >
-              <X size={14} />
-            </button>
-          </div>
-        </div>
+        <SelectBar
+          count={bulkSelection.length}
+          tagDraft={bulkTagDraft}
+          onTagDraftChange={setBulkTagDraft}
+          onApplyTag={applyBulkTag}
+          onPickCollection={() => setPickingCollection(true)}
+          canAddToCollection={!!onAddToCollection}
+          onArchive={applyBulkArchive}
+          canArchive={!!onArchiveItems}
+          showArchived={showArchived}
+          onDelete={applyBulkDelete}
+          confirmingDelete={confirmingBulkDelete}
+          onCancel={exitSelectMode}
+        />
       )}
         </>
       )}

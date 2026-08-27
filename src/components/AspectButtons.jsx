@@ -47,16 +47,16 @@ export function aspectButtonStyle(filled, loading, tint) {
  * compartilhado com técnica e conceito. Tocar num aspecto já gerado só
  * expande/recolhe o bloco; nada é pedido duas vezes.
  *
- * `leading` é um botão extra à frente da fila que NÃO segue esse fluxo — o
- * card de técnica usa isso pro guia passo a passo, que abre uma página própria
- * em vez de expandir texto aqui dentro.
- *
  * `onLocalChange(local)` é opcional: dispara sempre que um aspecto novo é
  * gerado nesta sessão, ainda não persistido (item não capturado). Só quem
  * precisa desse dado fora daqui (o card de planta, pro PDF de compartilhar)
  * passa esse callback.
+ *
+ * `costLabel`, quando dado, aparece no tooltip de cada aspecto ainda não
+ * gerado ("Erros comuns (~US$ 0,003)") — custo é visível antes do gasto, não
+ * só depois, no teto mensal.
  */
-export default function AspectButtons({ leading, aspects, saved, onFetch, onGenerated, onLocalChange, tint }) {
+export default function AspectButtons({ aspects, saved, onFetch, onGenerated, onLocalChange, tint, costLabel }) {
   const [local, setLocal] = useState({});
   const [open, setOpen] = useState(null);
   const [loadingId, setLoadingId] = useState(null);
@@ -92,7 +92,6 @@ export default function AspectButtons({ leading, aspects, saved, onFetch, onGene
   return (
     <div onClick={(e) => e.stopPropagation()}>
       <div className="flex gap-1.5" style={{ marginBottom: "8px" }}>
-        {leading}
         {aspects.map((aspect) => {
           const Icon = aspect.icon;
           const filled = !!values[aspect.id];
@@ -103,7 +102,7 @@ export default function AspectButtons({ leading, aspects, saved, onFetch, onGene
               onClick={() => toggle(aspect.id)}
               disabled={!!loadingId}
               aria-label={filled ? `${aspect.label} — mostrar/ocultar` : `${aspect.label} (gera com IA)`}
-              title={aspect.label}
+              title={filled || !costLabel ? aspect.label : `${aspect.label} (~${costLabel})`}
               style={aspectButtonStyle(filled, loading, tint)}
             >
               {loading ? <Loader2 size={15} style={{ animation: "spin 0.9s linear infinite" }} /> : <Icon size={15} />}

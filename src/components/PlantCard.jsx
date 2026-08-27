@@ -7,6 +7,7 @@ import PlantPhoto from "./PlantPhoto";
 import AspectButtons, { GREEN_TINT } from "./AspectButtons";
 import { PLANT_ASPECTS, fetchPlantAspect } from "../lib/anthropic";
 import { plantCardPdfBlob } from "../lib/cardPdf";
+import { estimateCost, formatCost } from "../lib/models";
 
 const ASPECT_ICONS = {
   origin: MapPin,
@@ -123,6 +124,7 @@ export default function PlantCard({
         onGenerated={onAspectGenerated}
         onLocalChange={setLocalAspects}
         tint={GREEN_TINT}
+        costLabel={formatCost(estimateCost("plantAspect"))}
       />
     </CardShell>
   );

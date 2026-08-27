@@ -1,5 +1,5 @@
 import { slug } from "../theme";
-import { groupItems, itemLabel } from "./savedModel";
+import { groupItems, itemLabel, itemKind } from "./savedModel";
 
 /**
  * Procura, em QUALQUER assunto já salvo, um item cujo nome normalizado
@@ -16,6 +16,24 @@ export function findSimilarItem(saved, name) {
       if (slug(itName) === targetSlug) {
         return { subjectDisplay: group.displayName, name: itName };
       }
+    }
+  }
+  return null;
+}
+
+/**
+ * Um item de conceito (kind "definition") já capturado com o mesmo nome
+ * normalizado, em QUALQUER assunto — usado pra "Relacionados" e pelos chips
+ * de termos relacionados abrirem direto o card já salvo, sem gastar uma
+ * chamada nova pra algo que já está na Pokédex.
+ */
+export function findSavedDefinition(saved, term) {
+  const targetSlug = slug(term);
+  if (!targetSlug) return null;
+  for (const group of Object.values(saved || {})) {
+    for (const it of groupItems(group)) {
+      if (itemKind(it, group) !== "definition") continue;
+      if (slug(itemLabel(it)) === targetSlug) return it;
     }
   }
   return null;

@@ -4,6 +4,7 @@ import { COLORS, slug, primaryButtonStyle } from "../theme";
 import { PLACEHOLDER_BY_MODE } from "../lib/searchQuery";
 import { useProgressiveMessage } from "../lib/hooks";
 import { fetchDefinition } from "../lib/anthropic";
+import { findSavedDefinition } from "../lib/dedupe";
 import TechCard from "../components/TechCard";
 import DefinitionCard from "../components/DefinitionCard";
 import ListItemCard from "../components/ListItemCard";
@@ -13,7 +14,7 @@ import SkeletonList from "../components/Skeleton";
 
 const SOURCE_NOTE = {
   cache: "Resultado guardado de uma busca anterior — não gastou chamada à API.",
-  saved: "Você já tem esta palavra capturada.",
+  saved: "Você já tem isto capturado na Pokédex.",
   "saved-similar": "Você já tem uma palavra parecida capturada.",
 };
 
@@ -74,6 +75,7 @@ export default function SearchView({
   isPlantSaved,
   onToggleWord,
   isWordSaved,
+  saved,
 }) {
   // Cards extras criados ao clicar num relacionado da mini-lista ("..."), encadeados
   // abaixo do card que os originou. Reseta a cada novo escaneamento.
@@ -88,7 +90,8 @@ export default function SearchView({
   }
 
   async function expandRelated(parentKey, name) {
-    const def = await fetchDefinition(name);
+    const already = findSavedDefinition(saved, name);
+    const def = already || (await fetchDefinition(name));
     addExtraCard(parentKey, def);
   }
 

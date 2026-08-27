@@ -16,6 +16,7 @@ import {
 import { parseSearchQuery, hasExplicitPrefix, splitCompareTerms, PLACEHOLDER_BY_MODE } from "./lib/searchQuery";
 import { cacheKey, readCache, writeCache, loadSearchCache, saveSearchCache } from "./lib/searchCache";
 import { findSavedWord } from "./lib/words";
+import { findSavedDefinition } from "./lib/dedupe";
 import { readAndCompressImage } from "./lib/imageUtils";
 import { useData } from "./state/DataContext";
 import { usePrefs } from "./state/PrefsContext";
@@ -231,10 +232,23 @@ export default function App() {
     }
   }
 
+  /**
+   * Termo relacionado tocado (chip de conceito/técnica): se já está capturado
+   * em QUALQUER assunto, abre o card salvo direto — sem gastar uma chamada
+   * pra algo que a Pokédex já tem.
+   */
   function searchRelated(mode, term) {
     setDetailTarget(null);
     setCompareTarget(null);
     goTab("search");
+    if (mode === "definition") {
+      const match = findSavedDefinition(data.saved, term);
+      if (match) {
+        dispatch({ type: "success", mode, term, data: match, source: "saved" });
+        prefs.addToHistory(mode, term);
+        return;
+      }
+    }
     handleSearch({ mode, term });
   }
 
@@ -430,6 +444,7 @@ export default function App() {
                 cacheKey={detailKey}
                 detailCache={detailCache}
                 onCached={data.cacheDetail}
+                onDeleteDetail={data.deleteDetail}
                 onBack={() => setDetailTarget(null)}
                 onGoSettings={() => openScreen("settings")}
               />
@@ -458,6 +473,7 @@ export default function App() {
                 hasDetail={data.hasDetail}
                 isIrrelevant={prefs.isItemIrrelevant}
                 onMarkIrrelevant={(subject, mode, item) => prefs.markItemIrrelevant(subject, mode, item, showToast)}
+                saved={data.saved}
               />
             )}
 
@@ -571,15 +587,43 @@ export default function App() {
         >
           {showSearchBar ? (
             <div style={{ width: "100%", minWidth: 0 }}>
-              <div className="flex gap-1.5" style={{ marginBottom: "6px", flexWrap: "wrap" }}>
+              {CRITERIA_MODES.includes(searchMode) && (
+                <input
+                  value={criteria}
+                  onChange={(e) => dispatch({ type: "setCriteria", criteria: e.target.value })}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleSearch();
+                  }}
+                  placeholder="Critérios de comparação (opcional) — ex.: custo, dificuldade, tempo"
+                  style={{
+                    width: "100%",
+                    marginBottom: "6px",
+                    borderRadius: "8px",
+                    border: "none",
+                    padding: "8px 12px",
+                    minHeight: "32px",
+                    fontFamily: "Inter, sans-serif",
+                    fontSize: "12.5px",
+                    outline: "none",
+                    background: "rgba(255,255,255,0.85)",
+                  }}
+                />
+              )}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: "6px",
+                  marginBottom: "6px",
+                }}
+              >
                 {SEARCH_MODES.map(({ mode, label }) => (
                   <button
                     key={mode}
                     onClick={() => dispatch({ type: "setMode", mode })}
                     style={{
-                      flex: "1 1 28%",
-                      padding: "5px 8px",
-                      minHeight: "26px",
+                      padding: "6px 8px",
+                      minHeight: "28px",
                       borderRadius: "999px",
                       border: "none",
                       cursor: "pointer",
@@ -723,28 +767,6 @@ export default function App() {
                   {loading ? "..." : "ESCANEAR"}
                 </button>
               </div>
-              {CRITERIA_MODES.includes(searchMode) && (
-                <input
-                  value={criteria}
-                  onChange={(e) => dispatch({ type: "setCriteria", criteria: e.target.value })}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") handleSearch();
-                  }}
-                  placeholder="Critérios de comparação (opcional) — ex.: custo, dificuldade, tempo"
-                  style={{
-                    width: "100%",
-                    marginTop: "6px",
-                    borderRadius: "8px",
-                    border: "none",
-                    padding: "8px 12px",
-                    minHeight: "32px",
-                    fontFamily: "Inter, sans-serif",
-                    fontSize: "12.5px",
-                    outline: "none",
-                    background: "rgba(255,255,255,0.85)",
-                  }}
-                />
-              )}
             </div>
           ) : showDexNav ? (
             <DexCategoryNav counts={counts} />

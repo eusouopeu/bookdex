@@ -30,6 +30,21 @@ export function useProgressiveMessage(active, messages, stepMs = 3500) {
  * busca sob demanda e cacheia em memória só pra sessão atual — igual ao
  * padrão já usado pro guia de técnica, mas sem persistir em storage.
  */
+/**
+ * Valor que só atualiza `delay`ms depois da última mudança — usado no filtro
+ * da Pokédex pra não recalcular o índice de busca a cada tecla digitada.
+ */
+export function useDebouncedValue(value, delay = 200) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const id = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(id);
+  }, [value, delay]);
+
+  return debounced;
+}
+
 export function useConceptDeepDive(term, category, summary) {
   const [data, setData] = useState(null);
   const [open, setOpen] = useState(false);

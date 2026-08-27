@@ -111,6 +111,17 @@ export function DataProvider({ children }) {
     });
   }
 
+  /** Remove um guia do cache — a próxima abertura da página regenera do zero. */
+  function deleteDetail(cacheKey) {
+    setDetailCache((prev) => {
+      if (!(cacheKey in prev)) return prev;
+      const next = { ...prev };
+      delete next[cacheKey];
+      persistDetails(next);
+      return next;
+    });
+  }
+
   /** Baixa o guia em background assim que uma técnica é capturada. */
   async function prefetchDetail(subjectDisplay, technique) {
     if (!prefetchRef.current) return;
@@ -618,6 +629,7 @@ export function DataProvider({ children }) {
     dismissToast,
     hasDetail,
     cacheDetail,
+    deleteDetail,
     isSaved,
     isPlantSaved,
     toggleSave,

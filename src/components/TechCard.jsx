@@ -8,6 +8,7 @@ import EnrichPrompt from "./EnrichPrompt";
 import AspectButtons, { BLUE_TINT, aspectButtonStyle } from "./AspectButtons";
 import { TECH_ASPECTS, fetchTechAspect } from "../lib/anthropic";
 import { techniqueCardPdfBlob } from "../lib/cardPdf";
+import { estimateCost, formatCost } from "../lib/models";
 
 const ASPECT_ICONS = { mistakes: AlertTriangle, why: Lightbulb, combos: Link2 };
 const TECH_ASPECTS_WITH_ICONS = TECH_ASPECTS.map((a) => ({ ...a, icon: ASPECT_ICONS[a.id] }));
@@ -80,24 +81,25 @@ export default function TechCard({
         </div>
       )}
       <AspectButtons
-        leading={
-          onOpenDetail && (
-            <button
-              onClick={onOpenDetail}
-              aria-label={hasDetail ? "Ver guia passo a passo" : "Gerar guia passo a passo (com IA)"}
-              title="Passo a passo"
-              style={aspectButtonStyle(hasDetail, false, BLUE_TINT)}
-            >
-              {hasDetail ? <BookOpen size={15} /> : <Sparkles size={15} />}
-            </button>
-          )
-        }
         aspects={TECH_ASPECTS_WITH_ICONS}
         saved={technique.aspects}
         onFetch={(id) => fetchTechAspect(subjectDisplay || "", technique, id)}
         onGenerated={onAspectGenerated}
         tint={BLUE_TINT}
+        costLabel={formatCost(estimateCost("techAspect"))}
       />
+      {onOpenDetail && (
+        <div className="flex">
+          <button
+            onClick={onOpenDetail}
+            aria-label={hasDetail ? "Ver guia passo a passo" : "Gerar guia passo a passo (com IA)"}
+            title={hasDetail ? "Passo a passo" : `Passo a passo (~${formatCost(estimateCost("detail"))})`}
+            style={{ ...aspectButtonStyle(hasDetail, false, BLUE_TINT), width: "100%" }}
+          >
+            {hasDetail ? <BookOpen size={15} /> : <Sparkles size={15} />}
+          </button>
+        </div>
+      )}
     </CardShell>
   );
 }

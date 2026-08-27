@@ -1,15 +1,30 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, X, RefreshCw, KeyRound, Share2, FileDown, Plus, Minus, Loader2 } from "lucide-react";
+import { ArrowLeft, Check, X, RefreshCw, KeyRound, Share2, FileDown, Plus, Minus, Loader2, Trash2 } from "lucide-react";
 import { COLORS, getTypeColor, primaryButtonStyle, slug } from "../theme";
 import { fetchDetail, fetchStepDeepDive, MissingApiKeyError } from "../lib/anthropic";
 import { useProgressiveMessage } from "../lib/hooks";
+import { estimateCost, formatCost } from "../lib/models";
 import { GuideSkeleton } from "../components/Skeleton";
 import { shareOrCopyText, shareOrDownloadFile, guideMarkdown } from "../lib/share";
 
 const SWIPE_EDGE_PX = 28;
 const SWIPE_THRESHOLD_PX = 70;
 
-export default function DetailPage({ subjectDisplay, technique, cacheKey, detailCache, onCached, onBack, onGoSettings }) {
+const headerIconBtnStyle = {
+  background: "transparent",
+  border: `2px solid ${COLORS.screenBorder}`,
+  borderRadius: "8px",
+  color: COLORS.ink,
+  width: "32px",
+  height: "32px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: "pointer",
+  flexShrink: 0,
+};
+
+export default function DetailPage({ subjectDisplay, technique, cacheKey, detailCache, onCached, onDeleteDetail, onBack, onGoSettings }) {
   const cached = detailCache[cacheKey];
   const [detail, setDetail] = useState(cached || null);
   const [loading, setLoading] = useState(!cached);
@@ -17,6 +32,7 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
   const [needsKey, setNeedsKey] = useState(false);
   const [shareMsg, setShareMsg] = useState(null);
   const [stepBreakdowns, setStepBreakdowns] = useState({}); // { [i]: { loading, error, substeps, open } }
+  const [confirmingRegenerate, setConfirmingRegenerate] = useState(false);
   const color = getTypeColor(technique.type);
   const loadingMsg = useProgressiveMessage(loading, ["MONTANDO O GUIA...", "AINDA MONTANDO...", "QUASE PRONTO..."]);
   const touch = useRef({ active: false, x: 0, y: 0 });
@@ -97,33 +113,74 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cacheKey]);
 
+  /** Apaga o guia do cache e busca outro — pede confirmação porque descarta o atual. */
+  function handleRegenerate() {
+    if (!confirmingRegenerate) {
+      setConfirmingRegenerate(true);
+      return;
+    }
+    setConfirmingRegenerate(false);
+    if (onDeleteDetail) onDeleteDetail(cacheKey);
+    setDetail(null);
+    setStepBreakdowns({});
+    load();
+  }
+
   return (
     <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1.5"
-        style={{
-          background: "none",
-          border: "none",
-          color: COLORS.ink,
-          fontFamily: '"Baloo 2", sans-serif',
-          fontWeight: 700,
-          fontSize: "12.5px",
-          cursor: "pointer",
-          padding: "8px 8px 8px 0",
-          minHeight: "40px",
-          marginBottom: "4px",
-        }}
-      >
-        <ArrowLeft size={16} /> Voltar
-      </button>
+      <div className="flex items-start gap-2" style={{ justifyContent: "space-between", marginBottom: "2px" }}>
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5"
+          aria-label={`Voltar — ${technique.name}`}
+          style={{
+            background: "none",
+            border: "none",
+            color: COLORS.ink,
+            fontFamily: '"Baloo 2", sans-serif',
+            fontWeight: 800,
+            fontSize: "19px",
+            cursor: "pointer",
+            padding: "8px 0",
+            minHeight: "40px",
+            minWidth: 0,
+          }}
+        >
+          <ArrowLeft size={18} style={{ flexShrink: 0 }} />
+          <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{technique.name}</span>
+        </button>
 
-      <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10px", color: "var(--text-muted)" }}>
+        {detail && (
+          <div className="flex items-center gap-1.5" style={{ flexShrink: 0, paddingTop: "8px" }}>
+            <button onClick={handleExportGuide} aria-label="Exportar guia em .md" title="Exportar .md" style={headerIconBtnStyle}>
+              <FileDown size={14} />
+            </button>
+            <button onClick={handleShareGuide} aria-label="Compartilhar guia" title="Compartilhar" style={headerIconBtnStyle}>
+              <Share2 size={14} />
+            </button>
+            {onDeleteDetail && (
+              <button
+                onClick={handleRegenerate}
+                onBlur={() => setConfirmingRegenerate(false)}
+                aria-label={confirmingRegenerate ? "Confirmar e regenerar guia" : "Apagar guia e gerar outro"}
+                title={confirmingRegenerate ? "Confirmar?" : `Apagar e gerar outro (~${formatCost(estimateCost("detail"))})`}
+                style={{
+                  ...headerIconBtnStyle,
+                  color: "var(--danger)",
+                  borderColor: "var(--danger)",
+                  background: confirmingRegenerate ? "rgba(198,40,40,0.12)" : "transparent",
+                }}
+              >
+                <Trash2 size={14} />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontFamily: "Inter, sans-serif", fontStyle: "italic", fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
         {subjectDisplay}
       </div>
-      <h2 style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 800, fontSize: "19px", color: COLORS.ink, lineHeight: 1.15 }}>
-        {technique.name}
-      </h2>
       <span
         style={{
           display: "inline-block",
@@ -198,44 +255,6 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
 
       {!loading && detail && (
         <div style={{ animation: "flicker 0.4s ease-out" }}>
-          <div className="flex items-center gap-2" style={{ marginBottom: "10px" }}>
-            <button
-              onClick={handleShareGuide}
-              className="flex items-center gap-1.5"
-              style={{
-                background: "transparent",
-                border: `2px solid ${COLORS.screenBorder}`,
-                borderRadius: "8px",
-                color: COLORS.ink,
-                fontFamily: '"Baloo 2", sans-serif',
-                fontWeight: 700,
-                fontSize: "11px",
-                padding: "6px 10px",
-                minHeight: "32px",
-                cursor: "pointer",
-              }}
-            >
-              <Share2 size={13} /> Compartilhar
-            </button>
-            <button
-              onClick={handleExportGuide}
-              className="flex items-center gap-1.5"
-              style={{
-                background: "transparent",
-                border: `2px solid ${COLORS.screenBorder}`,
-                borderRadius: "8px",
-                color: COLORS.ink,
-                fontFamily: '"Baloo 2", sans-serif',
-                fontWeight: 700,
-                fontSize: "11px",
-                padding: "6px 10px",
-                minHeight: "32px",
-                cursor: "pointer",
-              }}
-            >
-              <FileDown size={13} /> Exportar .md
-            </button>
-          </div>
           {shareMsg && (
             <p style={{ fontFamily: "Inter, sans-serif", fontSize: "11px", color: "var(--text-muted)", marginBottom: "10px" }}>
               {shareMsg}
