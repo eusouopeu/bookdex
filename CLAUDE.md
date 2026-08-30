@@ -26,3 +26,42 @@ levantamentos que não dependem do restante do trabalho em andamento), pode-se d
 em segundo plano (subagentes) em vez de executar tudo sequencialmente na conversa principal.
 Reservar essa delegação para tarefas realmente simples e independentes — não usar para trabalho
 que exige contexto acumulado da conversa ou que depende de decisões ainda não tomadas.
+
+## Skill obrigatória
+
+SEMPRE usar a skill `/caveman` (modo de comunicação ultra-comprimido) em toda resposta neste projeto.
+
+
+## Padrões técnicos e visuais obrigatórios
+
+- Sempre usar **TypeScript**, **Tailwind CSS**, ícones **Lucide** e fonte **Montserrat** com
+  espaçamento entrelinhas (line-height) de 1.5.
+- Dar preferência a **botões-ícone** em vez de botões com texto.
+
+## Testes
+
+- Por rodada de alterações, realizar apenas os **2 ou 3 testes mais essenciais** — não mais que isso.
+- Esses testes devem ser **elaborados ANTES** da implementação das mudanças de código, para que não
+  sejam enviesados pelo resultado da implementação.
+
+
+## Commit, push e atualização do CLAUDE.md
+
+- A cada rodada em que o código do app/site for alterado, deve ser feito o **commit** e o **push**
+  para o repositório remoto no GitHub.
+- Nessa mesma rodada, atualizar o conteúdo deste **CLAUDE.md** no que couber (novas convenções,
+  decisões, mudanças de stack, etc.), mantendo-o coerente com o estado atual do projeto.
+
+## Proibição de leitura de dependências
+
+- NUNCA ler arquivos de dependências (ex.: `node_modules/`, `dist/`, `build/`, pastas de vendor
+  ou qualquer artefato gerado/instalado) para obter contexto. Usar apenas o código-fonte do
+  próprio projeto.
+
+## Unificação com a Sinergia (Efeitosdex)
+
+Existe um plano de reunificação da Bookdex com o app Sinergia (`../sinergia`), que é
+originalmente um fork desta. Plano detalhado, ainda não implementado, em
+[docs/plano-unificacao-bookdex-sinergia.md](docs/plano-unificacao-bookdex-sinergia.md).
+Consultar esse arquivo antes de iniciar qualquer trabalho de unificação.
+
