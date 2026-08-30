@@ -10,8 +10,24 @@ import { CONCEPT_ASPECTS, fetchConceptAspect } from "../lib/anthropic";
 import { definitionCardPdfBlob } from "../lib/cardPdf";
 import { estimateCost, formatCost } from "../lib/models";
 
-const ASPECT_ICONS = { deepen: BookOpen, confusion: AlertTriangle, examples: Eye, related: Link2 };
+const ASPECT_ICONS: Record<string, any> = { deepen: BookOpen, confusion: AlertTriangle, examples: Eye, related: Link2 };
 const CONCEPT_ASPECTS_WITH_ICONS = CONCEPT_ASPECTS.map((a) => ({ ...a, icon: ASPECT_ICONS[a.id] }));
+
+interface DefinitionCardProps {
+  definition: any;
+  saved: boolean;
+  onToggle: () => void;
+  onTagsChange?: (tags: string[]) => void;
+  onNoteChange?: (note: string) => void;
+  onSearchRelated?: (term: string) => void;
+  onAddRelatedCard?: (name: string) => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: () => void;
+  onConvert?: (target: string) => void;
+  onEnrich?: () => void;
+  onAspectGenerated?: (aspectId: string, text: string) => void;
+}
 
 /**
  * Verbete de conceito/definição (modo "def:"). Ao contrário do TechCard, não
@@ -31,7 +47,7 @@ export default function DefinitionCard({
   onConvert,
   onEnrich,
   onAspectGenerated,
-}) {
+}: DefinitionCardProps) {
   return (
     <CardShell
       eyebrow="CONCEITO"

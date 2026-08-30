@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { cacheKey, readCache, writeCache, dropCache, countValid, TTL_MS } from "./searchCache";
+import { cacheKey, readCache, writeCache, dropCache, countValid, TTL_MS, type CacheStore } from "./searchCache";
 
 describe("searchCache", () => {
   it("a chave ignora ordem, caixa e acento dos critérios, mas separa o resto", () => {
@@ -22,7 +22,7 @@ describe("searchCache", () => {
   });
 
   it("poda as entradas mais antigas ao passar do teto", () => {
-    let store = {};
+    let store: CacheStore = {};
     for (let i = 0; i < 70; i++) store = writeCache(store, `k${i}`, i, 1000 + i);
     expect(Object.keys(store)).toHaveLength(60);
     expect(store.k0).toBeUndefined();

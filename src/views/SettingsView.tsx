@@ -18,6 +18,8 @@ import {
   costOfByModel,
   totalsOf,
   monthSpend,
+  emptyBucket,
+  type UsageState,
 } from "../lib/usage";
 import { countValid } from "../lib/searchCache";
 import { useData } from "../state/DataContext";
@@ -91,7 +93,7 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
   const [status, setStatus] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
-  const [usage, setUsage] = useState(null);
+  const [usage, setUsage] = useState<UsageState | null>(null);
   const [budget, setBudget] = useState(0);
   const [budgetDraft, setBudgetDraft] = useState("");
 
@@ -152,7 +154,7 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
 
   if (!loaded) return null;
 
-  const totals = usage ? totalsOf(usage.byModel) : null;
+  const totals = usage ? totalsOf(usage.byModel) : emptyBucket();
   const spentThisMonth = usage ? monthSpend(usage) : 0;
   const cachedCount = countValid(searchCache);
 

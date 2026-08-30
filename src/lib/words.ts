@@ -1,11 +1,33 @@
 import { slug } from "../theme";
 
+export interface WordItem {
+  id: string;
+  word: string;
+  language: string;
+  languageCode: string;
+  meaning?: string;
+  pinyin?: string;
+  radical?: string;
+  characters?: unknown[];
+  savedAt?: number;
+  tags?: string[];
+  note?: string;
+  [key: string]: unknown;
+}
+
+export interface WordGroup {
+  displayName: string;
+  words: WordItem[];
+}
+
+export type WordsState = Record<string, WordGroup>;
+
 /** Chave da "pasta" de idioma dentro de `words`, a partir do código ou nome retornado pela API. */
-export function wordLangKey(languageCode, language) {
+export function wordLangKey(languageCode?: string, language?: string) {
   return slug(languageCode || language || "outro");
 }
 
-export function isMandarin(languageCode) {
+export function isMandarin(languageCode?: string) {
   return (languageCode || "").toLowerCase() === "zh";
 }
 
@@ -15,20 +37,20 @@ export function isMandarin(languageCode) {
  * codificação por codepoint, senão palavras diferentes colidiriam todas no
  * mesmo id "".
  */
-export function wordItemId(word) {
+export function wordItemId(word: string) {
   const base = slug(word);
   if (base) return base;
   return (
     "w-" +
     Array.from(word || "")
-      .map((c) => c.codePointAt(0).toString(36))
+      .map((c) => (c.codePointAt(0) ?? 0).toString(36))
       .join("")
   );
 }
 
 /** Núcleo aproximado de uma palavra pra casar variações de plural/gênero — só
  * faz sentido em escrita latina; `slug()` vazio (CJK etc.) nunca "casa" com nada. */
-function wordCoreKey(word) {
+function wordCoreKey(word: string) {
   let w = slug(word);
   if (!w) return "";
   w = w.replace(/oes$/, "ao").replace(/aes$/, "ao").replace(/ais$/, "al");
@@ -44,7 +66,7 @@ function wordCoreKey(word) {
  * por igualdade exata (texto bruto ou slug), depois por uma aproximação de
  * plural/gênero (só em escrita latina). Retorna `{ item, exact }` ou `null`.
  */
-export function findSavedWord(words, query) {
+export function findSavedWord(words: WordsState | undefined | null, query: string) {
   const raw = (query || "").trim();
   if (!raw) return null;
   const qSlug = slug(raw);

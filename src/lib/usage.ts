@@ -19,11 +19,31 @@
 import { getJSON, setJSON, KEYS } from "./storage";
 import { costOf, MODELS } from "./models";
 
-export function emptyBucket() {
+export interface UsageBucket {
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+}
+
+export interface UsageByModel {
+  [model: string]: Partial<UsageBucket>;
+}
+
+export interface MonthEntry {
+  byModel: UsageByModel;
+}
+
+export interface UsageState {
+  since: number | null;
+  byModel: UsageByModel;
+  months: { [month: string]: MonthEntry };
+}
+
+export function emptyBucket(): UsageBucket {
   return { calls: 0, inputTokens: 0, outputTokens: 0 };
 }
 
-export function emptyUsage() {
+export function emptyUsage(): UsageState {
   return { since: null, byModel: {}, months: {} };
 }
 
@@ -38,21 +58,22 @@ export function monthKey(ts = Date.now()) {
  * outputTokens, since }`), que é atribuído inteiro ao Sonnet — era o único
  * modelo em uso quando aqueles números foram gravados.
  */
-export function normalizeUsage(raw) {
+export function normalizeUsage(raw: unknown): UsageState {
   if (!raw || typeof raw !== "object") return emptyUsage();
-  if (raw.byModel || raw.months) {
-    return { since: raw.since ?? null, byModel: raw.byModel || {}, months: raw.months || {} };
+  const r = raw as Record<string, any>;
+  if (r.byModel || r.months) {
+    return { since: r.since ?? null, byModel: r.byModel || {}, months: r.months || {} };
   }
-  if (!raw.calls) return { ...emptyUsage(), since: raw.since ?? null };
-  const legacy = {
-    calls: raw.calls || 0,
-    inputTokens: raw.inputTokens || 0,
-    outputTokens: raw.outputTokens || 0,
+  if (!r.calls) return { ...emptyUsage(), since: r.since ?? null };
+  const legacy: UsageBucket = {
+    calls: r.calls || 0,
+    inputTokens: r.inputTokens || 0,
+    outputTokens: r.outputTokens || 0,
   };
-  return { since: raw.since ?? null, byModel: { [MODELS.sonnet]: legacy }, months: {} };
+  return { since: r.since ?? null, byModel: { [MODELS.sonnet]: legacy }, months: {} };
 }
 
-function addTo(bucket, usage) {
+function addTo(bucket: Partial<UsageBucket> | undefined, usage: { input_tokens?: number; output_tokens?: number }): UsageBucket {
   return {
     calls: (bucket?.calls || 0) + 1,
     inputTokens: (bucket?.inputTokens || 0) + (usage.input_tokens || 0),
@@ -61,7 +82,12 @@ function addTo(bucket, usage) {
 }
 
 /** Soma uma chamada ao acumulado e ao mês corrente. Função pura. */
-export function recordCall(state, model, usage, now = Date.now()) {
+export function recordCall(
+  state: unknown,
+  model: string,
+  usage: { input_tokens?: number; output_tokens?: number },
+  now = Date.now()
+): UsageState {
   const base = normalizeUsage(state);
   const mk = monthKey(now);
   const month = base.months[mk] || { byModel: {} };
@@ -76,14 +102,14 @@ export function recordCall(state, model, usage, now = Date.now()) {
 }
 
 /** Custo total (USD) de um mapa `byModel`. */
-export function costOfByModel(byModel) {
+export function costOfByModel(byModel: UsageByModel | undefined) {
   return Object.entries(byModel || {}).reduce(
     (sum, [model, b]) => sum + costOf(model, b.inputTokens || 0, b.outputTokens || 0),
     0
   );
 }
 
-export function totalsOf(byModel) {
+export function totalsOf(byModel: UsageByModel | undefined) {
   return Object.values(byModel || {}).reduce(
     (acc, b) => ({
       calls: acc.calls + (b.calls || 0),
@@ -95,7 +121,7 @@ export function totalsOf(byModel) {
 }
 
 /** Custo já gasto no mês corrente, em USD. */
-export function monthSpend(state, now = Date.now()) {
+export function monthSpend(state: unknown, now = Date.now()) {
   const base = normalizeUsage(state);
   return costOfByModel(base.months[monthKey(now)]?.byModel);
 }
@@ -121,7 +147,10 @@ export async function trackUsage(model, usage) {
 /* ------------------------------------------------------------- teto mensal */
 
 export class BudgetExceededError extends Error {
-  constructor(limit, spent) {
+  limit: number;
+  spent: number;
+
+  constructor(limit: number, spent: number) {
     super(
       `Teto mensal de US$ ${limit.toFixed(2)} atingido (US$ ${spent.toFixed(2)} gastos neste mês). ` +
         "Suba ou desligue o limite em Configurações."
@@ -138,7 +167,7 @@ export async function getMonthlyBudget() {
   return typeof value === "number" && value > 0 ? value : 0;
 }
 
-export async function setMonthlyBudget(usd) {
+export async function setMonthlyBudget(usd: number | string) {
   const value = Number(usd);
   await setJSON(KEYS.monthlyBudget, Number.isFinite(value) && value > 0 ? value : 0);
 }

@@ -13,7 +13,7 @@ import { CompareBanner, CompareBar, SelectBar } from "../components/DexSelection
 import WordsView from "./WordsView";
 import { useData } from "../state/DataContext";
 import { usePrefs } from "../state/PrefsContext";
-import { groupItems, itemKind, itemLabel, categoryOfKind, withItems } from "../lib/savedModel";
+import { groupItems, itemKind, itemLabel, categoryOfKind, withItems, type SavedGroup, type SavedItem } from "../lib/savedModel";
 import { plantFreeText } from "../lib/plants";
 
 const BACKUP_REMINDER_DAYS = 14;
@@ -91,35 +91,35 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
    */
   const activeEntries = useMemo(() => {
     return entries
-      .map(([key, group]) => [
+      .map(([key, group]): [string, SavedGroup] => [
         key,
         withItems(
           group,
           groupItems(group).filter((it) => categoryOfKind(itemKind(it, group)) === category)
         ),
       ])
-      .filter(([, group]) => group.items.length > 0);
+      .filter(([, group]) => (group.items || []).length > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [saved, category]);
 
   const allTags = useMemo(() => {
-    const set = new Set();
+    const set = new Set<string>();
     for (const [, group] of activeEntries) {
-      for (const item of group.items) {
+      for (const item of group.items || []) {
         for (const t of item.tags || []) set.add(t);
       }
     }
     return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [activeEntries]);
 
-  function guideText(subjectDisplay, item) {
+  function guideText(subjectDisplay: string, item: SavedItem) {
     if (!detailCache) return "";
-    const detail = detailCache[`${slug(subjectDisplay)}:${item.id}`];
+    const detail = detailCache[`${slug(subjectDisplay)}:${item.id}`] as any;
     if (!detail) return "";
     return [
       detail.overview,
       detail.tip,
-      ...(detail.steps || []).flatMap((s) => [s.title, s.detail]),
+      ...(detail.steps || []).flatMap((s: any) => [s.title, s.detail]),
       ...(detail.rightSigns || []),
       ...(detail.wrongSigns || []),
     ]
@@ -128,14 +128,14 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
   }
 
   /** Texto livre de um item salvo (nota + descrição/definição + exemplo), pra busca full-text. */
-  function itemFreeText(it) {
+  function itemFreeText(it: SavedItem) {
     return [
       it.note,
       it.description,
       it.definition,
       it.example,
-      ...(it.keyPoints || []),
-      ...(it.relatedTerms || []),
+      ...((it.keyPoints as string[]) || []),
+      ...((it.relatedTerms as string[]) || []),
       it.bestFor,
       it.kind === "plant" ? plantFreeText(it) : "",
     ]

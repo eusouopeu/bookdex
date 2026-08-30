@@ -1,7 +1,30 @@
+import type { ReactNode, MouseEvent } from "react";
 import { COLORS } from "../theme";
 import PokeballIcon from "./PokeballIcon";
 import TagEditor from "./TagEditor";
 import NoteEditor from "./NoteEditor";
+
+interface CardShellProps {
+  eyebrow?: ReactNode;
+  title: ReactNode;
+  titleSize?: number;
+  subtitle?: ReactNode;
+  media?: ReactNode;
+  actions?: ReactNode;
+  saved?: boolean;
+  onToggle?: () => void;
+  captureLabel?: string;
+  tags?: string[];
+  onTagsChange?: (tags: string[]) => void;
+  note?: string;
+  onNoteChange?: (note: string) => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: () => void;
+  irrelevant?: boolean;
+  padding?: string;
+  children?: ReactNode;
+}
 
 /**
  * A casca comum de todo card do app (técnica, conceito, tipo, palavra, planta).
@@ -36,7 +59,7 @@ export default function CardShell({
   irrelevant,
   padding = "12px",
   children,
-}) {
+}: CardShellProps) {
   return (
     <div
       onClick={selectable ? onSelectToggle : undefined}
@@ -131,7 +154,15 @@ export default function CardShell({
  * Botão-ícone do cabeçalho, com a área de toque de 44px que os cards já usavam
  * (padding 9 + margin -9 mantém o alvo grande sem alargar a fila visualmente).
  */
-export function CardIconButton({ onClick, label, active, disabled, children }) {
+interface CardIconButtonProps {
+  onClick: (e: MouseEvent) => void;
+  label: string;
+  active?: boolean;
+  disabled?: boolean;
+  children?: ReactNode;
+}
+
+export function CardIconButton({ onClick, label, active, disabled, children }: CardIconButtonProps) {
   return (
     <button
       onClick={onClick}

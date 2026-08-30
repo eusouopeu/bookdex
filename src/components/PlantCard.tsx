@@ -28,6 +28,19 @@ const PLANT_ASPECTS_WITH_ICONS = PLANT_ASPECTS.map((a) => ({ ...a, icon: ASPECT_
  * de busca o conteúdo vive no estado local até a captura, mas ainda entra no
  * PDF de compartilhar via `localAspects` (ver onLocalChange).
  */
+interface PlantCardProps {
+  plant: any;
+  saved: boolean;
+  onToggle: () => void;
+  onTagsChange?: (tags: string[]) => void;
+  onNoteChange?: (note: string) => void;
+  onImagesChange?: (images: unknown) => void;
+  onAspectGenerated?: (aspectId: string, text: string) => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: () => void;
+}
+
 export default function PlantCard({
   plant,
   saved,
@@ -39,7 +52,7 @@ export default function PlantCard({
   selectable,
   selected,
   onSelectToggle,
-}) {
+}: PlantCardProps) {
   const [localAspects, setLocalAspects] = useState({});
   const title = plant.commonNames?.[0] || plant.scientificName || plant.name || "Planta";
   const aspects = { ...(plant.aspects || {}), ...localAspects };

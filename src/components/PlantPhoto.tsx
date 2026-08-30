@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useRef, useState, type CSSProperties, type ChangeEvent } from "react";
 import { Camera, Loader2, X } from "lucide-react";
 import { COLORS } from "../theme";
 import { readAndCompressImage } from "../lib/imageUtils";
@@ -14,29 +14,35 @@ import { readAndCompressImage } from "../lib/imageUtils";
  */
 const HEIGHT = 170;
 
-export default function PlantPhoto({ images, onChange, capture = "environment" }) {
+interface PlantPhotoProps {
+  images?: string[];
+  onChange?: (images: string[]) => void;
+  capture?: "environment" | "user" | boolean;
+}
+
+export default function PlantPhoto({ images, onChange, capture = "environment" }: PlantPhotoProps) {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState(null);
-  const fileInput = useRef(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   const list = images || [];
   const editable = !!onChange;
 
-  async function onFilePicked(e) {
+  async function onFilePicked(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files && e.target.files[0];
     e.target.value = "";
     if (!file) return;
     setError(null);
     setBusy(true);
     try {
-      onChange([...list, await readAndCompressImage(file)]);
-    } catch (err) {
+      onChange?.([...list, await readAndCompressImage(file)]);
+    } catch (err: any) {
       setError(err.message || "Não foi possível usar essa foto.");
     } finally {
       setBusy(false);
     }
   }
 
-  const frame = {
+  const frame: CSSProperties = {
     width: "100%",
     height: `${HEIGHT}px`,
     borderRadius: "8px",
@@ -89,7 +95,7 @@ export default function PlantPhoto({ images, onChange, capture = "environment" }
         <img src={list[0]} alt="" style={{ width: "100%", height: "100%", objectFit: "cover", display: "block" }} />
         {editable && (
           <button
-            onClick={() => onChange(list.slice(1))}
+            onClick={() => onChange?.(list.slice(1))}
             aria-label="Remover foto da planta"
             title="Remover foto"
             style={{

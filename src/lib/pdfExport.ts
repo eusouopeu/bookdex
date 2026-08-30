@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { slug } from "../theme";
-import { groupItems, itemKind, categoryOfKind } from "./savedModel";
+import { groupItems, itemKind, categoryOfKind, type SavedState } from "./savedModel";
 import { PLANT_ASPECTS } from "./anthropic";
 
 const MARGIN = 15;
@@ -9,7 +9,7 @@ const PAGE_HEIGHT = 297;
 const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2;
 
 /** Assuntos com pelo menos um item da categoria pedida, já com os itens filtrados. */
-function sectionsOf(saved, category) {
+function sectionsOf(saved: SavedState, category: string) {
   const out = [];
   for (const group of Object.values(saved || {})) {
     const items = groupItems(group).filter((it) => categoryOfKind(itemKind(it, group)) === category);

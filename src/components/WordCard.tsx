@@ -21,7 +21,15 @@ import { isSpeechSupported, speak } from "../lib/speech";
  * A pronúncia usa o `speechSynthesis` do próprio sistema — offline, sem custo
  * de API (ver lib/speech.js).
  */
-export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteChange }) {
+interface WordCardProps {
+  data: any;
+  saved: boolean;
+  onToggle?: (data: any) => void;
+  onTagsChange?: (tags: string[]) => void;
+  onNoteChange?: (note: string) => void;
+}
+
+export default function WordCard({ data, saved, onToggle, onTagsChange, onNoteChange }: WordCardProps) {
   const mandarin = isMandarin(data.languageCode);
   const characters = mandarin ? data.characters || [] : [];
   const isCompound = characters.length > 1;

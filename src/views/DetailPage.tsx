@@ -404,7 +404,7 @@ function SectionTitle({ children }) {
   );
 }
 
-function SignList({ items, good }) {
+function SignList({ items, good = false }: { items: string[]; good?: boolean }) {
   const accent = good ? "var(--success)" : "var(--danger)";
   const Icon = good ? Check : X;
   return (

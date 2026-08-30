@@ -37,6 +37,10 @@ SEMPRE usar a skill `/caveman` (modo de comunicação ultra-comprimido) em toda 
 - Sempre usar **TypeScript**, **Tailwind CSS**, ícones **Lucide** e fonte **Montserrat** com
   espaçamento entrelinhas (line-height) de 1.5.
 - Dar preferência a **botões-ícone** em vez de botões com texto.
+- Projeto migrado para TypeScript (arquivos `.ts`/`.tsx`, `tsconfig.json` na raiz com
+  `strict: false`). Novos arquivos devem ser criados como `.ts`/`.tsx` com tipos explícitos
+  (interfaces de props, tipos de domínio em vez de `unknown`/`any` quando viável). Rodar
+  `npx tsc --noEmit` antes de considerar uma mudança concluída.
 
 ## Testes
 

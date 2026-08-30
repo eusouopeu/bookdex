@@ -281,7 +281,7 @@ export async function fetchTechniques(subject, avoid, criteria, effort) {
   return parsed;
 }
 
-export async function fetchDefinition(term, avoid, effort) {
+export async function fetchDefinition(term, avoid?, effort?) {
   const parsed = await sendMessageJSON({
     system: DEFINITION_SYSTEM_PROMPT,
     user: term + avoidNote(avoid),

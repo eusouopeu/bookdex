@@ -1,13 +1,20 @@
 import { useState } from "react";
 import { Folder, Plus, X } from "lucide-react";
 import { COLORS, primaryButtonStyle } from "../theme";
+import type { CollectionsState } from "../lib/collections";
+
+interface CollectionPickerProps {
+  collections: CollectionsState;
+  onPick: (collectionId: string | null, newName?: string) => void;
+  onClose: () => void;
+}
 
 /**
  * Bottom sheet para escolher (ou criar) uma coleção ao adicionar itens
  * selecionados em lote. `onPick(collectionId, newName?)`: `collectionId` nulo
  * significa "criar uma coleção nova com este nome".
  */
-export default function CollectionPicker({ collections, onPick, onClose }) {
+export default function CollectionPicker({ collections, onPick, onClose }: CollectionPickerProps) {
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
   const list = Object.values(collections || {}).sort((a, b) => b.createdAt - a.createdAt);

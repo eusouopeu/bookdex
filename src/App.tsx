@@ -159,7 +159,7 @@ export default function App() {
    * `force` pula o cache e refaz a chamada — é o que o botão "Refazer busca"
    * usa. Sem ele, um termo já buscado nos mesmos parâmetros volta de graça.
    */
-  async function handleSearch(override, { force = false } = {}) {
+  async function handleSearch(override?: { mode: string; term: string } | null, { force = false } = {}) {
     let mode, term;
     if (override) {
       ({ mode, term } = override);

@@ -1,14 +1,21 @@
-import { useState } from "react";
+import { useState, type MouseEvent } from "react";
 import { Share2, Check, Loader2 } from "lucide-react";
 import { COLORS, slug } from "../theme";
 import { shareOrDownloadFile } from "../lib/share";
 
 /** Botão de compartilhar reutilizável: gera um PDF do card sob demanda (via `render`) e compartilha/baixa. */
-export default function ShareButton({ title, render, size = 15, label }) {
+interface ShareButtonProps {
+  title: string;
+  render: () => Promise<Blob | null> | Blob | null;
+  size?: number;
+  label?: string;
+}
+
+export default function ShareButton({ title, render, size = 15, label }: ShareButtonProps) {
   const [busy, setBusy] = useState(false);
   const [justShared, setJustShared] = useState(false);
 
-  async function handleClick(e) {
+  async function handleClick(e: MouseEvent) {
     e.stopPropagation();
     if (busy) return;
     setBusy(true);

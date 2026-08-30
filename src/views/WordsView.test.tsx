@@ -48,10 +48,14 @@ describe("WordsView", () => {
 
   it("pronuncia a palavra na voz do idioma ao tocar no alto-falante", async () => {
     const speak = vi.fn();
-    window.speechSynthesis = { speak, cancel: vi.fn(), getVoices: () => [{ lang: "zh-CN", name: "Tingting" }] };
-    window.SpeechSynthesisUtterance = function (text) {
+    window.speechSynthesis = {
+      speak,
+      cancel: vi.fn(),
+      getVoices: () => [{ lang: "zh-CN", name: "Tingting" } as unknown as SpeechSynthesisVoice],
+    } as unknown as SpeechSynthesis;
+    window.SpeechSynthesisUtterance = function (this: any, text?: string) {
       this.text = text;
-    };
+    } as unknown as typeof SpeechSynthesisUtterance;
 
     const user = userEvent.setup();
     renderWithData(<WordsView searchEffort="medium" />);
@@ -65,10 +69,14 @@ describe("WordsView", () => {
   });
 
   it("avisa quando o dispositivo não tem voz instalada para o idioma", async () => {
-    window.speechSynthesis = { speak: vi.fn(), cancel: vi.fn(), getVoices: () => [{ lang: "pt-BR", name: "Luciana" }] };
-    window.SpeechSynthesisUtterance = function (text) {
+    window.speechSynthesis = {
+      speak: vi.fn(),
+      cancel: vi.fn(),
+      getVoices: () => [{ lang: "pt-BR", name: "Luciana" } as unknown as SpeechSynthesisVoice],
+    } as unknown as SpeechSynthesis;
+    window.SpeechSynthesisUtterance = function (this: any, text?: string) {
       this.text = text;
-    };
+    } as unknown as typeof SpeechSynthesisUtterance;
 
     const user = userEvent.setup();
     renderWithData(<WordsView searchEffort="medium" />);

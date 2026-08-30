@@ -40,7 +40,8 @@ export default function QRScanner({ onScanned, onClose }) {
 
     (async () => {
       try {
-        detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+        // BarcodeDetector ainda não faz parte do lib.dom padrão do TS.
+        detector = new (window as any).BarcodeDetector({ formats: ["qr_code"] });
         const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
         if (cancelled) {
           stream.getTracks().forEach((t) => t.stop());

@@ -1,8 +1,9 @@
+import type { CSSProperties } from "react";
 import { COLORS } from "../theme";
 
 const shimmerKeyframes = `@keyframes skeletonShimmer { 0% { background-position: 100% 50%; } 100% { background-position: 0% 50%; } }`;
 
-function Bar({ width, height = "10px", style }) {
+function Bar({ width, height = "10px", style }: { width: string; height?: string; style?: CSSProperties }) {
   return (
     <div
       style={{

@@ -5,10 +5,11 @@
  * completo do item, incluindo o guia passo a passo já cacheado, quando existir.
  */
 import { slug } from "../theme";
-import { groupItems, itemKind, isKnowledgeKind } from "./savedModel";
+import { groupItems, itemKind, isKnowledgeKind, type SavedState, type SavedItem } from "./savedModel";
 import { PLANT_ASPECTS } from "./anthropic";
+import type { WordsState, WordItem, WordGroup } from "./words";
 
-function escapeCsvField(value) {
+function escapeCsvField(value: unknown) {
   const str = String(value ?? "");
   if (/[;"\n]/.test(str)) {
     return `"${str.replace(/"/g, '""')}"`;
@@ -16,17 +17,17 @@ function escapeCsvField(value) {
   return str;
 }
 
-function frontOf(kind, item) {
+function frontOf(kind: string, item: SavedItem) {
   if (kind === "definition") return item.term;
   if (kind === "plant") return item.commonNames?.[0] || item.scientificName || item.name;
   return item.name;
 }
 
-function backOf(kind, item, detail) {
+function backOf(kind: string, item: SavedItem, detail: any) {
   if (kind === "definition") {
     return [
       item.definition,
-      ...(item.keyPoints || []).map((k) => `• ${k}`),
+      ...((item.keyPoints as string[]) || []).map((k) => `• ${k}`),
       item.example ? `Exemplo: ${item.example}` : "",
       item.note ? `Nota: ${item.note}` : "",
     ]
@@ -57,7 +58,7 @@ function backOf(kind, item, detail) {
   return lines.filter(Boolean).join("\n");
 }
 
-function tagsOf(displayName, kind, item) {
+function tagsOf(displayName: string | undefined, kind: string, item: SavedItem) {
   const tags = ["bookdex", `bookdex::${kind}`, `assunto::${slug(displayName)}`];
   for (const t of item.tags || []) tags.push(slug(t));
   return tags.join(" ");
@@ -68,30 +69,32 @@ function tagsOf(displayName, kind, item) {
  * pinyin/radical e a decomposição por caractere quando houver — é o que faz o
  * cartão servir pra revisar vocabulário fora do app.
  */
-function wordBack(w) {
+function wordBack(w: WordItem) {
   return [
     w.meaning || "",
     w.pinyin ? `Pinyin: ${w.pinyin}` : "",
     w.radical ? `Radical: ${w.radical}` : "",
-    ...(w.characters || []).map((c) => `${c.hanzi} (${c.pinyin || ""}) — ${c.meaning || ""}`),
+    ...((w.characters as { hanzi: string; pinyin?: string; meaning?: string }[]) || []).map(
+      (c) => `${c.hanzi} (${c.pinyin || ""}) — ${c.meaning || ""}`
+    ),
     w.note ? `Nota: ${w.note}` : "",
   ]
     .filter(Boolean)
     .join("\n");
 }
 
-function wordTags(group, w) {
+function wordTags(group: WordGroup, w: WordItem) {
   const tags = ["bookdex", "bookdex::palavra", `idioma::${slug(group.displayName)}`];
   for (const t of w.tags || []) tags.push(slug(t));
   return tags.join(" ");
 }
 
-export function buildAnkiCsv(saved, detailCache, words) {
+export function buildAnkiCsv(saved: SavedState, detailCache: Record<string, any>, words: WordsState) {
   const rows = ["#separator:Semicolon", "#html:false", "#tags column:3"];
   for (const group of Object.values(saved || {})) {
     for (const item of groupItems(group)) {
       const kind = itemKind(item, group);
-      const detail = kind === "technique" ? detailCache?.[`${slug(group.displayName)}:${item.id}`] : null;
+      const detail = kind === "technique" ? detailCache?.[`${slug(group.displayName || "")}:${item.id}`] : null;
       const row = [frontOf(kind, item), backOf(kind, item, detail), tagsOf(group.displayName, kind, item)]
         .map(escapeCsvField)
         .join(";");
@@ -106,8 +109,8 @@ export function buildAnkiCsv(saved, detailCache, words) {
   return rows.join("\n");
 }
 
-export function countAnkiRows(saved, words) {
-  const items = Object.values(saved || {}).reduce((sum, group) => sum + groupItems(group).length, 0);
-  const vocab = Object.values(words || {}).reduce((sum, group) => sum + (group.words || []).length, 0);
+export function countAnkiRows(saved: SavedState, words: WordsState) {
+  const items = Object.values(saved || {}).reduce((sum: number, group) => sum + groupItems(group).length, 0);
+  const vocab = Object.values(words || {}).reduce((sum: number, group) => sum + (group.words || []).length, 0);
   return items + vocab;
 }

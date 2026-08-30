@@ -27,7 +27,14 @@ const bigBtnStyle = {
  * cabeçalho do card (DeepDiveIconButton), controlado por useConceptDeepDive.
  * `deepDive` é só leitura aqui: { data, open, error }.
  */
-export default function ConceptExpand({ term, category, onAddRelatedCard, deepDive }) {
+interface ConceptExpandProps {
+  term: string;
+  category?: string;
+  onAddRelatedCard?: (name: string) => void;
+  deepDive?: { data?: any; open?: boolean; error?: string } | null;
+}
+
+export default function ConceptExpand({ term, category, onAddRelatedCard, deepDive }: ConceptExpandProps) {
   const [related, setRelated] = useState(null);
   const [relatedOpen, setRelatedOpen] = useState(false);
   const [relatedLoading, setRelatedLoading] = useState(false);

@@ -1,4 +1,18 @@
-import { groupItems, itemKind } from "./savedModel";
+import { groupItems, itemKind, type SavedState } from "./savedModel";
+
+export interface CollectionRef {
+  subjectKey: string;
+  itemId: string;
+}
+
+export interface Collection {
+  id: string;
+  name: string;
+  createdAt: number;
+  refs: CollectionRef[];
+}
+
+export type CollectionsState = Record<string, Collection>;
 
 /**
  * Coleções manuais: pastas nomeadas pelo usuário que agrupam itens de
@@ -20,7 +34,7 @@ export function createCollectionId() {
 }
 
 /** Resolve as refs de uma coleção contra o estado atual de `saved`, descartando órfãs. */
-export function resolveCollectionItems(saved, refs) {
+export function resolveCollectionItems(saved: SavedState, refs: CollectionRef[] | undefined | null) {
   const resolved = [];
   for (const ref of refs || []) {
     const group = saved[ref.subjectKey];
@@ -32,6 +46,6 @@ export function resolveCollectionItems(saved, refs) {
   return resolved;
 }
 
-export function refKey(ref) {
+export function refKey(ref: CollectionRef) {
   return `${ref.subjectKey}:${ref.itemId}`;
 }

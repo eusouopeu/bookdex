@@ -6,7 +6,7 @@
 const MAX_DIM = 900;
 const JPEG_QUALITY = 0.72;
 
-export function readAndCompressImage(file) {
+export function readAndCompressImage(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));

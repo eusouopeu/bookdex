@@ -8,7 +8,12 @@ import { ITEM_KINDS, KIND_LABELS } from "../lib/savedModel";
  * dois destinos possíveis; a conversão em si é local e instantânea (ver
  * lib/convert.js), e o card resultante é quem oferece completar com IA.
  */
-export default function ConvertButton({ kind, onConvert }) {
+interface ConvertButtonProps {
+  kind: string;
+  onConvert?: (target: string) => void;
+}
+
+export default function ConvertButton({ kind, onConvert }: ConvertButtonProps) {
   const [open, setOpen] = useState(false);
   if (!onConvert) return null;
   const targets = ITEM_KINDS.filter((k) => k !== kind);

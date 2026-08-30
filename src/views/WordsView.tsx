@@ -14,7 +14,7 @@ const CONFIRM_THRESHOLD = 3;
  * Pokédex. Agora ela é o modo "pal:" da barra única, e esta tela faz o mesmo
  * que as outras categorias: mostra o que já foi capturado.
  */
-export default function WordsView() {
+export default function WordsView(_props: { searchEffort?: string } = {}) {
   const {
     words,
     storageLoaded,

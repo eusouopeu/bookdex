@@ -12,6 +12,23 @@ import { listItemCardPdfBlob } from "../lib/cardPdf";
  * Card de um item de enumeração/tipo (modo "list:"). Como TechCard, mas sem
  * stats — apenas nome, categoria e descrição.
  */
+interface ListItemCardProps {
+  subjectDisplay?: string;
+  item: any;
+  saved: boolean;
+  onToggle: () => void;
+  onTagsChange?: (tags: string[]) => void;
+  onNoteChange?: (note: string) => void;
+  onAddRelatedCard?: (name: string) => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: () => void;
+  irrelevant?: boolean;
+  onMarkIrrelevant?: () => void;
+  onConvert?: (target: string) => void;
+  onEnrich?: () => void;
+}
+
 export default function ListItemCard({
   subjectDisplay,
   item,
@@ -27,7 +44,7 @@ export default function ListItemCard({
   onMarkIrrelevant,
   onConvert,
   onEnrich,
-}) {
+}: ListItemCardProps) {
   const deepDive = useConceptDeepDive(item.name, item.category, item.description);
   return (
     <CardShell

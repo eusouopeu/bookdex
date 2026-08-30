@@ -1,5 +1,5 @@
 import { slug } from "../theme";
-import { groupItems, itemLabel, itemKind } from "./savedModel";
+import { groupItems, itemLabel, itemKind, type SavedState } from "./savedModel";
 
 /**
  * Procura, em QUALQUER assunto já salvo, um item cujo nome normalizado
@@ -7,7 +7,7 @@ import { groupItems, itemLabel, itemKind } from "./savedModel";
  * algo parecido antes de confirmar uma nova captura, mesmo que o item
  * pareça novo por estar em outro assunto.
  */
-export function findSimilarItem(saved, name) {
+export function findSimilarItem(saved: SavedState | undefined | null, name: string) {
   const targetSlug = slug(name);
   if (!targetSlug) return null;
   for (const group of Object.values(saved || {})) {
@@ -27,7 +27,7 @@ export function findSimilarItem(saved, name) {
  * de termos relacionados abrirem direto o card já salvo, sem gastar uma
  * chamada nova pra algo que já está na Pokédex.
  */
-export function findSavedDefinition(saved, term) {
+export function findSavedDefinition(saved: SavedState | undefined | null, term: string) {
   const targetSlug = slug(term);
   if (!targetSlug) return null;
   for (const group of Object.values(saved || {})) {

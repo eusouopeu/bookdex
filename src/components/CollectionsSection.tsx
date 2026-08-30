@@ -14,7 +14,7 @@ import {
   Clock,
   } from "lucide-react";
 import { COLORS, slug } from "../theme";
-import { resolveCollectionItems, refKey } from "../lib/collections";
+import { resolveCollectionItems, refKey, type Collection, type CollectionRef, type CollectionsState } from "../lib/collections";
 import { buildCollectionExportPayload } from "../lib/importer";
 import { shareOrDownloadFile } from "../lib/share";
 import { fitsInQr, generateQrDataUrl } from "../lib/qr";
@@ -24,8 +24,34 @@ import ListItemCard from "./ListItemCard";
 import PlantCard from "./PlantCard";
 import QRCodeModal from "./QRCodeModal";
 import GoalSuggestions from "./GoalSuggestions";
+import type { SavedState, SavedGroup, SavedItem } from "../lib/savedModel";
 
 const CONFIRM_THRESHOLD = 3;
+
+interface ResolvedItem {
+  ref: CollectionRef;
+  group: SavedGroup;
+  item: SavedItem;
+  kind: string;
+}
+
+interface CollectionsSectionProps {
+  collections: CollectionsState;
+  saved: SavedState;
+  detailCache: Record<string, unknown>;
+  onCreateCollection: (name: string) => void;
+  onDeleteCollection: (id: string) => void;
+  onRemoveFromCollection: (collectionId: string, ref: CollectionRef) => void;
+  onAddToCollection?: (collectionId: string, refs: CollectionRef[]) => void;
+  onToggleSave: (mode: string, subjectDisplay: string, payload: any) => void;
+  onOpenDetail?: (subjectDisplay: string, item: any) => void;
+  hasDetail?: (subjectDisplay: string, item: any) => boolean;
+  onUpdateTags?: (subjectKey: string, itemId: string, kind: string, tags: string[]) => void;
+  onUpdateNote?: (subjectKey: string, itemId: string, kind: string, note: string) => void;
+  onUpdateImages?: (subjectKey: string, itemId: string, kind: string, images: unknown) => void;
+  onUpdateItemAspect?: (subjectKey: string, itemId: string, aspectId: string, text: string) => void;
+  onSearchRelated?: (mode: string, term: string) => void;
+}
 
 /**
  * Aba "Coleções" dentro da Pokédex: pastas manuais que cruzam itens de
@@ -49,53 +75,55 @@ export default function CollectionsSection({
   onUpdateImages,
   onUpdateItemAspect,
   onSearchRelated,
-}) {
-  const [collapsed, setCollapsed] = useState({});
+}: CollectionsSectionProps) {
+  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
-  const [confirmingDelete, setConfirmingDelete] = useState(null);
-  const [exportMsg, setExportMsg] = useState(null);
-  const [qrModal, setQrModal] = useState(null); // { title, dataUrl }
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
+  const [qrModal, setQrModal] = useState<{ title: string; dataUrl: string } | null>(null);
   const [filterText, setFilterText] = useState("");
-  const [activeTag, setActiveTag] = useState(null);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState("recent"); // "recent" | "name"
 
   const list = Object.values(collections || {}).sort((a, b) => b.createdAt - a.createdAt);
 
   const allResolvedByCollection = useMemo(() => {
-    const map = {};
-    for (const col of list) map[col.id] = resolveCollectionItems(saved, col.refs);
+    const map: Record<string, ResolvedItem[]> = {};
+    for (const col of list) map[col.id] = resolveCollectionItems(saved, col.refs) as ResolvedItem[];
     return map;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [collections, saved]);
 
   const allTags = useMemo(() => {
-    const set = new Set();
+    const set = new Set<string>();
     for (const items of Object.values(allResolvedByCollection)) {
       for (const { item } of items) for (const t of item.tags || []) set.add(t);
     }
     return [...set].sort((a, b) => a.localeCompare(b, "pt-BR"));
   }, [allResolvedByCollection]);
 
-  function filterAndSort(resolvedItems) {
+  function filterAndSort(resolvedItems: ResolvedItem[]) {
     const q = slug(filterText.trim());
     const filtered = resolvedItems.filter(({ item }) => {
       if (activeTag && !(item.tags || []).includes(activeTag)) return false;
       if (!q) return true;
-      const label = slug(item.term || item.name || "");
+      const label = slug(String(item.term || item.name || ""));
       const extra = slug([item.note, item.description, item.definition].filter(Boolean).join(" "));
       return label.includes(q) || extra.includes(q);
     });
     const copy = [...filtered];
     if (sortBy === "name") {
-      copy.sort((a, b) => (a.item.term || a.item.name || "").localeCompare(b.item.term || b.item.name || "", "pt-BR"));
+      copy.sort((a, b) =>
+        String(a.item.term || a.item.name || "").localeCompare(String(b.item.term || b.item.name || ""), "pt-BR")
+      );
     } else {
-      copy.sort((a, b) => (b.item.savedAt || 0) - (a.item.savedAt || 0));
+      copy.sort((a, b) => (Number(b.item.savedAt) || 0) - (Number(a.item.savedAt) || 0));
     }
     return copy;
   }
 
-  async function exportCollection(col) {
+  async function exportCollection(col: Collection) {
     const payload = buildCollectionExportPayload(col.id, col, saved, detailCache);
     const fileName = `bookdex-colecao-${slug(col.name)}.json`;
     const outcome = await shareOrDownloadFile(fileName, JSON.stringify(payload, null, 2), "application/json", `Bookdex — ${col.name}`);
@@ -103,13 +131,13 @@ export default function CollectionsSection({
     setTimeout(() => setExportMsg((m) => (m ? null : m)), 3200);
   }
 
-  async function addGoalSuggestion(col, suggestion) {
+  async function addGoalSuggestion(col: Collection, suggestion: { name: string; description: string }) {
     const item = { name: suggestion.name, category: "Sugestão", description: suggestion.description };
     onToggleSave("list", col.name, { item });
     onAddToCollection(col.id, [{ subjectKey: slug(col.name), itemId: slug(suggestion.name) }]);
   }
 
-  async function showCollectionQr(col) {
+  async function showCollectionQr(col: Collection) {
     const payload = buildCollectionExportPayload(col.id, col, saved, detailCache);
     const text = JSON.stringify(payload);
     if (!fitsInQr(text)) {
@@ -129,7 +157,7 @@ export default function CollectionsSection({
     setCreating(false);
   }
 
-  function requestDelete(id, count) {
+  function requestDelete(id: string, count: number) {
     if (count <= CONFIRM_THRESHOLD || confirmingDelete === id) {
       onDeleteCollection(id);
       setConfirmingDelete(null);
@@ -138,7 +166,7 @@ export default function CollectionsSection({
     }
   }
 
-  function renderCard(collectionId, resolved) {
+  function renderCard(collectionId: string, resolved: ResolvedItem) {
     const { ref, group, item, kind } = resolved;
     let card;
     if (kind === "definition") {
@@ -181,7 +209,7 @@ export default function CollectionsSection({
         <TechCard
           subjectDisplay={group.displayName}
           technique={item}
-          statLabels={item.statLabels || []}
+          statLabels={(item.statLabels as string[]) || []}
           saved={true}
           onToggle={() => onToggleSave("technique", group.displayName, { technique: item, statLabels: item.statLabels })}
           onOpenDetail={onOpenDetail ? () => onOpenDetail(group.displayName, item) : undefined}

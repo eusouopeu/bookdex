@@ -24,7 +24,15 @@ export const BLUE_TINT = {
   boxBg: "rgba(46,134,222,0.08)",
 };
 
-export function aspectButtonStyle(filled, loading, tint) {
+interface Tint {
+  buttonBorder: string;
+  buttonBg: string;
+  buttonColor: string;
+  boxBorder: string;
+  boxBg: string;
+}
+
+export function aspectButtonStyle(filled: boolean, loading: boolean, tint: Tint) {
   return {
     flex: 1,
     minWidth: 0,
@@ -56,20 +64,37 @@ export function aspectButtonStyle(filled, loading, tint) {
  * gerado ("Erros comuns (~US$ 0,003)") — custo é visível antes do gasto, não
  * só depois, no teto mensal.
  */
-export default function AspectButtons({ aspects, saved, onFetch, onGenerated, onLocalChange, tint, costLabel }) {
-  const [local, setLocal] = useState({});
-  const [open, setOpen] = useState(null);
-  const [loadingId, setLoadingId] = useState(null);
-  const [error, setError] = useState(null);
+interface AspectDef {
+  id: string;
+  label: string;
+  icon: any;
+  prompt?: string;
+}
+
+interface AspectButtonsProps {
+  aspects: AspectDef[];
+  saved?: Record<string, string>;
+  onFetch: (id: string) => Promise<string>;
+  onGenerated?: (id: string, text: string) => void;
+  onLocalChange?: (local: Record<string, string>) => void;
+  tint: Tint;
+  costLabel?: string;
+}
+
+export default function AspectButtons({ aspects, saved, onFetch, onGenerated, onLocalChange, tint, costLabel }: AspectButtonsProps) {
+  const [local, setLocal] = useState<Record<string, string>>({});
+  const [open, setOpen] = useState<string | null>(null);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (onLocalChange) onLocalChange(local);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [local]);
 
-  const values = { ...(saved || {}), ...local };
+  const values: Record<string, string> = { ...(saved || {}), ...local };
 
-  async function toggle(id) {
+  async function toggle(id: string) {
     if (values[id]) {
       setOpen((o) => (o === id ? null : id));
       return;
@@ -82,7 +107,7 @@ export default function AspectButtons({ aspects, saved, onFetch, onGenerated, on
       setLocal((prev) => ({ ...prev, [id]: text }));
       setOpen(id);
       if (onGenerated) onGenerated(id, text);
-    } catch (err) {
+    } catch (err: any) {
       setError(err instanceof MissingApiKeyError ? "Configure sua API key em Configurações." : err.message || "Falhou.");
     } finally {
       setLoadingId(null);

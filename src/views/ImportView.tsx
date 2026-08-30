@@ -11,7 +11,7 @@ import { buildPokedexMarkdown, countMarkdownItems } from "../lib/markdownExport"
 import { shareOrDownloadFile } from "../lib/share";
 import QRScanner from "../components/QRScanner";
 import { useData } from "../state/DataContext";
-import { groupItems, itemKind, categoryOfKind, withItems } from "../lib/savedModel";
+import { groupItems, itemKind, categoryOfKind, withItems, type SavedState } from "../lib/savedModel";
 
 const EXPORT_FORMATS = [
   { id: "pdf", label: "PDF" },
@@ -28,9 +28,9 @@ const EXPORT_SCOPES = [
 ];
 
 /** Filtra `saved` pra só os itens da categoria pedida ("all" não filtra nada). */
-function filterSavedByScope(saved, scope) {
+function filterSavedByScope(saved: SavedState, scope: string) {
   if (scope === "all" || scope === "words") return saved;
-  const out = {};
+  const out: SavedState = {};
   for (const [key, group] of Object.entries(saved || {})) {
     const items = groupItems(group).filter((it) => categoryOfKind(itemKind(it, group)) === scope);
     if (items.length) out[key] = withItems(group, items);

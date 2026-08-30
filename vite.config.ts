@@ -58,11 +58,11 @@ export default defineConfig({
   test: {
     // Só o app. `extracted/` guarda código que saiu do Bookdex para virar
     // outro app e não é compilado nem testado aqui (ver extracted/*/README.md).
-    include: ["src/**/*.test.{js,jsx}"],
+    include: ["src/**/*.test.{ts,tsx}"],
     // Testes de lib rodam em Node; os de view precisam de DOM. `jsdom` como
     // ambiente padrão cobre os dois casos sem anotação por arquivo.
     environment: "jsdom",
-    setupFiles: ["./src/test/setup.js"],
+    setupFiles: ["./src/test/setup.ts"],
     globals: false,
   },
 });

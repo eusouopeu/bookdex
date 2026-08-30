@@ -11,13 +11,23 @@
  * na forma atual, e as migrações rodam por cima depois de mesclar —
  * é lá que chaves `kn:` antigas são fundidas e as refs de coleção reescritas.
  */
-import { groupItems, itemKind, withItems } from "./savedModel";
+import { groupItems, itemKind, withItems, type SavedGroup, type SavedItem, type SavedState } from "./savedModel";
+import type { Collection, CollectionsState } from "./collections";
 
-function normalizedItems(group) {
+/** Payload importado, ainda solto (validado só depois de `validatePayload`). */
+export interface ImportPayload {
+  saved: Record<string, any>;
+  detailCache?: Record<string, unknown>;
+  collections?: Record<string, any>;
+  exportedAt?: number;
+  version?: number;
+}
+
+function normalizedItems(group: SavedGroup | any): SavedItem[] {
   return groupItems(group).map((item) => ({ ...item, kind: itemKind(item, group) }));
 }
 
-export function parsePayload(rawText) {
+export function parsePayload(rawText: string): ImportPayload {
   let payload;
   try {
     payload = JSON.parse(rawText);
@@ -27,32 +37,33 @@ export function parsePayload(rawText) {
   return validatePayload(payload);
 }
 
-export function validatePayload(payload) {
+export function validatePayload(payload: unknown): ImportPayload {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     throw new Error("O arquivo não tem o formato esperado (objeto JSON).");
   }
-  if (!payload.saved || typeof payload.saved !== "object" || Array.isArray(payload.saved)) {
+  const p = payload as Record<string, any>;
+  if (!p.saved || typeof p.saved !== "object" || Array.isArray(p.saved)) {
     throw new Error('O arquivo não contém o campo "saved" com os assuntos capturados.');
   }
-  for (const [key, group] of Object.entries(payload.saved)) {
+  for (const [key, group] of Object.entries<any>(p.saved)) {
     const hasItemList = group && typeof group === "object" && (Array.isArray(group.items) || Array.isArray(group.techniques));
     if (!hasItemList) {
       throw new Error(`Assunto "${key}" está com formato inválido (sem lista de itens).`);
     }
   }
   if (
-    payload.detailCache !== undefined &&
-    (typeof payload.detailCache !== "object" || payload.detailCache === null || Array.isArray(payload.detailCache))
+    p.detailCache !== undefined &&
+    (typeof p.detailCache !== "object" || p.detailCache === null || Array.isArray(p.detailCache))
   ) {
     throw new Error('O campo "detailCache" está com formato inválido.');
   }
   if (
-    payload.collections !== undefined &&
-    (typeof payload.collections !== "object" || payload.collections === null || Array.isArray(payload.collections))
+    p.collections !== undefined &&
+    (typeof p.collections !== "object" || p.collections === null || Array.isArray(p.collections))
   ) {
     throw new Error('O campo "collections" está com formato inválido.');
   }
-  return payload;
+  return p as ImportPayload;
 }
 
 /**
@@ -60,10 +71,13 @@ export function validatePayload(payload) {
  * já existente localmente tem suas refs UNIDAS (nunca substituídas); coleção
  * nova é adicionada como está.
  */
-export function mergeCollections(localCollections, incomingCollections) {
-  const collections = { ...(localCollections || {}) };
+export function mergeCollections(
+  localCollections: CollectionsState | undefined | null,
+  incomingCollections: Record<string, any> | undefined | null
+) {
+  const collections: CollectionsState = { ...(localCollections || {}) };
   const stats = { newCollections: 0, updatedCollections: 0 };
-  for (const [id, incoming] of Object.entries(incomingCollections || {})) {
+  for (const [id, incoming] of Object.entries<any>(incomingCollections || {})) {
     if (!incoming || !Array.isArray(incoming.refs)) continue;
     const existing = collections[id];
     if (!existing) {
@@ -93,8 +107,12 @@ export function mergeCollections(localCollections, incomingCollections) {
  * Em conflito de `id` dentro de um assunto, vence o item com `savedAt` maior.
  * No detailCache, chave já existente localmente é preservada (o guia não muda).
  */
-export function mergeData(localSaved, localDetails, payload) {
-  const saved = {};
+export function mergeData(
+  localSaved: SavedState | undefined | null,
+  localDetails: Record<string, any> | undefined | null,
+  payload: ImportPayload
+) {
+  const saved: SavedState = {};
   for (const [key, group] of Object.entries(localSaved || {})) {
     saved[key] = withItems(group, normalizedItems(group));
   }
@@ -108,7 +126,7 @@ export function mergeData(localSaved, localDetails, payload) {
     duplicateDetails: 0,
   };
 
-  for (const [key, incoming] of Object.entries(payload.saved || {})) {
+  for (const [key, incoming] of Object.entries<any>(payload.saved || {})) {
     if (!saved[key]) {
       saved[key] = { displayName: incoming.displayName || key, items: [] };
       stats.newSubjects++;
@@ -116,7 +134,7 @@ export function mergeData(localSaved, localDetails, payload) {
     const group = saved[key];
     if (!group.displayName && incoming.displayName) group.displayName = incoming.displayName;
 
-    const localItems = group.items;
+    const localItems = group.items as SavedItem[];
     for (const entry of normalizedItems(incoming)) {
       if (!entry || !entry.id) continue;
       const idx = localItems.findIndex((t) => t.id === entry.id);
@@ -148,7 +166,7 @@ export function mergeData(localSaved, localDetails, payload) {
   return { saved, detailCache, stats };
 }
 
-export function buildExportPayload(saved, detailCache) {
+export function buildExportPayload(saved: SavedState, detailCache: Record<string, unknown>) {
   return {
     saved: saved || {},
     detailCache: detailCache || {},
@@ -162,9 +180,14 @@ export function buildExportPayload(saved, detailCache) {
  * em si, mais os itens de `saved` (e seus guias em `detailCache`, se houver)
  * que ela referencia — sem levar o resto da Pokédex junto.
  */
-export function buildCollectionExportPayload(collectionId, collection, saved, detailCache) {
-  const packagedSaved = {};
-  const packagedDetails = {};
+export function buildCollectionExportPayload(
+  collectionId: string,
+  collection: Collection,
+  saved: SavedState,
+  detailCache: Record<string, unknown>
+) {
+  const packagedSaved: SavedState = {};
+  const packagedDetails: Record<string, unknown> = {};
   for (const ref of collection.refs || []) {
     const group = saved[ref.subjectKey];
     if (!group) continue;

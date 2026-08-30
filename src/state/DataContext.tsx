@@ -1,13 +1,23 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { slug } from "../theme";
 import { getJSON, setJSON, KEYS } from "../lib/storage";
 import { fetchDetail, fetchItemEnrichment, hasCredentials } from "../lib/anthropic";
 import { mergeData, mergeCollections } from "../lib/importer";
 import { findSimilarItem } from "../lib/dedupe";
-import { createCollectionId } from "../lib/collections";
-import { wordLangKey, wordItemId } from "../lib/words";
+import { createCollectionId, type CollectionRef, type CollectionsState } from "../lib/collections";
+import { wordLangKey, wordItemId, type WordsState } from "../lib/words";
 import { CURRENT_SCHEMA_VERSION, runMigrations } from "../lib/migrations";
-import { groupItems, itemKind, itemLabel, withItems, categoryOfKind, KIND_LABELS } from "../lib/savedModel";
+import {
+  groupItems,
+  itemKind,
+  itemLabel,
+  withItems,
+  categoryOfKind,
+  KIND_LABELS,
+  type SavedState,
+  type SavedGroup,
+  type SavedItem,
+} from "../lib/savedModel";
 import { plantGroupKey, plantItemId, plantToItem } from "../lib/plants";
 import { applyEnrichment, convertItem as convertItemFields } from "../lib/convert";
 
@@ -19,25 +29,78 @@ import { applyEnrichment, convertItem as convertItemFields } from "../lib/conver
  * Também é aqui que o schema persistido é migrado, uma vez por abertura, antes
  * de qualquer render depender do formato dos dados (ver lib/migrations.js).
  */
-const DataContext = createContext(null);
+interface ToastState {
+  msg: string;
+  onUndo?: () => void;
+}
 
-export function useData() {
+export interface DataContextValue {
+  saved: SavedState;
+  detailCache: Record<string, unknown>;
+  words: WordsState;
+  collections: CollectionsState;
+  storageLoaded: boolean;
+  counts: {
+    total: number;
+    techniques: number;
+    knowledge: number;
+    plants: number;
+    subjects: number;
+    collections: number;
+    words: number;
+  };
+  prefetchDetailsEnabled: boolean;
+  changePrefetchDetails: (enabled: boolean) => void;
+  toast: ToastState | null;
+  showToast: (msg: string, onUndo?: () => void) => void;
+  dismissToast: () => void;
+  hasDetail: (subjectDisplay: string, technique: any) => boolean;
+  cacheDetail: (cacheKey: string, detail: unknown) => void;
+  deleteDetail: (cacheKey: string) => void;
+  isSaved: (mode: string, subjectDisplay: string, itemId: string) => boolean;
+  isPlantSaved: (plant: any) => boolean;
+  toggleSave: (mode: string, subjectDisplay: string, payload: any) => void;
+  updateItemAspect: (subjectKey: string, itemId: string, aspectId: string, text: string) => void;
+  removeGroup: (key: string) => void;
+  bulkRemoveItems: (refs: CollectionRef[]) => void;
+  bulkAddTag: (refs: CollectionRef[], tag: string) => void;
+  archiveItems: (refs: CollectionRef[], archived: boolean) => void;
+  updateItemTags: (subjectKey: string, itemId: string, kind: string | undefined, tags: string[]) => void;
+  updateItemNote: (subjectKey: string, itemId: string, kind: string | undefined, note: string) => void;
+  updateItemImages: (subjectKey: string, itemId: string, kind: string | undefined, images: unknown) => void;
+  convertItem: (subjectKey: string, itemId: string, targetKind: string) => void;
+  enrichItem: (subjectKey: string, itemId: string) => Promise<SavedItem | null>;
+  isWordSaved: (languageCode: string | undefined, language: string, word: string) => boolean;
+  toggleWordSave: (data: any) => void;
+  removeWordGroup: (langKey: string) => void;
+  updateWordTags: (langKey: string, wordId: string, tags: string[]) => void;
+  updateWordNote: (langKey: string, wordId: string, note: string) => void;
+  createCollection: (name: string) => string | null;
+  deleteCollection: (id: string) => void;
+  addToCollection: (collectionId: string | null | undefined, refs: CollectionRef[], newName?: string) => void;
+  removeFromCollection: (collectionId: string, ref: CollectionRef) => void;
+  applyImport: (payload: any) => any;
+}
+
+const DataContext = createContext<DataContextValue | null>(null);
+
+export function useData(): DataContextValue {
   const ctx = useContext(DataContext);
   if (!ctx) throw new Error("useData() precisa estar dentro de <DataProvider>");
   return ctx;
 }
 
-function activeItems(group) {
+function activeItems(group: SavedGroup | undefined) {
   return groupItems(group).filter((it) => !it.archived);
 }
 
-export function DataProvider({ children }) {
-  const [saved, setSaved] = useState({});
-  const [detailCache, setDetailCache] = useState({});
-  const [words, setWords] = useState({});
-  const [collections, setCollections] = useState({});
+export function DataProvider({ children }: { children: ReactNode }) {
+  const [saved, setSaved] = useState<SavedState>({});
+  const [detailCache, setDetailCache] = useState<Record<string, unknown>>({});
+  const [words, setWords] = useState<WordsState>({});
+  const [collections, setCollections] = useState<CollectionsState>({});
   const [storageLoaded, setStorageLoaded] = useState(false);
-  const [toast, setToast] = useState(null);
+  const [toast, setToast] = useState<ToastState | null>(null);
 
   // Preferência "baixar guias em background" — mora aqui porque só o prefetch
   // dentro deste provider a consome, e a tela de Configurações só a alterna.
@@ -47,7 +110,7 @@ export function DataProvider({ children }) {
     prefetchRef.current = prefetchDetailsEnabled;
   }, [prefetchDetailsEnabled]);
 
-  function changePrefetchDetails(enabled) {
+  function changePrefetchDetails(enabled: boolean) {
     setPrefetchDetailsEnabled(enabled);
     persist(KEYS.prefetchDetails, enabled);
   }
@@ -80,30 +143,30 @@ export function DataProvider({ children }) {
     })();
   }, []);
 
-  const showToast = useCallback((msg, onUndo) => {
+  const showToast = useCallback((msg: string, onUndo?: () => void) => {
     setToast({ msg, onUndo });
     setTimeout(() => setToast((t) => (t && t.msg === msg ? null : t)), onUndo ? 4000 : 2200);
   }, []);
 
   const dismissToast = useCallback(() => setToast(null), []);
 
-  function persist(key, value) {
+  function persist(key: string, value: unknown) {
     setJSON(key, value).catch((e) => console.error(`Falha ao gravar ${key}`, e));
   }
 
-  const persistSaved = (next) => persist(KEYS.saved, next);
-  const persistDetails = (next) => persist(KEYS.details, next);
-  const persistWords = (next) => persist(KEYS.words, next);
-  const persistCollections = (next) => persist(KEYS.collections, next);
+  const persistSaved = (next: SavedState) => persist(KEYS.saved, next);
+  const persistDetails = (next: Record<string, unknown>) => persist(KEYS.details, next);
+  const persistWords = (next: WordsState) => persist(KEYS.words, next);
+  const persistCollections = (next: CollectionsState) => persist(KEYS.collections, next);
 
   /* ---------------------------------------------------------------- guias */
 
-  function hasDetail(subjectDisplay, technique) {
+  function hasDetail(subjectDisplay: string, technique: any) {
     const techId = technique.id || slug(technique.name);
     return !!detailCache[`${slug(subjectDisplay)}:${techId}`];
   }
 
-  function cacheDetail(cacheKey, detail) {
+  function cacheDetail(cacheKey: string, detail: unknown) {
     setDetailCache((prev) => {
       const next = { ...prev, [cacheKey]: detail };
       persistDetails(next);
@@ -112,7 +175,7 @@ export function DataProvider({ children }) {
   }
 
   /** Remove um guia do cache — a próxima abertura da página regenera do zero. */
-  function deleteDetail(cacheKey) {
+  function deleteDetail(cacheKey: string) {
     setDetailCache((prev) => {
       if (!(cacheKey in prev)) return prev;
       const next = { ...prev };
@@ -123,7 +186,7 @@ export function DataProvider({ children }) {
   }
 
   /** Baixa o guia em background assim que uma técnica é capturada. */
-  async function prefetchDetail(subjectDisplay, technique) {
+  async function prefetchDetail(subjectDisplay: string, technique: any) {
     if (!prefetchRef.current) return;
     const cacheKey = `${slug(subjectDisplay)}:${technique.id}`;
     if (detailCache[cacheKey]) return;
@@ -138,12 +201,12 @@ export function DataProvider({ children }) {
 
   /* -------------------------------------------------------------- pokédex */
 
-  function isSaved(mode, subjectDisplay, itemId) {
+  function isSaved(mode: string, subjectDisplay: string, itemId: string) {
     const group = saved[slug(subjectDisplay)];
     return groupItems(group).some((it) => it.id === itemId && itemKind(it, group) === mode);
   }
 
-  function commitSaved(next, message, prevSaved) {
+  function commitSaved(next: SavedState, message?: string, prevSaved?: SavedState) {
     setSaved(next);
     persistSaved(next);
     if (!message) return;
@@ -158,7 +221,7 @@ export function DataProvider({ children }) {
     );
   }
 
-  function toggleTechniqueSave(subjectDisplay, technique, statLabels) {
+  function toggleTechniqueSave(subjectDisplay: string, technique: any, statLabels: any) {
     const prevSaved = saved;
     const subjectKey = slug(subjectDisplay);
     const techId = technique.id || slug(technique.name);
@@ -204,7 +267,7 @@ export function DataProvider({ children }) {
     prefetchDetail(subjectDisplay, { ...technique, id: techId });
   }
 
-  function toggleKnowledgeSave(mode, subjectDisplay, payload) {
+  function toggleKnowledgeSave(mode: string, subjectDisplay: string, payload: any) {
     const prevSaved = saved;
     const subjectKey = slug(subjectDisplay);
     const next = { ...saved };
@@ -272,7 +335,7 @@ export function DataProvider({ children }) {
    * de uma busca: é a família botânica (ver lib/plants.js), o que agrupa as
    * plantas capturadas por parentesco sem o usuário ter que decidir nada.
    */
-  function togglePlantSave(plant) {
+  function togglePlantSave(plant: any) {
     const prevSaved = saved;
     const subjectKey = plantGroupKey(plant);
     const itemId = plantItemId(plant);
@@ -293,13 +356,13 @@ export function DataProvider({ children }) {
     commitSaved(next, removed ? `${label} solta da Pokédex.` : `${label} capturada!`, prevSaved);
   }
 
-  function toggleSave(mode, subjectDisplay, payload) {
+  function toggleSave(mode: string, subjectDisplay: string, payload: any) {
     if (mode === "technique") toggleTechniqueSave(subjectDisplay, payload.technique, payload.statLabels);
     else if (mode === "plant") togglePlantSave(payload.plant);
     else toggleKnowledgeSave(mode, subjectDisplay, payload);
   }
 
-  function isPlantSaved(plant) {
+  function isPlantSaved(plant: any) {
     const group = saved[plantGroupKey(plant)];
     const id = plantItemId(plant);
     return groupItems(group).some((it) => it.id === id && itemKind(it, group) === "plant");
@@ -312,10 +375,10 @@ export function DataProvider({ children }) {
    * relacionados de um conceito. O campo é o mesmo (`aspects`) em qualquer
    * `kind`, então uma função só cobre os três.
    */
-  const updateItemAspect = (subjectKey, itemId, aspectId, text) =>
+  const updateItemAspect = (subjectKey: string, itemId: string, aspectId: string, text: string) =>
     updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, aspects: { ...(item.aspects || {}), [aspectId]: text } }));
 
-  function removeGroup(key) {
+  function removeGroup(key: string) {
     const group = saved[key];
     if (!group) return;
     const next = { ...saved };
@@ -324,7 +387,7 @@ export function DataProvider({ children }) {
   }
 
   /** Aplica `mutate` a cada item referenciado, devolvendo o novo `saved`. */
-  function mapRefs(base, refs, mutate) {
+  function mapRefs(base: SavedState, refs: CollectionRef[], mutate: (item: SavedItem, group: SavedGroup) => SavedItem | null) {
     let next = base;
     for (const { subjectKey, itemId } of refs) {
       const group = next[subjectKey];
@@ -346,12 +409,12 @@ export function DataProvider({ children }) {
     return next;
   }
 
-  function bulkRemoveItems(refs) {
+  function bulkRemoveItems(refs: CollectionRef[]) {
     const next = mapRefs(saved, refs, () => null);
     commitSaved(next, `${refs.length} item(ns) removido(s) da Pokédex.`, saved);
   }
 
-  function bulkAddTag(refs, tag) {
+  function bulkAddTag(refs: CollectionRef[], tag: string) {
     const clean = (tag || "").trim();
     if (!clean) return;
     const next = mapRefs(saved, refs, (item) =>
@@ -360,7 +423,7 @@ export function DataProvider({ children }) {
     commitSaved(next, `Tag "${clean}" aplicada a ${refs.length} item(ns).`);
   }
 
-  function archiveItems(refs, archived) {
+  function archiveItems(refs: CollectionRef[], archived: boolean) {
     const next = mapRefs(saved, refs, (item) => ({ ...item, archived }));
     commitSaved(next, archived ? `${refs.length} item(ns) arquivado(s).` : `${refs.length} item(ns) desarquivado(s).`, saved);
   }
@@ -373,7 +436,7 @@ export function DataProvider({ children }) {
    * válidas e o toast de desfazer funciona como em qualquer outra edição. O
    * que a conversão não sabe preencher fica pro `enrichItem`, sob demanda.
    */
-  function convertItem(subjectKey, itemId, targetKind) {
+  function convertItem(subjectKey: string, itemId: string, targetKind: string) {
     const group = saved[subjectKey];
     const current = groupItems(group).find((it) => it.id === itemId);
     if (!current) return;
@@ -392,7 +455,7 @@ export function DataProvider({ children }) {
    * Completa com a API os campos que ficaram em branco na conversão.
    * Devolve o item atualizado; erros sobem pra quem chamou mostrar no card.
    */
-  async function enrichItem(subjectKey, itemId) {
+  async function enrichItem(subjectKey: string, itemId: string) {
     const group = saved[subjectKey];
     const current = groupItems(group).find((it) => it.id === itemId);
     if (!current) return null;
@@ -405,7 +468,7 @@ export function DataProvider({ children }) {
     return enriched;
   }
 
-  function updateItemInGroup(subjectKey, itemId, mutate) {
+  function updateItemInGroup(subjectKey: string, itemId: string, mutate: (item: SavedItem, group: SavedGroup) => SavedItem | null) {
     setSaved((prev) => {
       const next = mapRefs(prev, [{ subjectKey, itemId }], mutate);
       if (next === prev) return prev;
@@ -414,21 +477,21 @@ export function DataProvider({ children }) {
     });
   }
 
-  const updateItemTags = (subjectKey, itemId, _kind, tags) =>
+  const updateItemTags = (subjectKey: string, itemId: string, _kind: string | undefined, tags: string[]) =>
     updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, tags }));
-  const updateItemNote = (subjectKey, itemId, _kind, note) =>
+  const updateItemNote = (subjectKey: string, itemId: string, _kind: string | undefined, note: string) =>
     updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, note }));
-  const updateItemImages = (subjectKey, itemId, _kind, images) =>
+  const updateItemImages = (subjectKey: string, itemId: string, _kind: string | undefined, images: unknown) =>
     updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, images }));
 
   /* ------------------------------------------------------------- palavras */
 
-  function isWordSaved(languageCode, language, word) {
+  function isWordSaved(languageCode: string | undefined, language: string, word: string) {
     const group = words[wordLangKey(languageCode, language)];
     return !!(group && group.words.some((w) => w.id === wordItemId(word)));
   }
 
-  function toggleWordSave(data) {
+  function toggleWordSave(data: any) {
     const prevWords = words;
     const langKey = wordLangKey(data.languageCode, data.language);
     const wordId = wordItemId(data.word);
@@ -469,7 +532,7 @@ export function DataProvider({ children }) {
     });
   }
 
-  function removeWordGroup(langKey) {
+  function removeWordGroup(langKey: string) {
     const prevWords = words;
     const group = words[langKey];
     if (!group) return;
@@ -483,7 +546,7 @@ export function DataProvider({ children }) {
     });
   }
 
-  function updateWordInGroup(langKey, wordId, mutate) {
+  function updateWordInGroup(langKey: string, wordId: string, mutate: (item: any) => any) {
     setWords((prev) => {
       const group = prev[langKey];
       if (!group) return prev;
@@ -497,12 +560,12 @@ export function DataProvider({ children }) {
     });
   }
 
-  const updateWordTags = (langKey, wordId, tags) => updateWordInGroup(langKey, wordId, (w) => ({ ...w, tags }));
-  const updateWordNote = (langKey, wordId, note) => updateWordInGroup(langKey, wordId, (w) => ({ ...w, note }));
+  const updateWordTags = (langKey: string, wordId: string, tags: string[]) => updateWordInGroup(langKey, wordId, (w) => ({ ...w, tags }));
+  const updateWordNote = (langKey: string, wordId: string, note: string) => updateWordInGroup(langKey, wordId, (w) => ({ ...w, note }));
 
   /* ------------------------------------------------------------- coleções */
 
-  function createCollection(name) {
+  function createCollection(name: string) {
     const clean = (name || "").trim();
     if (!clean) return null;
     const id = createCollectionId();
@@ -515,7 +578,7 @@ export function DataProvider({ children }) {
     return id;
   }
 
-  function deleteCollection(id) {
+  function deleteCollection(id: string) {
     setCollections((prev) => {
       const col = prev[id];
       if (!col) return prev;
@@ -527,7 +590,7 @@ export function DataProvider({ children }) {
     });
   }
 
-  function addToCollection(collectionId, refs, newName) {
+  function addToCollection(collectionId: string | null | undefined, refs: CollectionRef[], newName?: string) {
     setCollections((prev) => {
       let id = collectionId;
       let next = prev;
@@ -555,7 +618,7 @@ export function DataProvider({ children }) {
     });
   }
 
-  function removeFromCollection(collectionId, ref) {
+  function removeFromCollection(collectionId: string, ref: CollectionRef) {
     setCollections((prev) => {
       const col = prev[collectionId];
       if (!col) return prev;
@@ -573,7 +636,7 @@ export function DataProvider({ children }) {
 
   /* ------------------------------------------------------------ importação */
 
-  function applyImport(payload) {
+  function applyImport(payload: any) {
     const { saved: mergedSaved, detailCache: mergedDetails, stats } = mergeData(saved, detailCache, payload);
 
     let collectionStats = { newCollections: 0, updatedCollections: 0 };

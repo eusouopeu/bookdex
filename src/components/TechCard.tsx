@@ -10,8 +10,28 @@ import { TECH_ASPECTS, fetchTechAspect } from "../lib/anthropic";
 import { techniqueCardPdfBlob } from "../lib/cardPdf";
 import { estimateCost, formatCost } from "../lib/models";
 
-const ASPECT_ICONS = { mistakes: AlertTriangle, why: Lightbulb, combos: Link2 };
+const ASPECT_ICONS: Record<string, any> = { mistakes: AlertTriangle, why: Lightbulb, combos: Link2 };
 const TECH_ASPECTS_WITH_ICONS = TECH_ASPECTS.map((a) => ({ ...a, icon: ASPECT_ICONS[a.id] }));
+
+interface TechCardProps {
+  subjectDisplay?: string;
+  technique: any;
+  statLabels?: string[];
+  saved: boolean;
+  onToggle: () => void;
+  onOpenDetail?: () => void;
+  hasDetail?: boolean;
+  onTagsChange?: (tags: string[]) => void;
+  onNoteChange?: (note: string) => void;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectToggle?: () => void;
+  irrelevant?: boolean;
+  onMarkIrrelevant?: () => void;
+  onConvert?: (target: string) => void;
+  onEnrich?: () => void;
+  onAspectGenerated?: (aspectId: string, text: string) => void;
+}
 
 export default function TechCard({
   subjectDisplay,
@@ -31,7 +51,7 @@ export default function TechCard({
   onConvert,
   onEnrich,
   onAspectGenerated,
-}) {
+}: TechCardProps) {
   const color = getTypeColor(technique.type);
   return (
     <CardShell

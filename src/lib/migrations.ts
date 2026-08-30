@@ -13,11 +13,19 @@
 
 export const CURRENT_SCHEMA_VERSION = 3;
 
-function isKnowledgeKind(kind) {
+/**
+ * Os dados aqui são schemas legados de formato desconhecido/variável (v0 a
+ * v3) — o objetivo das migrações é justamente normalizar essa forma solta,
+ * então os tipos usados são deliberadamente permissivos (`any`) em vez de
+ * modelar cada schema antigo.
+ */
+type MigrationData = any;
+
+function isKnowledgeKind(kind: any) {
   return kind === "definition" || kind === "list";
 }
 
-function mapItems(group, fn) {
+function mapItems(group: any, fn: (item: any) => any) {
   if (isKnowledgeKind(group.kind)) return { ...group, items: (group.items || []).map(fn) };
   return { ...group, techniques: (group.techniques || []).map(fn) };
 }
@@ -26,12 +34,12 @@ function mapItems(group, fn) {
  * v1 — normaliza grupos legados: `kind` explícito, listas sempre presentes,
  * `tags`/`note` sempre definidos e `displayName` garantido.
  */
-function toV1(data) {
-  const saved = {};
-  for (const [key, rawGroup] of Object.entries(data.saved || {})) {
+function toV1(data: MigrationData): MigrationData {
+  const saved: Record<string, any> = {};
+  for (const [key, rawGroup] of Object.entries<any>(data.saved || {})) {
     if (!rawGroup || typeof rawGroup !== "object") continue;
     const kind = isKnowledgeKind(rawGroup.kind) ? rawGroup.kind : "technique";
-    const group = {
+    const group: any = {
       ...rawGroup,
       kind,
       displayName: rawGroup.displayName || key,
@@ -58,13 +66,13 @@ function toV1(data) {
     }));
   }
 
-  const words = {};
-  for (const [key, rawGroup] of Object.entries(data.words || {})) {
+  const words: Record<string, any> = {};
+  for (const [key, rawGroup] of Object.entries<any>(data.words || {})) {
     if (!rawGroup || typeof rawGroup !== "object") continue;
     words[key] = {
       ...rawGroup,
       displayName: rawGroup.displayName || key,
-      words: (Array.isArray(rawGroup.words) ? rawGroup.words : []).map((w) => ({
+      words: (Array.isArray(rawGroup.words) ? rawGroup.words : []).map((w: any) => ({
         ...w,
         tags: Array.isArray(w.tags) ? w.tags : [],
         note: typeof w.note === "string" ? w.note : "",
@@ -80,10 +88,10 @@ function toV1(data) {
  * v2 — remove os campos das funcionalidades de revisão espaçada (`reviewState`)
  * e de vínculo manual entre cards (`links`), que saíram do app.
  */
-function toV2(data) {
-  const saved = {};
-  for (const [key, group] of Object.entries(data.saved || {})) {
-    saved[key] = mapItems(group, ({ reviewState, links, ...item }) => item);
+function toV2(data: MigrationData): MigrationData {
+  const saved: Record<string, any> = {};
+  for (const [key, group] of Object.entries<any>(data.saved || {})) {
+    saved[key] = mapItems(group, ({ reviewState, links, ...item }: any) => item);
   }
   return { ...data, saved };
 }
@@ -95,17 +103,17 @@ function toV2(data) {
  * Ids que colidem na fusão são renomeados com sufixo do tipo, e as refs das
  * coleções são reescritas para continuarem apontando pro item certo.
  */
-function kindSuffix(kind) {
+function kindSuffix(kind: any) {
   return kind === "definition" ? "def" : kind === "list" ? "tipo" : "tec";
 }
 
-function toV3(data) {
-  const saved = {};
-  const refMap = new Map(); // "assuntoAntigo:idAntigo" -> { subjectKey, itemId }
+function toV3(data: MigrationData): MigrationData {
+  const saved: Record<string, any> = {};
+  const refMap = new Map<string, { subjectKey: string; itemId: string }>(); // "assuntoAntigo:idAntigo" -> { subjectKey, itemId }
 
   // Grupos sem prefixo primeiro: assim as técnicas preservam os ids atuais e
   // só os itens vindos de `kn:` são renomeados quando houver colisão.
-  const entries = Object.entries(data.saved || {}).sort(
+  const entries = Object.entries<any>(data.saved || {}).sort(
     ([a], [b]) => Number(a.startsWith("kn:")) - Number(b.startsWith("kn:"))
   );
 
@@ -139,12 +147,12 @@ function toV3(data) {
     }
   }
 
-  const collections = {};
-  for (const [id, col] of Object.entries(data.collections || {})) {
+  const collections: Record<string, any> = {};
+  for (const [id, col] of Object.entries<any>(data.collections || {})) {
     if (!col) continue;
     collections[id] = {
       ...col,
-      refs: (col.refs || []).map((ref) => refMap.get(`${ref.subjectKey}:${ref.itemId}`) || ref),
+      refs: (col.refs || []).map((ref: any) => refMap.get(`${ref.subjectKey}:${ref.itemId}`) || ref),
     };
   }
 
@@ -162,7 +170,7 @@ const MIGRATIONS = [
  * Retorna `{ data, version, migrated }` — `migrated` é false quando já estava
  * na versão atual, caso em que nada precisa ser regravado.
  */
-export function runMigrations(data, fromVersion) {
+export function runMigrations(data: MigrationData, fromVersion: number) {
   const from = Number.isInteger(fromVersion) ? fromVersion : 0;
   const pending = MIGRATIONS.filter((m) => m.version > from);
   if (pending.length === 0) {

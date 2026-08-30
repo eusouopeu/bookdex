@@ -4,7 +4,7 @@
  * para Obsidian, Notion ou qualquer editor de texto puro.
  */
 import { slug } from "../theme";
-import { groupItems, itemKind, categoryOfKind } from "./savedModel";
+import { groupItems, itemKind, categoryOfKind, type SavedState } from "./savedModel";
 import { PLANT_ASPECTS } from "./anthropic";
 
 /**
@@ -12,7 +12,7 @@ import { PLANT_ASPECTS } from "./anthropic";
  * arquivo pega só os itens do seu naipe e ignora os assuntos que ficaram sem
  * nenhum.
  */
-function sectionsOf(saved, category) {
+function sectionsOf(saved: SavedState, category: string) {
   const out = [];
   for (const group of Object.values(saved || {})) {
     const items = groupItems(group).filter((it) => categoryOfKind(itemKind(it, group)) === category);
@@ -108,6 +108,6 @@ export function buildPokedexMarkdown(saved, detailCache) {
   return lines.join("\n");
 }
 
-export function countMarkdownItems(saved) {
-  return Object.values(saved || {}).reduce((sum, group) => sum + groupItems(group).length, 0);
+export function countMarkdownItems(saved: SavedState) {
+  return Object.values(saved || {}).reduce((sum: number, group) => sum + groupItems(group).length, 0);
 }

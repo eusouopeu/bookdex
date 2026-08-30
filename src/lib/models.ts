@@ -14,27 +14,31 @@
  */
 import { getJSON, setJSON, KEYS } from "./storage";
 
-export const MODELS = {
+export type Tier = "sonnet" | "haiku";
+
+export const MODELS: Record<Tier, string> = {
   sonnet: "claude-sonnet-5",
   haiku: "claude-haiku-4-5-20251001",
 };
 
-export const TIER_LABELS = {
+export const TIER_LABELS: Record<Tier, string> = {
   sonnet: "Sonnet",
   haiku: "Haiku",
 };
 
 /** Preço de lista em USD por milhão de tokens. Usado só para estimar custo. */
-export const PRICING = {
+export const PRICING: Record<string, { input: number; output: number }> = {
   [MODELS.sonnet]: { input: 3, output: 15 },
   [MODELS.haiku]: { input: 1, output: 5 },
 };
+
+export type SearchTiers = Record<string, Tier>;
 
 /**
  * Tier fixo por tarefa que não é busca. Nada aqui é configurável: ou a tarefa
  * exige raciocínio (Sonnet) ou é consulta estruturada (Haiku).
  */
-const FIXED_TIER = {
+const FIXED_TIER: Record<string, Tier> = {
   detail: "sonnet", // guia passo a passo de uma técnica
   stepDeepDive: "sonnet",
   conceptDeepDive: "sonnet",
@@ -57,15 +61,16 @@ export const SEARCH_MODE_TIERS = [
   { mode: "plant", label: "Plantas", default: "sonnet" },
 ];
 
-export function defaultSearchTiers() {
-  return Object.fromEntries(SEARCH_MODE_TIERS.map((m) => [m.mode, m.default]));
+export function defaultSearchTiers(): SearchTiers {
+  return Object.fromEntries(SEARCH_MODE_TIERS.map((m) => [m.mode, m.default])) as SearchTiers;
 }
 
-function sanitizeTiers(raw) {
+function sanitizeTiers(raw: unknown): SearchTiers {
   const base = defaultSearchTiers();
   if (!raw || typeof raw !== "object") return base;
+  const rawObj = raw as Record<string, unknown>;
   for (const { mode } of SEARCH_MODE_TIERS) {
-    if (raw[mode] === "sonnet" || raw[mode] === "haiku") base[mode] = raw[mode];
+    if (rawObj[mode] === "sonnet" || rawObj[mode] === "haiku") base[mode] = rawObj[mode] as Tier;
   }
   return base;
 }
@@ -74,7 +79,7 @@ export async function getSearchTiers() {
   return sanitizeTiers(await getJSON(KEYS.searchModels, null));
 }
 
-export async function setSearchTiers(tiers) {
+export async function setSearchTiers(tiers: unknown) {
   await setJSON(KEYS.searchModels, sanitizeTiers(tiers));
 }
 
@@ -82,17 +87,17 @@ export async function setSearchTiers(tiers) {
  * Modelo a usar numa tarefa. `searchTiers` só é consultado para os modos de
  * busca; sem ele (ou sem entrada para o modo), cai no padrão do modo.
  */
-export function modelFor(task, searchTiers) {
+export function modelFor(task: string, searchTiers?: Record<string, string> | null) {
   const searchMode = SEARCH_MODE_TIERS.find((m) => m.mode === task);
   if (searchMode) {
     const tier = (searchTiers || {})[task] || searchMode.default;
-    return MODELS[tier] || MODELS.sonnet;
+    return MODELS[tier as Tier] || MODELS.sonnet;
   }
   return MODELS[FIXED_TIER[task] || "sonnet"];
 }
 
 /** Custo em USD de um par (entrada, saída) de tokens num modelo. */
-export function costOf(model, inputTokens, outputTokens) {
+export function costOf(model: string, inputTokens: number, outputTokens: number) {
   const price = PRICING[model] || PRICING[MODELS.sonnet];
   return (inputTokens / 1e6) * price.input + (outputTokens / 1e6) * price.output;
 }
@@ -119,7 +124,7 @@ const ESTIMATED_TOKENS = {
 };
 
 /** Estimativa de custo (USD) de uma tarefa, com o tier atual de busca (quando se aplica). */
-export function estimateCost(task, searchTiers) {
+export function estimateCost(task: string, searchTiers?: Record<string, string> | null) {
   const tokens = ESTIMATED_TOKENS[task];
   if (!tokens) return 0;
   return costOf(modelFor(task, searchTiers), tokens.input, tokens.output);
