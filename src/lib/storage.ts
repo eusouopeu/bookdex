@@ -10,18 +10,19 @@
  * Implementação: @capacitor/preferences (nativo no APK, IndexedDB/localStorage
  * no navegador). Se o plugin não estiver disponível por qualquer motivo,
  * cai para localStorage puro.
+ *
+ * `createNamespacedStorage(prefix)` monta uma instância isolada por prefixo —
+ * usada aqui para o Bookdex (`tecnicadex:`) e pelo módulo Sinergia
+ * (`efeitosdex:`), sobre o MESMO backend (Preferences), sem misturar chaves.
  */
 import { Preferences } from "@capacitor/preferences";
 
-const PREFIX = "tecnicadex:";
-const INDEX_KEY = PREFIX + "__keys__";
-
-let backend = null;
+let backend: "preferences" | "local" | null = null;
 
 async function pickBackend() {
   if (backend) return backend;
   try {
-    await Preferences.get({ key: INDEX_KEY });
+    await Preferences.get({ key: "__storage_probe__" });
     backend = "preferences";
   } catch (e) {
     console.warn("[storage] Preferences indisponível, usando localStorage", e);
@@ -30,7 +31,7 @@ async function pickBackend() {
   return backend;
 }
 
-async function rawGet(key) {
+async function rawGet(key: string) {
   if ((await pickBackend()) === "preferences") {
     const { value } = await Preferences.get({ key });
     return value ?? null;
@@ -38,7 +39,7 @@ async function rawGet(key) {
   return localStorage.getItem(key);
 }
 
-async function rawSet(key, value) {
+async function rawSet(key: string, value: string) {
   if ((await pickBackend()) === "preferences") {
     await Preferences.set({ key, value });
     return;
@@ -46,7 +47,7 @@ async function rawSet(key, value) {
   localStorage.setItem(key, value);
 }
 
-async function rawRemove(key) {
+async function rawRemove(key: string) {
   if ((await pickBackend()) === "preferences") {
     await Preferences.remove({ key });
     return;
@@ -54,66 +55,79 @@ async function rawRemove(key) {
   localStorage.removeItem(key);
 }
 
-async function readIndex() {
-  const raw = await rawGet(INDEX_KEY);
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
+export function createNamespacedStorage(prefix: string) {
+  const INDEX_KEY = prefix + "__keys__";
+
+  async function readIndex(): Promise<string[]> {
+    const raw = await rawGet(INDEX_KEY);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
   }
-}
 
-async function writeIndex(keys) {
-  await rawSet(INDEX_KEY, JSON.stringify(keys));
-}
-
-export async function get(key) {
-  const value = await rawGet(PREFIX + key);
-  if (value === null || value === undefined) return null;
-  return { key, value };
-}
-
-export async function set(key, value) {
-  await rawSet(PREFIX + key, value);
-  const keys = await readIndex();
-  if (!keys.includes(key)) {
-    keys.push(key);
-    await writeIndex(keys);
+  async function writeIndex(keys: string[]) {
+    await rawSet(INDEX_KEY, JSON.stringify(keys));
   }
-}
 
-async function remove(key) {
-  await rawRemove(PREFIX + key);
-  const keys = await readIndex();
-  const next = keys.filter((k) => k !== key);
-  if (next.length !== keys.length) await writeIndex(next);
-}
-
-export { remove as delete };
-
-export async function list() {
-  const keys = await readIndex();
-  return keys.map((key) => ({ key }));
-}
-
-/* Helpers de conveniência usados pelo app --------------------------------- */
-
-export async function getJSON(key, fallback) {
-  try {
-    const res = await get(key);
-    if (!res || !res.value) return fallback;
-    return JSON.parse(res.value);
-  } catch (e) {
-    console.warn(`[storage] falha ao ler ${key}`, e);
-    return fallback;
+  async function get(key: string) {
+    const value = await rawGet(prefix + key);
+    if (value === null || value === undefined) return null;
+    return { key, value };
   }
+
+  async function set(key: string, value: string) {
+    await rawSet(prefix + key, value);
+    const keys = await readIndex();
+    if (!keys.includes(key)) {
+      keys.push(key);
+      await writeIndex(keys);
+    }
+  }
+
+  async function remove(key: string) {
+    await rawRemove(prefix + key);
+    const keys = await readIndex();
+    const next = keys.filter((k) => k !== key);
+    if (next.length !== keys.length) await writeIndex(next);
+  }
+
+  async function list() {
+    const keys = await readIndex();
+    return keys.map((key) => ({ key }));
+  }
+
+  async function getJSON(key: string, fallback: any) {
+    try {
+      const res = await get(key);
+      if (!res || !res.value) return fallback;
+      return JSON.parse(res.value);
+    } catch (e) {
+      console.warn(`[storage] falha ao ler ${key}`, e);
+      return fallback;
+    }
+  }
+
+  async function setJSON(key: string, value: any) {
+    await set(key, JSON.stringify(value));
+  }
+
+  return { get, set, delete: remove, list, getJSON, setJSON };
 }
 
-export async function setJSON(key, value) {
-  await set(key, JSON.stringify(value));
-}
+const store = createNamespacedStorage("tecnicadex:");
+
+export const get = store.get;
+export const set = store.set;
+export const list = store.list;
+export const getJSON = store.getJSON;
+export const setJSON = store.setJSON;
+export { store as default };
+export const _delete = store.delete;
+export { _delete as delete };
 
 export const KEYS = {
   saved: "pokedex-saved",
@@ -135,6 +149,5 @@ export const KEYS = {
   searchCache: "search-cache",
   words: "saved-words",
   schemaVersion: "schema-version",
+  appModule: "app-module",
 };
-
-export default { get, set, delete: remove, list, getJSON, setJSON, KEYS };

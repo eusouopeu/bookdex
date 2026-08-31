@@ -29,6 +29,7 @@ import SettingsView from "./views/SettingsView";
 import ImportView from "./views/ImportView";
 import CompareView from "./views/CompareView";
 import CollectionsSection from "./components/CollectionsSection";
+import SinergiaModule from "./modules/sinergia/SinergiaModule";
 
 const SEARCH_MODES = [
   { mode: "technique", label: "Técnicas" },
@@ -36,7 +37,6 @@ const SEARCH_MODES = [
   { mode: "compare", label: "Comparar" },
   { mode: "definition", label: "Conceito" },
   { mode: "word", label: "Palavra" },
-  { mode: "plant", label: "Planta" },
 ];
 const MODE_LABELS_SHORT = {
   technique: "téc",
@@ -48,6 +48,12 @@ const MODE_LABELS_SHORT = {
 };
 const CRITERIA_MODES = ["technique", "list", "compare"];
 
+const MODULE_COLORS = {
+  bookdex: { main: COLORS.lensBlue, light: COLORS.lensBlueLight, label: "Bookdex" },
+  sinergia: { main: COLORS.moduleYellow, light: COLORS.moduleYellowLight, label: "Sinergia" },
+  plants: { main: COLORS.moduleGreen, light: COLORS.moduleGreenLight, label: "Plantas" },
+};
+
 export default function App() {
   const data = useData();
   const { detailCache, words, counts, toast, showToast, dismissToast } = data;
@@ -57,6 +63,8 @@ export default function App() {
   const [lastTab, setLastTab] = useState("search");
   const [detailTarget, setDetailTarget] = useState(null);
   const [compareTarget, setCompareTarget] = useState(null);
+  const [showModulePicker, setShowModulePicker] = useState(false);
+  const { appModule, setAppModule } = prefs;
 
   const [search, dispatch] = useReducer(searchReducer, initialSearchState);
   const { query, criteria, mode: searchMode, loading, error, needsKey, result, scanCount } = search;
@@ -272,6 +280,22 @@ export default function App() {
     prefs.rememberTab(tab);
   }
 
+  function switchModule(mod) {
+    setShowModulePicker(false);
+    if (mod === appModule) return;
+    if (mod === "plants") {
+      prefs.setDexCategory("plants");
+      dispatch({ type: "setMode", mode: "plant" });
+      setDetailTarget(null);
+      setCompareTarget(null);
+      setView((v) => (v === "collections" || v === "settings" || v === "import" ? "search" : v));
+    } else if (appModule === "plants") {
+      prefs.setDexCategory("technique");
+      dispatch({ type: "setMode", mode: "technique" });
+    }
+    setAppModule(mod);
+  }
+
   function openScreen(screen) {
     setDetailTarget(null);
     setCompareTarget(null);
@@ -343,19 +367,57 @@ export default function App() {
             flexShrink: 0,
           }}
         >
-          <div className="flex items-center gap-3 mb-1">
-            <div
+          <div className="flex items-center gap-3 mb-1" style={{ position: "relative" }}>
+            <button
+              onClick={() => setShowModulePicker((v) => !v)}
+              aria-label={`Módulo atual: ${MODULE_COLORS[appModule].label}. Trocar módulo.`}
+              title={`Módulo: ${MODULE_COLORS[appModule].label}`}
               style={{
                 width: "40px",
                 height: "40px",
                 borderRadius: "50%",
                 flexShrink: 0,
-                background: `radial-gradient(circle at 35% 30%, ${COLORS.lensBlueLight}, ${COLORS.lensBlue} 60%, #1B4F7A 100%)`,
+                padding: 0,
+                background: `radial-gradient(circle at 35% 30%, ${MODULE_COLORS[appModule].light}, ${MODULE_COLORS[appModule].main} 60%, #1B4F7A 100%)`,
                 border: "3px solid #1B2A33",
                 boxShadow: loading ? undefined : "0 0 0 3px rgba(0,0,0,0.15)",
                 animation: loading ? "lensPulse 1s ease-in-out infinite" : "none",
+                cursor: "pointer",
               }}
             />
+            {showModulePicker && (
+              <div
+                className="flex items-center gap-2"
+                style={{
+                  position: "absolute",
+                  top: "48px",
+                  left: 0,
+                  zIndex: 20,
+                  background: COLORS.surface,
+                  border: `2px solid ${COLORS.screenBorder}`,
+                  borderRadius: "999px",
+                  padding: "6px",
+                  boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
+                }}
+              >
+                {Object.entries(MODULE_COLORS).map(([mod, c]) => (
+                  <button
+                    key={mod}
+                    onClick={() => switchModule(mod)}
+                    aria-label={c.label}
+                    title={c.label}
+                    style={{
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "50%",
+                      border: mod === appModule ? "3px solid #1B2A33" : "2px solid rgba(0,0,0,0.25)",
+                      background: `radial-gradient(circle at 35% 30%, ${c.light}, ${c.main} 60%, #1B4F7A 100%)`,
+                      cursor: "pointer",
+                    }}
+                  />
+                ))}
+              </div>
+            )}
             <div className="flex gap-1.5">
               <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: COLORS.gold, border: "1.5px solid #7A5A00" }} />
               <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#6A9955", border: "1.5px solid #2E4A1F" }} />
@@ -372,26 +434,34 @@ export default function App() {
                 margin: 0,
               }}
             >
-              Bookdex
+              {MODULE_COLORS[appModule].label}
             </h1>
-            <button onClick={() => openScreen("import")} aria-label="Importar dados" title="Importar dados" style={iconButtonStyle}>
-              <Upload size={17} />
-            </button>
-            <button onClick={() => openScreen("settings")} aria-label="Configurações" title="Configurações" style={iconButtonStyle}>
-              <SettingsIcon size={17} />
-            </button>
+            {appModule !== "sinergia" && (
+              <>
+                <button onClick={() => openScreen("import")} aria-label="Importar dados" title="Importar dados" style={iconButtonStyle}>
+                  <Upload size={17} />
+                </button>
+                <button onClick={() => openScreen("settings")} aria-label="Configurações" title="Configurações" style={iconButtonStyle}>
+                  <SettingsIcon size={17} />
+                </button>
+              </>
+            )}
           </div>
-          <div className="flex gap-2" style={{ marginTop: "6px" }}>
-            <button onClick={() => goTab("search")} style={tabStyle(view === "search")}>
-              BUSCAR
-            </button>
-            <button onClick={() => goTab("dex")} style={tabStyle(view === "dex")}>
-              POKÉDEX ({counts.total})
-            </button>
-            <button onClick={() => goTab("collections")} style={tabStyle(view === "collections")}>
-              COLEÇÕES ({counts.collections})
-            </button>
-          </div>
+          {appModule !== "sinergia" && (
+            <div className="flex gap-2" style={{ marginTop: "6px" }}>
+              <button onClick={() => goTab("search")} style={tabStyle(view === "search")}>
+                BUSCAR
+              </button>
+              <button onClick={() => goTab("dex")} style={tabStyle(view === "dex")}>
+                POKÉDEX ({counts.total})
+              </button>
+              {appModule === "bookdex" && (
+                <button onClick={() => goTab("collections")} style={tabStyle(view === "collections")}>
+                  COLEÇÕES ({counts.collections})
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Tela */}
@@ -436,6 +506,10 @@ export default function App() {
               </div>
             )}
 
+            {appModule === "sinergia" ? (
+              <SinergiaModule />
+            ) : (
+              <>
             {detailTarget && (
               <DetailPage
                 key={detailKey}
@@ -523,6 +597,8 @@ export default function App() {
             )}
 
             {!detailTarget && view === "import" && <ImportView onBack={backToTab} />}
+              </>
+            )}
           </div>
 
           {toast && (
@@ -577,6 +653,7 @@ export default function App() {
         </div>
 
         {/* Base do dispositivo */}
+        {appModule !== "sinergia" && (
         <div
           style={{
             background: COLORS.shellRedDark,
@@ -609,6 +686,7 @@ export default function App() {
                   }}
                 />
               )}
+              {appModule === "bookdex" && (
               <div
                 style={{
                   display: "grid",
@@ -639,6 +717,7 @@ export default function App() {
                   </button>
                 ))}
               </div>
+              )}
               <div className="flex gap-2" style={{ position: "relative" }}>
                 {showHistorySuggestions && matchingHistory.length > 0 && (
                   <div
@@ -768,7 +847,7 @@ export default function App() {
                 </button>
               </div>
             </div>
-          ) : showDexNav ? (
+          ) : showDexNav && appModule === "bookdex" ? (
             <DexCategoryNav counts={counts} />
           ) : (
             <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", color: "rgba(255,255,255,0.75)", textAlign: "center" }}>
@@ -776,10 +855,11 @@ export default function App() {
                 ? `${counts.collections} coleções`
                 : isTab || detailTarget
                   ? `${counts.total} item(ns) registrado(s) em ${counts.subjects} assunto(s)`
-                  : "Bookdex"}
+                  : MODULE_COLORS[appModule].label}
             </div>
           )}
         </div>
+        )}
       </div>
     </div>
   );
@@ -799,9 +879,6 @@ function DexCategoryNav({ counts }) {
       </button>
       <button onClick={() => setDexCategory("knowledge")} style={tabStyle(dexCategory === "knowledge")}>
         CONCEITOS ({counts.knowledge})
-      </button>
-      <button onClick={() => setDexCategory("plants")} style={tabStyle(dexCategory === "plants")}>
-        PLANTAS ({counts.plants})
       </button>
       <button onClick={() => setDexCategory("words")} style={tabStyle(dexCategory === "words")}>
         PALAVRAS ({counts.words})

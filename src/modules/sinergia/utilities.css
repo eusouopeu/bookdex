@@ -1,0 +1,78 @@
+/* Subconjunto mínimo das utilitárias usadas no artefato original, para que o
+   JSX portado continue idêntico sem trazer o Tailwind inteiro. */
+* {
+  box-sizing: border-box;
+  /* O WebView do Android "infla" o tamanho do texto automaticamente (font
+     boosting) em blocos estreitos, o que não aparece no preview de desktop
+     mas empurra botões como o de busca para fora da tela no aparelho real. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+  /* Nunca deixar a página crescer além da largura da viewport. */
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  background: #e8e6df;
+  -webkit-tap-highlight-color: transparent;
+  /* A casca do aparelho ocupa exatamente a altura da viewport; quem rola é a
+     tela verde. Sem isto o corpo da página rola junto e a barra de baixo some. */
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.flex {
+  display: flex;
+}
+.flex-col {
+  flex-direction: column;
+}
+.flex-1 {
+  flex: 1;
+}
+.items-start {
+  align-items: flex-start;
+}
+.items-center {
+  align-items: center;
+}
+.justify-between {
+  justify-content: space-between;
+}
+.justify-center {
+  justify-content: center;
+}
+.text-center {
+  text-align: center;
+}
+.gap-1 {
+  gap: 4px;
+}
+.gap-1\.5 {
+  gap: 6px;
+}
+.gap-2 {
+  gap: 8px;
+}
+.gap-3 {
+  gap: 12px;
+}
+.mb-1 {
+  margin-bottom: 4px;
+}
+.space-y-1\.5 > * + * {
+  margin-top: 6px;
+}

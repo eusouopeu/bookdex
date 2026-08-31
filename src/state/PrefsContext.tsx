@@ -35,6 +35,7 @@ export function usePrefs() {
 
 const MAX_HISTORY = 8;
 const TABS = ["search", "dex", "collections"];
+const APP_MODULES = ["bookdex", "sinergia", "plants"];
 
 export function PrefsProvider({ children }) {
   const [theme, setTheme] = useState("light");
@@ -45,6 +46,7 @@ export function PrefsProvider({ children }) {
   const [relevance, setRelevance] = useState(initRelevanceState());
   const [showArchived, setShowArchived] = useState(false);
   const [dexCategory, setDexCategory] = useState("technique"); // technique | knowledge | plants | words
+  const [appModule, setAppModuleState] = useState("bookdex"); // bookdex | sinergia | plants
   const [initialTab, setInitialTab] = useState(null); // null = ainda carregando
   const [prefsLoaded, setPrefsLoaded] = useState(false);
 
@@ -66,6 +68,8 @@ export function PrefsProvider({ children }) {
       setRelevance(await getJSON(KEYS.irrelevantItems, initRelevanceState()));
       const savedTab = await getJSON(KEYS.lastTab, "search");
       setInitialTab(TABS.includes(savedTab) ? savedTab : "search");
+      const savedModule = await getJSON(KEYS.appModule, "bookdex");
+      setAppModuleState(APP_MODULES.includes(savedModule) ? savedModule : "bookdex");
       setPrefsLoaded(true);
     })();
   }, []);
@@ -90,6 +94,11 @@ export function PrefsProvider({ children }) {
 
   const rememberTab = useCallback((tab) => {
     setJSON(KEYS.lastTab, tab).catch(() => {});
+  }, []);
+
+  const setAppModule = useCallback((mod) => {
+    setAppModuleState(mod);
+    setJSON(KEYS.appModule, mod).catch(() => {});
   }, []);
 
   const addToHistory = useCallback((mode, term) => {
@@ -172,6 +181,8 @@ export function PrefsProvider({ children }) {
       toggleShowArchived: () => setShowArchived((v) => !v),
       dexCategory,
       setDexCategory,
+      appModule,
+      setAppModule,
       markItemIrrelevant,
       isItemIrrelevant,
       avoidListFor,
@@ -193,6 +204,8 @@ export function PrefsProvider({ children }) {
       clearOfflineQueue,
       showArchived,
       dexCategory,
+      appModule,
+      setAppModule,
       markItemIrrelevant,
       isItemIrrelevant,
       avoidListFor,

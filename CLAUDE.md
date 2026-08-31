@@ -64,8 +64,22 @@ SEMPRE usar a skill `/caveman` (modo de comunicação ultra-comprimido) em toda 
 
 ## Unificação com a Sinergia (Efeitosdex)
 
-Existe um plano de reunificação da Bookdex com o app Sinergia (`../sinergia`), que é
-originalmente um fork desta. Plano detalhado, ainda não implementado, em
+App unificado: o botão redondo no canto superior esquerdo (antes só decorativo)
+agora é um toggle real entre três módulos — **Bookdex** (azul, padrão),
+**Sinergia** (amarelo) e **Plantas** (verde) — via popover. Código do Sinergia
+vive em `src/modules/sinergia/` (self-contained: só importa
+`createNamespacedStorage` de `src/lib/storage.ts`, resto é cópia própria —
+tema, anthropic, models, usage). API key/proxy/orçamento continuam separados
+por módulo (`tecnicadex:` vs `efeitosdex:` no storage). Plantas não é um módulo
+de dados separado — é um recorte de tela do próprio Bookdex (já são
+`kind: "plant"` dentro do `saved` unificado): trava `searchMode`/`dexCategory`
+em "plant"/"plants" e reaproveita `SearchView`/`DexView` como estão.
+
+Plano original (arquitetura completa "núcleo + cartuchos" com registry/bridge/
+backup unificado — ainda não implementada) em
 [docs/plano-unificacao-bookdex-sinergia.md](docs/plano-unificacao-bookdex-sinergia.md).
-Consultar esse arquivo antes de iniciar qualquer trabalho de unificação.
+O que foi feito agora cobre as fases 1–3 de forma simplificada (módulo isolado
+por pasta + namespace de storage, sem registry/bridge formais). Consultar esse
+arquivo antes de avançar pras fases 4–6 (orçamento compartilhado, pontes
+card↔perfil, backup único).
 

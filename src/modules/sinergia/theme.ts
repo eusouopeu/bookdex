@@ -1,16 +1,12 @@
 // Paleta base fixa (chrome do "aparelho": nunca muda com o tema) mais os
 // tokens de conteúdo, que apontam para custom properties CSS trocadas pelo
-// tema claro/escuro (ver THEME_VARS + o <style> injetado em App.jsx).
+// tema claro/escuro (ver THEME_VARS + o <style> injetado em SinergiaModule.tsx).
 export const COLORS = {
   shellRed: "#D6293B",
   shellRedDark: "#A81F2E",
   shellRedDarker: "#7A1620",
   lensBlue: "#2E86DE",
   lensBlueLight: "#6FB8FF",
-  moduleYellow: "#E9B44C",
-  moduleYellowLight: "#F7D488",
-  moduleGreen: "#4E9F5B",
-  moduleGreenLight: "#8FCB94",
   gold: "#FFC947",
   white: "#F5F5F0",
   screenBg: "var(--screen-bg)",
@@ -25,7 +21,7 @@ export const COLORS = {
   pageBg: "var(--page-bg)",
 };
 
-export const THEME_VARS = {
+export const THEME_VARS: Record<string, Record<string, string>> = {
   light: {
     "--page-bg": "#e8e6df",
     "--screen-bg": "#CFE0C6",
@@ -63,14 +59,14 @@ export const TYPE_PALETTE = [
   { bg: "#6C7A89", text: "#FFFFFF" },
 ];
 
-export function getTypeColor(type) {
+export function getTypeColor(type?: string) {
   let hash = 0;
   const s = type || "geral";
   for (let i = 0; i < s.length; i++) hash = s.charCodeAt(i) + ((hash << 5) - hash);
   return TYPE_PALETTE[Math.abs(hash) % TYPE_PALETTE.length];
 }
 
-export function slug(str) {
+export function slug(str?: string) {
   return (str || "")
     .toString()
     .normalize("NFD")
@@ -81,7 +77,7 @@ export function slug(str) {
     .replace(/(^-|-$)/g, "");
 }
 
-export function tabStyle(active) {
+export function tabStyle(active: boolean) {
   return {
     flex: 1,
     minWidth: 0,
@@ -100,7 +96,7 @@ export function tabStyle(active) {
     background: active ? COLORS.gold : "rgba(255,255,255,0.18)",
     color: active ? "#4A3300" : COLORS.white,
     transition: "background 0.15s ease",
-  };
+  } as const;
 }
 
 export const iconButtonStyle = {
