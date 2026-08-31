@@ -13,7 +13,7 @@
 import { getJSON, setJSON, KEYS } from "./storage";
 import { initEffectProfiles, createProfileId } from "./effectProfiles";
 import { migrateProfiles } from "./migrate";
-import { slug } from "../theme";
+import { slug } from "../../../theme";
 
 const BACKUP_VERSION = 2;
 

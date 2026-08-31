@@ -22,7 +22,7 @@ export default function ShareButton({ title, render, size = 15, label }: ShareBu
     try {
       const blob = await render();
       if (!blob) return;
-      const fileName = `bookdex-${slug(title)}.pdf`;
+      const fileName = `cognidex-${slug(title)}.pdf`;
       const outcome = await shareOrDownloadFile(fileName, blob, "application/pdf", title);
       if (outcome !== "cancelled") {
         setJustShared(true);

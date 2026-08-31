@@ -1,6 +1,6 @@
 {
   "appId": "com.pedroteles.tecnicadex",
-  "appName": "Bookdex",
+  "appName": "Cognidex",
   "webDir": "dist",
   "android": {
     "backgroundColor": "#e8e6df"

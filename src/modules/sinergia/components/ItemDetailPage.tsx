@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowLeft, Check, GitCompare, HelpCircle, Loader2, Pencil } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import { fetchCriterionEffectExplanation, fetchPersonalDeviationExplanation } from "../lib/effectsApi";
 import { MissingApiKeyError } from "../lib/anthropic";
 import { costSummary, currentAiEvaluated, currentOriginalRatings, currentRatings, currentRatingMeta, currentExplainCache, currentVariantIndex } from "../lib/effectProfiles";

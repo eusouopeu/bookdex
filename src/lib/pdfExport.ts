@@ -57,7 +57,7 @@ export function buildPokedexPdf(saved, detailCache) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(28);
   doc.setTextColor("#111111");
-  doc.text("Bookdex", MARGIN, 60);
+  doc.text("Cognidex", MARGIN, 60);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(12);
   doc.setTextColor("#555555");
@@ -151,7 +151,7 @@ export function buildPokedexPdf(saved, detailCache) {
   return doc;
 }
 
-export function downloadPokedexPdf(saved, detailCache, fileName = "bookdex-pokedex.pdf") {
+export function downloadPokedexPdf(saved, detailCache, fileName = "cognidex-pokedex.pdf") {
   const doc = buildPokedexPdf(saved, detailCache);
   doc.save(fileName);
 }

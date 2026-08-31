@@ -1,5 +1,5 @@
 import { Minus, Plus } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import { clampRating, probabilityWeight, probabilityLabel, confidenceLabel } from "../lib/effectProfiles";
 
 const CONFIDENCE_BORDER: Record<string, string> = {

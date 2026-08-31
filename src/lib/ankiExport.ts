@@ -1,6 +1,6 @@
 /**
  * Exporta a Pokédex inteira num CSV compatível com o importador do Anki
- * (Arquivo → Importar). O Bookdex não tem revisão/flashcard próprio: quem
+ * (Arquivo → Importar). O Cognidex não tem revisão/flashcard próprio: quem
  * quiser memorizar leva os cartões pro Anki por aqui. O verso traz o conteúdo
  * completo do item, incluindo o guia passo a passo já cacheado, quando existir.
  */

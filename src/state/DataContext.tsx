@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { slug } from "../theme";
 import { getJSON, setJSON, KEYS } from "../lib/storage";
 import { fetchDetail, fetchItemEnrichment, hasCredentials } from "../lib/anthropic";
-import { mergeData, mergeCollections } from "../lib/importer";
+import { mergeData, mergeCollections, mergeWords } from "../lib/importer";
 import { findSimilarItem } from "../lib/dedupe";
 import { createCollectionId, type CollectionRef, type CollectionsState } from "../lib/collections";
 import { wordLangKey, wordItemId, type WordsState } from "../lib/words";
@@ -647,19 +647,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
       collectionStats = merged.stats;
     }
 
+    let wordStats = { newWords: 0, updatedWords: 0, duplicateWords: 0 };
+    let mergedWords = words;
+    if (payload.words) {
+      const merged = mergeWords(words, payload.words);
+      mergedWords = merged.words;
+      wordStats = merged.stats;
+    }
+
     // As migrações rodam sobre o pacote inteiro (inclusive coleções) porque a
     // v3 pode renomear ids ao fundir grupos legados e precisa reescrever as
     // refs junto — por isso o merge de coleções vem antes, e não depois.
-    const migrated = runMigrations({ saved: mergedSaved, detailCache: mergedDetails, words, collections: mergedCollections }, 0).data;
+    const migrated = runMigrations({ saved: mergedSaved, detailCache: mergedDetails, words: mergedWords, collections: mergedCollections }, 0).data;
     setSaved(migrated.saved);
     setDetailCache(migrated.detailCache);
     setCollections(migrated.collections);
+    setWords(migrated.words);
     persistSaved(migrated.saved);
     persistDetails(migrated.detailCache);
     persistCollections(migrated.collections);
+    persistWords(migrated.words);
 
     showToast("Dados importados!");
-    return { ...stats, ...collectionStats };
+    return { ...stats, ...collectionStats, ...wordStats };
   }
 
   /* -------------------------------------------------------------- derivados */

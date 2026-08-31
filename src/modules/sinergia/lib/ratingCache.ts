@@ -12,7 +12,7 @@
  * não do par de nomes.
  */
 import { getJSON, setJSON } from "./storage";
-import { slug } from "../theme";
+import { slug } from "../../../theme";
 
 const KEY = "rating-cache";
 const MAX_ENTRIES = 2000;

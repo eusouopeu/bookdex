@@ -125,8 +125,8 @@ export default function CollectionsSection({
 
   async function exportCollection(col: Collection) {
     const payload = buildCollectionExportPayload(col.id, col, saved, detailCache);
-    const fileName = `bookdex-colecao-${slug(col.name)}.json`;
-    const outcome = await shareOrDownloadFile(fileName, JSON.stringify(payload, null, 2), "application/json", `Bookdex — ${col.name}`);
+    const fileName = `cognidex-colecao-${slug(col.name)}.json`;
+    const outcome = await shareOrDownloadFile(fileName, JSON.stringify(payload, null, 2), "application/json", `Cognidex — ${col.name}`);
     setExportMsg(outcome === "shared" ? `"${col.name}" compartilhada.` : `"${col.name}" exportada — envie o arquivo pra quem quiser importar.`);
     setTimeout(() => setExportMsg((m) => (m ? null : m)), 3200);
   }

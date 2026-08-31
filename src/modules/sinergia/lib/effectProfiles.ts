@@ -17,7 +17,7 @@
  * você (`ratings`, o que conta pro efeito combinado e pode ser ajustado a
  * qualquer momento).
  */
-import { slug } from "../theme";
+import { slug } from "../../../theme";
 
 const RATING_MIN = -5;
 const RATING_MAX = 5;

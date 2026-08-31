@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, Loader2, Sparkles } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import { fetchEffectSuggestions } from "../lib/effectsApi";
 import { MissingApiKeyError } from "../lib/anthropic";
 

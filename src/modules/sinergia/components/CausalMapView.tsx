@@ -1,5 +1,5 @@
 import { ArrowLeft } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import { currentRatings, currentRatingMeta, expectedValue, probabilityLabel, criterionLinksList } from "../lib/effectProfiles";
 
 function CausalRow({ label, magnitude, probability, reversed }: { label: string; magnitude: number; probability?: string; reversed?: boolean }) {

@@ -3,7 +3,7 @@ import { ArrowLeft, FileJson, ClipboardPaste, Download, QrCode } from "lucide-re
 import { Capacitor } from "@capacitor/core";
 import { Filesystem, Directory, Encoding } from "@capacitor/filesystem";
 import { COLORS, primaryButtonStyle } from "../theme";
-import { parsePayload, buildExportPayload, mergeData, mergeCollections } from "../lib/importer";
+import { parsePayload, buildExportPayload, mergeData, mergeCollections, mergeWords } from "../lib/importer";
 import { setJSON, KEYS } from "../lib/storage";
 import { buildPokedexPdf } from "../lib/pdfExport";
 import { buildAnkiCsv, countAnkiRows } from "../lib/ankiExport";
@@ -60,16 +60,23 @@ export default function ImportView({ onBack }) {
       const payload = parsePayload(rawText);
       const { stats } = mergeData(saved, detailCache, payload);
       const { stats: collectionStats } = mergeCollections(collections, payload.collections);
-      setPending({ payload, stats: { ...stats, ...collectionStats } });
+      const { stats: wordStats } = mergeWords(words, payload.words);
+      setPending({ payload, stats: { ...stats, ...collectionStats, ...wordStats } });
     } catch (e) {
       setError(e.message || "Não foi possível ler esses dados.");
     }
   }
 
-  function confirmImport() {
+  async function confirmImport() {
     if (!pending) return;
     const stats = applyImport(pending.payload);
-    setSummary(stats);
+    let sinergiaImported = 0;
+    if (pending.payload.sinergia) {
+      const { applyBackup } = await import("../modules/sinergia/lib/backup");
+      const result = await applyBackup(pending.payload.sinergia, "mesclar");
+      sinergiaImported = result.imported;
+    }
+    setSummary({ ...stats, sinergiaImported });
     setPending(null);
     setText("");
   }
@@ -112,9 +119,20 @@ export default function ImportView({ onBack }) {
     }
   }
 
+  /**
+   * Backup ÚNICO cross-módulo: além de `saved`/`detailCache`/`collections`/
+   * `words` do Cognidex, embute os perfis de efeito do Sinergia sob a chave
+   * `sinergia` — um arquivo só cobre os dois módulos (a API key de nenhum
+   * dos dois entra: é segredo do aparelho, não dado do usuário).
+   */
   async function saveBackup() {
-    const payload = JSON.stringify(buildExportPayload(saved, detailCache), null, 2);
-    const fileName = "tecnicadex-backup.json";
+    const { buildBackup: buildSinergiaBackup } = await import("../modules/sinergia/lib/backup");
+    const payload = JSON.stringify(
+      { ...buildExportPayload(saved, detailCache, collections, words), sinergia: await buildSinergiaBackup() },
+      null,
+      2
+    );
+    const fileName = "cognidex-backup.json";
     setBackupMsg(null);
     try {
       if (Capacitor.isNativePlatform()) {
@@ -164,7 +182,7 @@ export default function ImportView({ onBack }) {
 
       if (exportFormat === "pdf") {
         const doc = buildPokedexPdf(scopedSaved, detailCache);
-        const fileName = "bookdex-pokedex.pdf";
+        const fileName = "cognidex-pokedex.pdf";
         if (Capacitor.isNativePlatform()) {
           const base64 = doc.output("datauristring").split(",")[1];
           await Filesystem.writeFile({ path: fileName, data: base64, directory: Directory.Documents, recursive: true });
@@ -177,11 +195,11 @@ export default function ImportView({ onBack }) {
       }
       if (exportFormat === "anki") {
         const csv = buildAnkiCsv(scopedSaved, detailCache, scopedWords);
-        await saveOrDownload("bookdex-anki.csv", csv, "text/csv", Encoding.UTF8, "Bookdex — export Anki", "Importe em Anki → Arquivo → Importar.");
+        await saveOrDownload("cognidex-anki.csv", csv, "text/csv", Encoding.UTF8, "Cognidex — export Anki", "Importe em Anki → Arquivo → Importar.");
         return;
       }
       const md = buildPokedexMarkdown(scopedSaved, detailCache);
-      await saveOrDownload("bookdex-pokedex.md", md, "text/markdown", Encoding.UTF8, "Bookdex — export Markdown");
+      await saveOrDownload("cognidex-pokedex.md", md, "text/markdown", Encoding.UTF8, "Cognidex — export Markdown");
     } catch (e) {
       setExportMsg(`Falha ao exportar: ${e.message || e}`);
     } finally {
@@ -231,7 +249,7 @@ export default function ImportView({ onBack }) {
         Importar dados
       </h2>
       <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "14px", lineHeight: 1.45 }}>
-        Cole aqui o JSON exportado do Bookdex do claude.ai, ou selecione o arquivo <code>.json</code> baixado. Nada é
+        Cole aqui o JSON exportado do Cognidex do claude.ai, ou selecione o arquivo <code>.json</code> baixado. Nada é
         apagado: os dados são mesclados com o que já está neste aparelho.
       </p>
 
@@ -352,6 +370,12 @@ export default function ImportView({ onBack }) {
                 adicionados
               </li>
             )}
+            {!!(pending.stats.newWords || pending.stats.updatedWords) && (
+              <li>
+                {pending.stats.newWords} palavra(s) nova(s), {pending.stats.updatedWords} atualizada(s)
+              </li>
+            )}
+            {!!pending.payload.sinergia && <li>perfis de efeito do Sinergia também serão mesclados</li>}
           </ul>
           <div className="flex gap-2">
             <button onClick={confirmImport} style={{ ...primaryButtonStyle, flex: 1 }}>
@@ -407,6 +431,12 @@ export default function ImportView({ onBack }) {
                 {summary.newCollections} coleção(ões) nova(s), {summary.updatedCollections} coleção(ões) com itens adicionados
               </li>
             )}
+            {!!(summary.newWords || summary.updatedWords) && (
+              <li>
+                {summary.newWords} palavra(s) nova(s), {summary.updatedWords} atualizada(s)
+              </li>
+            )}
+            {!!summary.sinergiaImported && <li>{summary.sinergiaImported} perfil(is) de efeito importado(s) no Sinergia</li>}
           </ul>
         </div>
       )}

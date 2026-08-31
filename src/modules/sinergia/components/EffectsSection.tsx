@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ChevronRight, Sparkles, Plus, X } from "lucide-react";
-import { COLORS, primaryButtonStyle } from "../theme";
+import { COLORS, primaryButtonStyle } from "../../../theme";
 import { computeCombinedEffect } from "../lib/effectProfiles";
 import EffectProfileDetail from "./EffectProfileDetail";
 
@@ -11,8 +11,13 @@ import EffectProfileDetail from "./EffectProfileDetail";
  */
 // `actions` repassa em bloco os handlers do perfil (ver useEffectProfiles) —
 // esta tela só usa `onCreateProfile`, o resto é da tela de detalhe.
-export default function EffectsSection({ profiles, onCreateProfile, ...actions }: any) {
-  const [openId, setOpenId] = useState<string | null>(null);
+// `openId`/`onOpenChange` são controláveis de fora (ver SinergiaModule): a
+// ponte "abrir/criar perfil vindo do Cognidex" precisa forçar qual perfil
+// está aberto — sem props, o estado fica preso dentro deste componente.
+export default function EffectsSection({ profiles, onCreateProfile, openId: controlledOpenId, onOpenChange, ...actions }: any) {
+  const [internalOpenId, setInternalOpenId] = useState<string | null>(null);
+  const openId = controlledOpenId !== undefined ? controlledOpenId : internalOpenId;
+  const setOpenId = onOpenChange || setInternalOpenId;
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
 

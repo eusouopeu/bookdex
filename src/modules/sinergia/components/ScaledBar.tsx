@@ -1,4 +1,4 @@
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 
 /**
  * Barra proporcional centrada no zero: preenche pra direita (verde) quando o

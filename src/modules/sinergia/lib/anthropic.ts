@@ -12,6 +12,7 @@
 import { get, set, KEYS } from "./storage";
 import { MODELS } from "./models";
 import { assertWithinBudget, trackUsage } from "./usage";
+import { looksLikeApiKey, extractJson } from "../../../lib/anthropicShared";
 
 const API_URL = "https://api.anthropic.com/v1/messages";
 
@@ -60,16 +61,7 @@ export async function setThinkingMode(mode: string) {
   await set(KEYS.thinkingMode, mode === "fast" ? "fast" : "auto");
 }
 
-export function looksLikeApiKey(key?: string) {
-  return /^sk-ant-[\w-]{10,}$/.test((key || "").trim());
-}
-
-function extractJson(text: string) {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("Formato inesperado");
-  return text.slice(start, end + 1);
-}
+export { looksLikeApiKey };
 
 /** Envia uma mensagem e devolve o texto concatenado dos blocos de resposta. */
 export async function sendMessage({

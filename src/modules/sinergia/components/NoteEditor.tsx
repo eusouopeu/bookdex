@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { StickyNote } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 
 /** Anotação pessoal livre num item salvo — chip para abrir/fechar um textarea, salva ao perder o foco. */
 export default function NoteEditor({ note, onChange }: { note?: string; onChange: (note: string) => void }) {

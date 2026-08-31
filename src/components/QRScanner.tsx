@@ -54,7 +54,7 @@ export default function QRScanner({ onScanned, onClose }) {
         }
         scanLoop();
       } catch {
-        setError("Não foi possível acessar a câmera. Confira as permissões do navegador pro Bookdex.");
+        setError("Não foi possível acessar a câmera. Confira as permissões do navegador pro Cognidex.");
       }
     })();
 

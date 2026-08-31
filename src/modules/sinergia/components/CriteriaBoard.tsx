@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, Loader2, Map, MoreHorizontal, Pencil, Plus, Sparkles, X } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import { criterionWeight } from "../lib/effectProfiles";
 import ScaledBar from "./ScaledBar";
 

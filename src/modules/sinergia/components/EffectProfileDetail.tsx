@@ -8,6 +8,7 @@ import {
   ChevronUp,
   Copy,
   Download,
+  ExternalLink,
   Eye,
   Layers,
   Loader2,
@@ -20,7 +21,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import {
   fetchItemRatingsCached,
   fetchItemRatingsForVariantsCached,
@@ -236,6 +237,7 @@ function ItemSuggestionsRow({ item, profile, onAddByName }: any) {
 export default function EffectProfileDetail({
   profile,
   onBack,
+  onOpenInCognidex,
   onRenameProfile,
   onDeleteProfile,
   onAddCriterion,
@@ -569,6 +571,28 @@ export default function EffectProfileDetail({
       >
         <ArrowLeft size={16} /> Voltar
       </button>
+
+      {onOpenInCognidex && (
+        <button
+          onClick={() => onOpenInCognidex(profile.name)}
+          className="flex items-center gap-1.5"
+          aria-label={`Ver "${profile.name}" no Cognidex`}
+          title={`Ver "${profile.name}" no Cognidex`}
+          style={{
+            background: "none",
+            border: `1.5px solid ${COLORS.screenBorder}`,
+            borderRadius: "999px",
+            color: COLORS.ink,
+            fontFamily: "Inter, sans-serif",
+            fontSize: "11px",
+            cursor: "pointer",
+            padding: "5px 10px",
+            marginBottom: "10px",
+          }}
+        >
+          <ExternalLink size={12} /> Ver no Cognidex
+        </button>
+      )}
 
       <div className="flex items-center justify-between gap-2" style={{ marginBottom: "10px" }}>
         {renamingProfile ? (

@@ -56,7 +56,7 @@ export default function QRCodeModal({ title, dataUrl, onClose }) {
               marginTop: "12px",
             }}
           >
-            Peça pra outra pessoa abrir o Bookdex dela, ir em Importar dados → Ler QR code, e apontar a câmera pra este código.
+            Peça pra outra pessoa abrir o Cognidex dela, ir em Importar dados → Ler QR code, e apontar a câmera pra este código.
           </p>
         </div>
       </div>

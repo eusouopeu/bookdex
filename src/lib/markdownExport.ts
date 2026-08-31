@@ -75,7 +75,7 @@ function writePlant(lines, it) {
 }
 
 export function buildPokedexMarkdown(saved, detailCache) {
-  const lines = ["# Bookdex — minha Pokédex", "", `_Exportado em ${new Date().toLocaleDateString("pt-BR")}_`, ""];
+  const lines = ["# Cognidex — minha Pokédex", "", `_Exportado em ${new Date().toLocaleDateString("pt-BR")}_`, ""];
 
   const techniqueSections = sectionsOf(saved, "technique");
   const knowledgeSections = sectionsOf(saved, "knowledge");

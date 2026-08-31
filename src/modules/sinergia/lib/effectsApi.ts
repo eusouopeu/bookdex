@@ -1,7 +1,7 @@
 /**
  * Chamadas à API da Anthropic específicas dos perfis de efeito.
  *
- * Estas funções viviam em `src/lib/anthropic.js` do Bookdex e saíram junto com
+ * Estas funções viviam em `src/lib/anthropic.js` do Cognidex e saíram junto com
  * a aba "Efeitos". No app novo, importe `sendMessageJSON` do cliente da API
  * daquele app (a assinatura esperada é `{ system, user, maxTokens }`).
  */

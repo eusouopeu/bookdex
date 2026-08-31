@@ -23,7 +23,7 @@
             </intent-filter>
 
             <!-- Alvo de compartilhamento: selecionar um termo em outro app e
-                 mandar pro Bookdex já dispara a busca (ver MainActivity). -->
+                 mandar pro Cognidex já dispara a busca (ver MainActivity). -->
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

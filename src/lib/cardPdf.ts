@@ -53,7 +53,7 @@ function writeFooter(doc) {
   doc.setFont("helvetica", "italic");
   doc.setFontSize(9);
   doc.setTextColor("#5c6b52");
-  doc.text("via Bookdex", MARGIN, 285);
+  doc.text("via Cognidex", MARGIN, 285);
 }
 
 export function techniqueCardPdfBlob(subjectDisplay, technique, statLabels) {

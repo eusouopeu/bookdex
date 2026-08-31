@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { GitCompare, ListTree, Settings as SettingsIcon, KeyRound } from "lucide-react";
-import { COLORS, THEME_VARS, iconButtonStyle } from "./theme";
+import { KeyRound } from "lucide-react";
+import { COLORS, THEME_VARS } from "../../theme";
 import { hasCredentials } from "./lib/anthropic";
 import { getJSON, setJSON, KEYS } from "./lib/storage";
 import { useEffectProfiles } from "./state/useEffectProfiles";
@@ -9,43 +9,34 @@ import EffectsSection from "./components/EffectsSection";
 import CompareView from "./views/CompareView";
 import SettingsView from "./views/SettingsView";
 
-/**
- * Estilo local dos botões "Efeitos"/"Comparar", igual ao App.jsx original do
- * Sinergia — DISTINTO do `tabStyle` exportado por `./theme` (usado em outros
- * lugares do app original, ex.: abas dentro de um perfil). Não colapsar os
- * dois: são visualmente diferentes de propósito.
- */
-function headerTabStyle(active: boolean) {
-  return {
-    flex: 1,
-    minHeight: "34px",
-    borderRadius: "8px",
-    border: "none",
-    background: active ? "rgba(0,0,0,0.18)" : "transparent",
-    color: active ? COLORS.white : "rgba(255,255,255,0.7)",
-    fontFamily: '"Baloo 2", sans-serif',
-    fontWeight: 700,
-    fontSize: "12px",
-    cursor: "pointer",
-  } as const;
-}
+export type SinergiaView = "effects" | "compare" | "settings";
 
-type View = "effects" | "compare" | "settings";
+interface SinergiaModuleProps {
+  view: SinergiaView;
+  onViewChange: (view: SinergiaView) => void;
+  /** Nome de um item vindo do Cognidex (ponte "Avaliar no Sinergia") — acha o
+   *  perfil de mesmo nome ou cria um novo, e já abre. */
+  pendingProfileName?: string | null;
+  onConsumedPendingProfile?: () => void;
+  onOpenInCognidex?: (name: string) => void;
+}
 
 /**
  * Módulo Sinergia, self-contained: mesmo conteúdo funcional do App.jsx
  * original (abas Efeitos/Comparar/Configurações, aviso de API key ausente,
  * toast), mas SEM a casca de página do app original (100dvh wrapper, barra
  * vermelha do "aparelho", logo redondo, título "Efeitosdex") — isso agora é
- * responsabilidade do host (App.tsx do Bookdex). O módulo gerencia seu
+ * responsabilidade do host (App.tsx do Cognidex), que TAMBÉM controla qual
+ * aba (`view`) está ativa — a navegação do módulo mora na barra vermelha
+ * compartilhada (AppHeader), não dentro da tela. O módulo gerencia seu
  * próprio tema (claro/escuro) de forma independente do PrefsContext do
- * Bookdex, aplicando as THEME_VARS só dentro da própria raiz.
+ * Cognidex, aplicando as THEME_VARS só dentro da própria raiz.
  */
-export default function SinergiaModule() {
-  const [view, setView] = useState<View>("effects");
+export default function SinergiaModule({ view, onViewChange, pendingProfileName, onConsumedPendingProfile, onOpenInCognidex }: SinergiaModuleProps) {
   const [theme, setTheme] = useState<"light" | "dark">("light");
   const [hasKey, setHasKey] = useState(true);
   const [toast, setToast] = useState<{ msg: string } | null>(null);
+  const [openProfileId, setOpenProfileId] = useState<string | null>(null);
 
   function showToast(msg: string) {
     setToast({ msg });
@@ -64,6 +55,23 @@ export default function SinergiaModule() {
     })();
   }, []);
 
+  // Ponte "Avaliar no Sinergia" vinda do Cognidex: acha o perfil de mesmo
+  // nome (sem diferenciar maiúsculas) ou cria um novo, e abre direto nele.
+  useEffect(() => {
+    if (!pendingProfileName || !effects.loaded) return;
+    const clean = pendingProfileName.trim();
+    const existing = Object.values(effects.profiles || {}).find(
+      (p: any) => p.name.trim().toLowerCase() === clean.toLowerCase()
+    ) as any;
+    const id = existing ? existing.id : effects.onCreateProfile(clean);
+    if (id) {
+      setOpenProfileId(id);
+      onViewChange("effects");
+    }
+    onConsumedPendingProfile?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingProfileName, effects.loaded]);
+
   async function changeTheme(next: string) {
     setTheme(next === "dark" ? "dark" : "light");
     await setJSON(KEYS.theme, next);
@@ -81,18 +89,6 @@ export default function SinergiaModule() {
       `}</style>
 
       <div className="sinergia-module-root">
-        <div className="flex gap-1.5" style={{ marginBottom: "10px" }}>
-          <button onClick={() => setView("effects")} className="flex items-center justify-center gap-1.5" style={headerTabStyle(view === "effects")}>
-            <ListTree size={13} /> Efeitos
-          </button>
-          <button onClick={() => setView("compare")} className="flex items-center justify-center gap-1.5" style={headerTabStyle(view === "compare")}>
-            <GitCompare size={13} /> Comparar
-          </button>
-          <button onClick={() => setView("settings")} aria-label="Configurações" title="Configurações" style={iconButtonStyle}>
-            <SettingsIcon size={17} />
-          </button>
-        </div>
-
         <div style={{ position: "relative" }}>
           {(view === "effects" || view === "compare") && !hasKey && (
             <div
@@ -116,13 +112,15 @@ export default function SinergiaModule() {
             </div>
           )}
 
-          {view === "effects" && <EffectsSection {...effects} />}
+          {view === "effects" && (
+            <EffectsSection {...effects} openId={openProfileId} onOpenChange={setOpenProfileId} onOpenInCognidex={onOpenInCognidex} />
+          )}
 
           {view === "compare" && <CompareView profiles={effects.profiles} onSetComparisonCache={effects.onSetComparisonCache} />}
 
           {view === "settings" && (
             <SettingsView
-              onBack={() => setView("effects")}
+              onBack={() => onViewChange("effects")}
               onCredentialsChanged={async () => setHasKey(await hasCredentials())}
               theme={theme}
               onChangeTheme={changeTheme}

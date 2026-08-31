@@ -1,6 +1,6 @@
 /**
  * Validação e merge dos dados exportados pelo artefato original (claude.ai)
- * ou de outro dispositivo com o Bookdex.
+ * ou de outro dispositivo com o Cognidex.
  *
  * Formato esperado do payload:
  *   { saved: {...}, detailCache?: {...}, exportedAt?: number, version?: 1 }
@@ -13,12 +13,17 @@
  */
 import { groupItems, itemKind, withItems, type SavedGroup, type SavedItem, type SavedState } from "./savedModel";
 import type { Collection, CollectionsState } from "./collections";
+import type { WordsState } from "./words";
 
 /** Payload importado, ainda solto (validado só depois de `validatePayload`). */
 export interface ImportPayload {
   saved: Record<string, any>;
   detailCache?: Record<string, unknown>;
   collections?: Record<string, any>;
+  words?: Record<string, any>;
+  /** Backup do módulo Sinergia (ver modules/sinergia/lib/backup.ts), quando o
+   *  arquivo é um backup unificado gerado pelo botão "Salvar backup". */
+  sinergia?: Record<string, any>;
   exportedAt?: number;
   version?: number;
 }
@@ -63,6 +68,9 @@ export function validatePayload(payload: unknown): ImportPayload {
   ) {
     throw new Error('O campo "collections" está com formato inválido.');
   }
+  if (p.words !== undefined && (typeof p.words !== "object" || p.words === null || Array.isArray(p.words))) {
+    throw new Error('O campo "words" está com formato inválido.');
+  }
   return p as ImportPayload;
 }
 
@@ -100,6 +108,41 @@ export function mergeCollections(
     }
   }
   return { collections, stats };
+}
+
+/**
+ * Faz merge (nunca substituição) de palavras importadas sobre as locais.
+ * Mesma regra do merge de técnicas: `id` já existente localmente vence por
+ * `savedAt` mais recente; grupo de idioma novo é criado sob demanda.
+ */
+export function mergeWords(localWords: WordsState | undefined | null, incomingWords: Record<string, any> | undefined | null) {
+  const words: WordsState = {};
+  for (const [key, group] of Object.entries(localWords || {})) {
+    words[key] = { displayName: group.displayName, words: [...(group.words || [])] };
+  }
+
+  const stats = { newWords: 0, updatedWords: 0, duplicateWords: 0 };
+
+  for (const [key, incoming] of Object.entries<any>(incomingWords || {})) {
+    if (!incoming || !Array.isArray(incoming.words)) continue;
+    if (!words[key]) words[key] = { displayName: incoming.displayName || key, words: [] };
+    const group = words[key];
+    for (const entry of incoming.words) {
+      if (!entry || !entry.id) continue;
+      const idx = group.words.findIndex((w) => w.id === entry.id);
+      if (idx === -1) {
+        group.words.push(entry);
+        stats.newWords++;
+      } else if ((entry.savedAt || 0) > (group.words[idx].savedAt || 0)) {
+        group.words[idx] = entry;
+        stats.updatedWords++;
+      } else {
+        stats.duplicateWords++;
+      }
+    }
+  }
+
+  return { words, stats };
 }
 
 /**
@@ -166,10 +209,22 @@ export function mergeData(
   return { saved, detailCache, stats };
 }
 
-export function buildExportPayload(saved: SavedState, detailCache: Record<string, unknown>) {
+/**
+ * Backup completo do aparelho: `collections` e `words` (além de `saved` e
+ * `detailCache`) entram por padrão — antes ficavam de fora do backup e
+ * sumiam silenciosamente numa restauração em outro aparelho.
+ */
+export function buildExportPayload(
+  saved: SavedState,
+  detailCache: Record<string, unknown>,
+  collections?: CollectionsState,
+  words?: WordsState
+) {
   return {
     saved: saved || {},
     detailCache: detailCache || {},
+    collections: collections || {},
+    words: words || {},
     exportedAt: Date.now(),
     version: 1,
   };

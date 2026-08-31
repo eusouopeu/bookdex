@@ -12,7 +12,7 @@
  * cai para localStorage puro.
  *
  * `createNamespacedStorage(prefix)` monta uma instância isolada por prefixo —
- * usada aqui para o Bookdex (`tecnicadex:`) e pelo módulo Sinergia
+ * usada aqui para o Cognidex (`tecnicadex:`) e pelo módulo Sinergia
  * (`efeitosdex:`), sobre o MESMO backend (Preferences), sem misturar chaves.
  */
 import { Preferences } from "@capacitor/preferences";

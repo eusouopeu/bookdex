@@ -1,5 +1,5 @@
 import { Loader2, X } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import { usd } from "../lib/batchCost";
 
 /** Caixa de confirmação + barra de progresso de um lote de chamadas (ver `useBatchRun`). */

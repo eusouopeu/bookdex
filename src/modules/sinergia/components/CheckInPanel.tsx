@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ClipboardCheck, Plus, X } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import { computeCombinedEffect, saturate } from "../lib/effectProfiles";
 import { checkInList, criterionCalibration, itemDivergence } from "../lib/checkins";
 

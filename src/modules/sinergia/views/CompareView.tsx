@@ -1,6 +1,6 @@
 import { useState, type ComponentType, type ReactNode } from "react";
 import { GitCompare, HelpCircle, ListChecks, Loader2 } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import {
   currentRatings,
   currentVariantIndex,

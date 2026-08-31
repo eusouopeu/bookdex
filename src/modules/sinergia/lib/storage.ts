@@ -1,6 +1,6 @@
 /**
  * Persistência do módulo Sinergia sobre o backend de storage compartilhado do
- * Bookdex (ver `src/lib/storage.ts`), namespaced com o prefixo original
+ * Cognidex (ver `src/lib/storage.ts`), namespaced com o prefixo original
  * "efeitosdex:" — não escreve em localStorage diretamente.
  */
 import { createNamespacedStorage } from "../../../lib/storage";

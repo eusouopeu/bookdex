@@ -13,6 +13,10 @@ export const STORAGE_KEY = "effect-profiles";
 
 export function useEffectProfiles(storage: any, showToast: (msg: string) => void = () => {}) {
   const [profiles, setProfiles] = useState<Record<string, any>>(initEffectProfiles());
+  // `profiles` começa vazio até o storage carregar — quem precisa achar um
+  // perfil por nome (ver ponte com o Cognidex em SinergiaModule) não pode
+  // fazer essa busca antes de `loaded`, ou nunca vai achar o que já existe.
+  const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -21,6 +25,7 @@ export function useEffectProfiles(storage: any, showToast: (msg: string) => void
       const stored = await storage.getJSON(STORAGE_KEY, initEffectProfiles());
       const migrated = migrateProfiles(stored);
       setProfiles(migrated);
+      setLoaded(true);
       if (JSON.stringify(migrated) !== JSON.stringify(stored)) storage.setJSON(STORAGE_KEY, migrated).catch(() => {});
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -337,6 +342,7 @@ export function useEffectProfiles(storage: any, showToast: (msg: string) => void
 
   return {
     profiles,
+    loaded,
     onCreateProfile: createProfile,
     onRenameProfile: renameProfile,
     onDeleteProfile: deleteProfile,

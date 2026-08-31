@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { ArrowRight, Plus, X } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import {
   criterionLinksList,
   criterionLinkKey,

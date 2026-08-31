@@ -72,6 +72,6 @@ export function guideMarkdown(subjectDisplay, technique, detail) {
   if (detail.tip) {
     lines.push("", `> **Dica:** ${detail.tip}`);
   }
-  lines.push("", "---", "_Exportado do Bookdex_");
+  lines.push("", "---", "_Exportado do Cognidex_");
   return lines.join("\n");
 }

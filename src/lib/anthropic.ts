@@ -14,6 +14,7 @@
 import { get, set, KEYS } from "./storage";
 import { MODELS, modelFor, getSearchTiers } from "./models";
 import { assertWithinBudget, trackUsage } from "./usage";
+import { looksLikeApiKey, extractJson } from "./anthropicShared";
 
 // Thinking adaptativo ligado em todas as chamadas. O MODELO de cada tarefa vem
 // de lib/models.js (fixo para tarefas que não são busca, escolhido pelo usuário
@@ -68,16 +69,7 @@ export async function hasCredentials() {
   return !!(key || proxy);
 }
 
-export function looksLikeApiKey(key) {
-  return /^sk-ant-[\w-]{10,}$/.test((key || "").trim());
-}
-
-function extractJson(text) {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1) throw new Error("Formato inesperado");
-  return text.slice(start, end + 1);
-}
+export { looksLikeApiKey };
 
 /**
  * Quebra um data URL de imagem no par que a API espera. Só JPEG/PNG/WebP/GIF

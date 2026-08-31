@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, X, RefreshCw, KeyRound, Share2, FileDown, Plus, Minus, Loader2, Trash2 } from "lucide-react";
+import { ArrowLeft, Check, X, RefreshCw, KeyRound, Share2, FileDown, Plus, Minus, Loader2, Trash2, ExternalLink } from "lucide-react";
 import { COLORS, getTypeColor, primaryButtonStyle, slug } from "../theme";
 import { fetchDetail, fetchStepDeepDive, MissingApiKeyError } from "../lib/anthropic";
 import { useProgressiveMessage } from "../lib/hooks";
@@ -24,7 +24,7 @@ const headerIconBtnStyle = {
   flexShrink: 0,
 };
 
-export default function DetailPage({ subjectDisplay, technique, cacheKey, detailCache, onCached, onDeleteDetail, onBack, onGoSettings }) {
+export default function DetailPage({ subjectDisplay, technique, cacheKey, detailCache, onCached, onDeleteDetail, onBack, onGoSettings, onOpenInSinergia }) {
   const cached = detailCache[cacheKey];
   const [detail, setDetail] = useState(cached || null);
   const [loading, setLoading] = useState(!cached);
@@ -48,7 +48,7 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
       detail.overview,
       ...(detail.steps || []).map((s, i) => `${i + 1}. ${s.title}: ${s.detail}`),
       "",
-      "via Bookdex",
+      "via Cognidex",
     ].join("\n");
     const outcome = await shareOrCopyText(technique.name, text);
     if (outcome === "copied") flashShareMsg("Guia copiado para a área de transferência.");
@@ -150,8 +150,19 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
           <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{technique.name}</span>
         </button>
 
-        {detail && (
-          <div className="flex items-center gap-1.5" style={{ flexShrink: 0, paddingTop: "8px" }}>
+        <div className="flex items-center gap-1.5" style={{ flexShrink: 0, paddingTop: "8px" }}>
+          {onOpenInSinergia && (
+            <button
+              onClick={() => onOpenInSinergia(technique.name)}
+              aria-label={`Avaliar "${technique.name}" no Sinergia`}
+              title="Avaliar no Sinergia"
+              style={headerIconBtnStyle}
+            >
+              <ExternalLink size={14} />
+            </button>
+          )}
+          {detail && (
+            <>
             <button onClick={handleExportGuide} aria-label="Exportar guia em .md" title="Exportar .md" style={headerIconBtnStyle}>
               <FileDown size={14} />
             </button>
@@ -174,8 +185,9 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
                 <Trash2 size={14} />
               </button>
             )}
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </div>
 
       <div style={{ fontFamily: "Inter, sans-serif", fontStyle: "italic", fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>

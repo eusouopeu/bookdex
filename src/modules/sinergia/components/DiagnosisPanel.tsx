@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { Check, Loader2, Search, Sparkles } from "lucide-react";
-import { COLORS } from "../theme";
+import { COLORS } from "../../../theme";
 import { MissingApiKeyError } from "../lib/anthropic";
 import {
   fetchReverseDiagnosis,
