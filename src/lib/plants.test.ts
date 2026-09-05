@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { plantGroupKey, plantItemId, plantToItem, plantFreeText } from "./plants";
+import { plantGroupKey, plantItemId, plantToItem, plantFreeText, daysUntilDue } from "./plants";
 
 const ALECRIM = {
   scientificName: "Rosmarinus officinalis",
@@ -50,5 +50,24 @@ describe("plants", () => {
     expect(text).toContain("Rosmaninho");
     expect(text).toContain("Lamiaceae");
     expect(text).toContain("chá digestivo");
+  });
+});
+
+describe("cronograma de cuidados", () => {
+  it("sem lastDoneAt, conta o intervalo inteiro a partir de agora", () => {
+    const now = Date.now();
+    expect(daysUntilDue({ enabled: true, intervalDays: 7, lastDoneAt: null }, now)).toBe(7);
+  });
+
+  it("com lastDoneAt no passado, desconta os dias já passados", () => {
+    const now = Date.now();
+    const threeDaysAgo = now - 3 * 24 * 60 * 60 * 1000;
+    expect(daysUntilDue({ enabled: true, intervalDays: 7, lastDoneAt: threeDaysAgo }, now)).toBe(4);
+  });
+
+  it("fica negativo quando passou do prazo (atrasado)", () => {
+    const now = Date.now();
+    const tenDaysAgo = now - 10 * 24 * 60 * 60 * 1000;
+    expect(daysUntilDue({ enabled: true, intervalDays: 7, lastDoneAt: tenDaysAgo }, now)).toBeLessThan(0);
   });
 });

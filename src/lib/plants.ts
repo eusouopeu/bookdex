@@ -47,3 +47,41 @@ export function plantFreeText(item) {
     .filter(Boolean)
     .join(" ");
 }
+
+/**
+ * Cronograma de cuidados — água e fertilização. Puro dado local (intervalo +
+ * data da última vez), sem chamada de API: "em quantos dias" é cálculo direto
+ * sobre esses dois campos, então uma planta salva sem cronograma configurado
+ * simplesmente não mostra o card, sem precisar de migração de schema.
+ */
+export interface CareTaskState {
+  enabled: boolean;
+  intervalDays: number;
+  lastDoneAt: number | null;
+}
+
+export interface CareSchedule {
+  water?: CareTaskState;
+  fertilize?: CareTaskState;
+}
+
+export const CARE_TASKS = [
+  { id: "water", label: "Água", defaultIntervalDays: 7 },
+  { id: "fertilize", label: "Fertilizar", defaultIntervalDays: 30 },
+] as const;
+
+export function defaultCareTask(taskId: string): CareTaskState {
+  const def = CARE_TASKS.find((t) => t.id === taskId);
+  return { enabled: true, intervalDays: def?.defaultIntervalDays || 7, lastDoneAt: null };
+}
+
+/**
+ * Dias até a próxima vez (negativo = atrasado). Sem `lastDoneAt` ainda (nunca
+ * marcado como feito), conta a partir de agora — "vence" daqui a
+ * `intervalDays`, que é a única data que faz sentido ter por padrão.
+ */
+export function daysUntilDue(task: CareTaskState, now = Date.now()) {
+  const last = task.lastDoneAt ?? now;
+  const dueAt = last + task.intervalDays * 24 * 60 * 60 * 1000;
+  return Math.ceil((dueAt - now) / (24 * 60 * 60 * 1000));
+}

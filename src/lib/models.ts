@@ -43,6 +43,7 @@ const FIXED_TIER: Record<string, Tier> = {
   stepDeepDive: "sonnet",
   conceptDeepDive: "sonnet",
   plantAspect: "sonnet", // texto de 3-5 linhas sobre um aspecto da planta/técnica/conceito
+  plantDiagnosis: "sonnet", // diagnóstico de doença/praga por foto — exige leitura visual, não recuperação estruturada
   techAspect: "sonnet",
   conceptAspect: "sonnet",
   goalSuggestions: "sonnet",
@@ -112,6 +113,7 @@ const ESTIMATED_TOKENS = {
   stepDeepDive: { input: 350, output: 400 },
   conceptDeepDive: { input: 300, output: 350 },
   plantAspect: { input: 300, output: 220 },
+  plantDiagnosis: { input: 350, output: 500 },
   techAspect: { input: 300, output: 220 },
   conceptAspect: { input: 300, output: 220 },
   goalSuggestions: { input: 250, output: 400 },

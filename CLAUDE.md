@@ -119,6 +119,30 @@ dela). Assume o modelo fixo de guia (`MODELS.sonnet`) pra cada versão arquivada
 seletor de modelo pra guias hoje (diferente dos modos de busca), então não tem "regenerar com
 modelo X" ainda.
 
+## Vegedex: aspecto de pets, filtro multi-tag, calculadora, diagnóstico e cronograma
+
+- `PLANT_ASPECTS` (lib/anthropic.ts) ganhou um 5º aspecto, `petSafety` ("Segurança para
+  pets") — mesmo mecanismo de sempre (botão-ícone, chamada curta sob demanda), sem infra nova.
+- Filtro de tag da Pokédex (`DexFilterBar`/`DexView`) virou multi-seleção: `activeTags: string[]`
+  em vez de `activeTag: string|null`, com semântica E (item precisa ter TODAS as tags marcadas).
+  Vale pra Vegedex e Cognidex igual, é o mesmo componente.
+- `lib/waterCalculator.ts`: calculadora de água pura (sem API) — vaso tratado como cilindro
+  (altura ≈ 0.85× diâmetro), com fração de volume por tipo de planta e multiplicador por estação.
+  UI em `components/WaterCalculatorPanel.tsx`, no card de planta.
+- `fetchPlantDiagnosis` (lib/anthropic.ts, tier fixo `plantDiagnosis`→Sonnet): diagnóstico de
+  doença/praga a partir de 1 foto — retorna causas prováveis e tratamento em texto, SEM anotação
+  de região tocável na imagem (isso é visão computacional local, não o que um LLM de texto faz).
+  UI em `components/PlantDiagnosisPanel.tsx`.
+- `lib/plants.ts`: `CareSchedule`/`CareTaskState`/`daysUntilDue` — cronograma de água/fertilização
+  por planta salva, dado 100% local (intervalo configurável + data da última vez), sem chamada de
+  API nem migração de schema (campo `care` é opcional, planta sem cronograma configurado
+  simplesmente não computa nada diferente). `updateItemCareTask` no `DataContext`, UI em
+  `components/CareSchedulePanel.tsx` (só aparece em planta já salva, com botão "Feito hoje").
+- Não implementado (ficou fora do escopo pedido): medidor de luz em tempo real (precisa de preview
+  contínuo de câmera, não só 1 foto), lembretes/notificações push (exigiria
+  `@capacitor/local-notifications`, dependência nova) e chat "pergunte ao botânico" (conversa
+  multi-turno — o cliente Anthropic do app hoje é só single-shot).
+
 ## Proibição de leitura de dependências
 
 - NUNCA ler arquivos de dependências (ex.: `node_modules/`, `dist/`, `build/`, pastas de vendor

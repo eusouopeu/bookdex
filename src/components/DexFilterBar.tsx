@@ -27,7 +27,7 @@ export default function DexFilterBar({
   filterText,
   onFilterTextChange,
   allTags,
-  activeTag,
+  activeTags,
   onToggleTag,
   sortBy,
   onSortByChange,
@@ -76,24 +76,28 @@ export default function DexFilterBar({
       {allTags.length > 0 && (
         <div className="flex items-center" style={{ flexWrap: "wrap", gap: "6px", marginBottom: "10px" }}>
           <Tag size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
-          {allTags.map((tag) => (
-            <button
-              key={tag}
-              onClick={() => onToggleTag(tag)}
-              style={{
-                fontFamily: '"JetBrains Mono", monospace',
-                fontSize: "10.5px",
-                padding: "3px 9px",
-                borderRadius: "999px",
-                border: `1.5px solid ${COLORS.lensBlue}`,
-                background: activeTag === tag ? COLORS.lensBlue : "transparent",
-                color: activeTag === tag ? COLORS.white : COLORS.lensBlue,
-                cursor: "pointer",
-              }}
-            >
-              {tag}
-            </button>
-          ))}
+          {allTags.map((tag) => {
+            const active = activeTags.includes(tag);
+            return (
+              <button
+                key={tag}
+                onClick={() => onToggleTag(tag)}
+                aria-pressed={active}
+                style={{
+                  fontFamily: '"JetBrains Mono", monospace',
+                  fontSize: "10.5px",
+                  padding: "3px 9px",
+                  borderRadius: "999px",
+                  border: `1.5px solid ${COLORS.lensBlue}`,
+                  background: active ? COLORS.lensBlue : "transparent",
+                  color: active ? COLORS.white : COLORS.lensBlue,
+                  cursor: "pointer",
+                }}
+              >
+                {tag}
+              </button>
+            );
+          })}
         </div>
       )}
 

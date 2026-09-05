@@ -18,7 +18,7 @@ import {
   type SavedGroup,
   type SavedItem,
 } from "../lib/savedModel";
-import { plantGroupKey, plantItemId, plantToItem } from "../lib/plants";
+import { plantGroupKey, plantItemId, plantToItem, defaultCareTask, type CareTaskState } from "../lib/plants";
 import { applyEnrichment, convertItem as convertItemFields } from "../lib/convert";
 import { scheduleMdMirror } from "../lib/autoMdMirror";
 import { MODELS } from "../lib/models";
@@ -81,6 +81,7 @@ export interface DataContextValue {
   updateItemTags: (subjectKey: string, itemId: string, kind: string | undefined, tags: string[]) => void;
   updateItemNote: (subjectKey: string, itemId: string, kind: string | undefined, note: string) => void;
   updateItemImages: (subjectKey: string, itemId: string, kind: string | undefined, images: unknown) => void;
+  updateItemCareTask: (subjectKey: string, itemId: string, taskId: string, patch: Partial<CareTaskState>) => void;
   convertItem: (subjectKey: string, itemId: string, targetKind: string) => void;
   enrichItem: (subjectKey: string, itemId: string) => Promise<SavedItem | null>;
   isWordSaved: (languageCode: string | undefined, language: string, word: string) => boolean;
@@ -540,6 +541,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const updateItemImages = (subjectKey: string, itemId: string, _kind: string | undefined, images: unknown) =>
     updateItemInGroup(subjectKey, itemId, (item) => ({ ...item, images }));
 
+  /** Atualiza UMA tarefa do cronograma de cuidados (água/fertilizar) de uma planta salva. */
+  const updateItemCareTask = (subjectKey: string, itemId: string, taskId: string, patch: Partial<CareTaskState>) =>
+    updateItemInGroup(subjectKey, itemId, (item) => ({
+      ...item,
+      care: { ...((item as any).care || {}), [taskId]: { ...defaultCareTask(taskId), ...((item as any).care?.[taskId] || {}), ...patch } },
+    }));
+
   /* ------------------------------------------------------------- palavras */
 
   function isWordSaved(languageCode: string | undefined, language: string, word: string) {
@@ -772,6 +780,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     updateItemTags,
     updateItemNote,
     updateItemImages,
+    updateItemCareTask,
     convertItem,
     enrichItem,
     isWordSaved,

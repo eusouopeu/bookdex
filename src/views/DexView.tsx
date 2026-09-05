@@ -55,10 +55,11 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
     convertItem: onConvertItem,
     enrichItem: onEnrichItem,
     updateItemAspect: onUpdateItemAspect,
+    updateItemCareTask: onUpdateItemCareTask,
   } = useData();
   const [collapsed, setCollapsed] = useState({});
   const [filterText, setFilterText] = useState("");
-  const [activeTag, setActiveTag] = useState(null);
+  const [activeTags, setActiveTags] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState("recent"); // "recent" | "name"
   const [lastBackup, setLastBackup] = useState(undefined); // undefined = ainda não carregado
   const [bannerDismissed, setBannerDismissed] = useState(false);
@@ -212,7 +213,7 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
         const finalItems = group.items.filter((it) => {
           if (!showArchived && it.archived) return false;
           if (showArchived && !it.archived) return false;
-          if (activeTag && !(it.tags || []).includes(activeTag)) return false;
+          if (activeTags.length && !activeTags.every((tag) => (it.tags || []).includes(tag))) return false;
           if (!q || subjectMatches) return true;
           return (searchIndex.get(`${key}:${it.id}`) || "").includes(q);
         });
@@ -507,8 +508,8 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
         filterText={filterText}
         onFilterTextChange={setFilterText}
         allTags={allTags}
-        activeTag={activeTag}
-        onToggleTag={(tag) => setActiveTag((t) => (t === tag ? null : tag))}
+        activeTags={activeTags}
+        onToggleTag={(tag) => setActiveTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))}
         sortBy={sortBy}
         onSortByChange={setSortBy}
         category={category}
@@ -671,6 +672,7 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
                       plant={item}
                       onToggle={() => onToggleSave("plant", group.displayName, { plant: item })}
                       onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, item.id, kind, images) : undefined}
+                      onCareTaskChange={(taskId, patch) => onUpdateItemCareTask(key, item.id, taskId, patch)}
                     />
                   );
                 }

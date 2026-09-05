@@ -791,8 +791,48 @@ export async function fetchPlantFromPhoto(images, effort) {
   return { ...plant, images };
 }
 
+export const PLANT_DIAGNOSIS_SYSTEM_PROMPT = `Você é um botânico/fitopatologista diagnosticando problemas de plantas por foto, para um app estilo Pokédex.
+Dada uma ou mais fotos de uma planta com aparência problemática (manchas, murcha, amarelamento, pragas visíveis, etc.), identifique o(s) problema(s) mais prováveis.
+
+Regras obrigatórias:
+- Responda APENAS com um objeto JSON válido. Sem markdown, sem crases, sem texto antes ou depois.
+- Baseie-se SÓ no que é visível na foto. Não invente sintomas que a imagem não mostra.
+- "diseasesFound": true se algum problema visível foi identificado, false se a planta parece saudável ou a foto não permite avaliar.
+- "issues": lista de 1 a 3 problemas prováveis, do mais provável ao menos provável, cada um com:
+  - "name": nome do problema (ex.: "Oídio", "Ferrugem", "Cochonilha", "Excesso de rega").
+  - "overview": 2-3 frases descrevendo o problema e como ele aparece na foto especificamente.
+  - "causes": lista de 2 a 4 causas prováveis (ex.: "Excesso de água", "Luz insuficiente", "Infestação de fungo", "Baixa umidade").
+  - "treatment": 2-4 frases de tratamento prático e específico (não genérico).
+- Se a planta parecer saudável, "issues" deve ser uma lista vazia e "note" deve dizer isso.
+- Se a foto não permitir avaliar (ruim, planta não visível), "diseasesFound" false e explique em "note".
+
+Formato exato (sem campos extras):
+{"diseasesFound":true,"issues":[{"name":"...","overview":"...","causes":["..."],"treatment":"..."}],"note":""}`;
+
 /**
- * Os quatro aspectos que os botões-ícone do card de planta geram sob demanda.
+ * Diagnóstico de doença/praga a partir de foto — card de resultado, sem
+ * anotação de região tocável na imagem (isso é visão computacional local, não
+ * o que um LLM de linguagem faz bem); o card mostra causas prováveis e
+ * tratamento, não um overlay apontando pra pixels específicos da foto.
+ */
+export async function fetchPlantDiagnosis(images: string[], effort?: string) {
+  if (!images || !images.length) throw new Error("Nenhuma foto para diagnosticar.");
+  const parsed = await sendMessageJSON({
+    system: PLANT_DIAGNOSIS_SYSTEM_PROMPT,
+    user: "Diagnostique os problemas desta planta.",
+    images,
+    maxTokens: 800,
+    effort,
+    model: modelFor("plantDiagnosis"),
+  });
+  if (typeof parsed?.diseasesFound !== "boolean" || !Array.isArray(parsed.issues)) {
+    throw new Error("Formato inesperado na resposta");
+  }
+  return parsed as { diseasesFound: boolean; issues: { name: string; overview: string; causes: string[]; treatment: string }[]; note: string };
+}
+
+/**
+ * Os aspectos que os botões-ícone do card de planta geram sob demanda.
  * Cada um é uma chamada curta e independente — o card nasce só com o resumo, e
  * o usuário paga por aspecto, quando quiser aquele aspecto.
  */
@@ -820,6 +860,12 @@ export const PLANT_ASPECTS = [
     label: "Usos medicinais",
     prompt:
       "Usos medicinais atribuídos à planta, qual parte é usada e de que forma (chá, tintura, tópico). Separe o que tem respaldo em estudos do que é uso tradicional sem comprovação, e cite contraindicações ou toxicidade conhecidas.",
+  },
+  {
+    id: "petSafety",
+    label: "Segurança para pets",
+    prompt:
+      "Esta planta é tóxica para cães e/ou gatos? Diga qual parte é a mais tóxica (folha, fruto, seiva, bulbo...), o(s) princípio(s) ativo(s) responsável(is) quando conhecido(s), e os sintomas esperados de ingestão/contato (do mais leve ao mais grave). Se não houver toxicidade conhecida para nenhum dos dois, diga isso claramente em vez de inventar risco.",
   },
 ];
 

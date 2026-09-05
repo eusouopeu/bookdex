@@ -1,11 +1,15 @@
 import { useState } from "react";
-import { Sprout, Leaf, MapPin, ScanEye, CloudSun } from "lucide-react";
+import { Sprout, Leaf, MapPin, ScanEye, CloudSun, ShieldAlert } from "lucide-react";
 import { COLORS } from "../theme";
 import CardShell from "./CardShell";
 import ShareButton from "./ShareButton";
 import PlantPhoto from "./PlantPhoto";
 import AspectButtons, { GREEN_TINT } from "./AspectButtons";
+import WaterCalculatorPanel from "./WaterCalculatorPanel";
+import PlantDiagnosisPanel from "./PlantDiagnosisPanel";
+import CareSchedulePanel from "./CareSchedulePanel";
 import { PLANT_ASPECTS, fetchPlantAspect } from "../lib/anthropic";
+import type { CareTaskState } from "../lib/plants";
 import { plantCardPdfBlob } from "../lib/cardPdf";
 import { estimateCost, formatCost } from "../lib/models";
 
@@ -14,6 +18,7 @@ const ASPECT_ICONS = {
   identification: ScanEye,
   cultivation: CloudSun,
   medicinal: Leaf,
+  petSafety: ShieldAlert,
 };
 
 const PLANT_ASPECTS_WITH_ICONS = PLANT_ASPECTS.map((a) => ({ ...a, icon: ASPECT_ICONS[a.id] || Sprout }));
@@ -36,6 +41,7 @@ interface PlantCardProps {
   onNoteChange?: (note: string) => void;
   onImagesChange?: (images: unknown) => void;
   onAspectGenerated?: (aspectId: string, text: string) => void;
+  onCareTaskChange?: (taskId: string, patch: Partial<CareTaskState>) => void;
   selectable?: boolean;
   selected?: boolean;
   onSelectToggle?: () => void;
@@ -49,6 +55,7 @@ export default function PlantCard({
   onNoteChange,
   onImagesChange,
   onAspectGenerated,
+  onCareTaskChange,
   selectable,
   selected,
   onSelectToggle,
@@ -139,6 +146,11 @@ export default function PlantCard({
         tint={GREEN_TINT}
         costLabel={formatCost(estimateCost("plantAspect"))}
       />
+      <div className="flex items-center gap-2" style={{ flexWrap: "wrap" }}>
+        <WaterCalculatorPanel />
+        <PlantDiagnosisPanel />
+      </div>
+      {saved && onCareTaskChange && <CareSchedulePanel care={plant.care} onChange={onCareTaskChange} />}
     </CardShell>
   );
 }
