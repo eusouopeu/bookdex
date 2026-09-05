@@ -1,81 +1,65 @@
 /**
- * Exporta a Pokédex inteira (técnicas, conceitos, tipos e os guias já
- * cacheados) num único arquivo Markdown — pensado para levar o conteúdo
- * para Obsidian, Notion ou qualquer editor de texto puro.
+ * Gera o Markdown da Pokédex inteira (técnicas, conceitos, tipos e os guias
+ * já cacheados). Não existe mais botão de exportação manual pra isso — o
+ * conteúdo é espelhado automaticamente em `.md` a cada mudança relevante
+ * (ver `lib/autoMdMirror.ts`), pensado pra abrir direto no Obsidian/Notion/
+ * qualquer editor de texto puro sem precisar exportar nada à mão.
  */
-import { slug } from "../theme";
-import { groupItems, itemKind, categoryOfKind, type SavedState } from "./savedModel";
-import { PLANT_ASPECTS } from "./anthropic";
+import { itemKind, type SavedState } from "./savedModel";
+import { sectionsOf, techniqueGuide, plantAspectEntries } from "./exportModel";
 
-/**
- * Como um assunto pode misturar técnicas, conceitos e tipos, cada seção do
- * arquivo pega só os itens do seu naipe e ignora os assuntos que ficaram sem
- * nenhum.
- */
-function sectionsOf(saved: SavedState, category: string) {
-  const out = [];
-  for (const group of Object.values(saved || {})) {
-    const items = groupItems(group).filter((it) => categoryOfKind(itemKind(it, group)) === category);
-    if (items.length) out.push({ group, items });
-  }
-  return out;
-}
-
-function writeTechnique(lines, displayName, t, detailCache) {
+function writeTechnique(lines: string[], displayName: string, t: any, detailCache: Record<string, any>) {
   lines.push(`### ${t.name} (${t.type})`, "");
   if (t.statLabels && t.stats) {
-    lines.push(t.statLabels.map((label, i) => `**${label}:** ${t.stats[i] ?? "?"}/5`).join("  ·  "), "");
+    lines.push(t.statLabels.map((label: string, i: number) => `**${label}:** ${t.stats[i] ?? "?"}/5`).join("  ·  "), "");
   }
   if (t.description) lines.push(t.description, "");
   if (t.bestFor) lines.push(`_Ideal para: ${t.bestFor}_`, "");
 
-  const detail = detailCache?.[`${slug(displayName)}:${t.id}`];
+  const detail = techniqueGuide(displayName, t, detailCache);
   if (detail) {
     lines.push("**Guia passo a passo:**", "");
-    (detail.steps || []).forEach((step, i) => {
+    (detail.steps || []).forEach((step: any, i: number) => {
       lines.push(`${i + 1}. **${step.title}** — ${step.detail}`);
     });
     if (detail.steps?.length) lines.push("");
     if (detail.tip) lines.push(`> Dica: ${detail.tip}`, "");
   }
 
-  if (t.tags?.length) lines.push(`Tags: ${t.tags.map((tag) => `\`${tag}\``).join(" ")}`, "");
+  if (t.tags?.length) lines.push(`Tags: ${t.tags.map((tag: string) => `\`${tag}\``).join(" ")}`, "");
   if (t.note) lines.push(`Nota pessoal: ${t.note}`, "");
   lines.push("---", "");
 }
 
-function writeKnowledgeItem(lines, group, it) {
+function writeKnowledgeItem(lines: string[], group: any, it: any) {
   if (itemKind(it, group) === "definition") {
     lines.push(`### ${it.term}${it.category ? ` (${it.category})` : ""}`, "");
     if (it.definition) lines.push(it.definition, "");
-    (it.keyPoints || []).forEach((k) => lines.push(`- ${k}`));
+    (it.keyPoints || []).forEach((k: string) => lines.push(`- ${k}`));
     if (it.keyPoints?.length) lines.push("");
     if (it.example) lines.push(`_Exemplo: ${it.example}_`, "");
   } else {
     lines.push(`### ${it.name}${it.category ? ` (${it.category})` : ""}`, "");
     if (it.description) lines.push(it.description, "");
   }
-  if (it.tags?.length) lines.push(`Tags: ${it.tags.map((tag) => `\`${tag}\``).join(" ")}`, "");
+  if (it.tags?.length) lines.push(`Tags: ${it.tags.map((tag: string) => `\`${tag}\``).join(" ")}`, "");
   if (it.note) lines.push(`Nota pessoal: ${it.note}`, "");
   lines.push("---", "");
 }
 
-function writePlant(lines, it) {
+function writePlant(lines: string[], it: any) {
   lines.push(`### ${it.commonNames?.[0] || it.scientificName || it.name}`, "");
   if (it.scientificName) lines.push(`*${it.scientificName}*`, "");
   if ((it.commonNames || []).length > 1) lines.push(`Também conhecida como: ${it.commonNames.slice(1).join(", ")}`, "");
   if (it.summary) lines.push(it.summary, "");
-  for (const aspect of PLANT_ASPECTS) {
-    const text = (it.aspects || {})[aspect.id];
-    if (text) lines.push(`**${aspect.label}:** ${text}`, "");
-  }
-  if (it.tags?.length) lines.push(`Tags: ${it.tags.map((tag) => `\`${tag}\``).join(" ")}`, "");
+  for (const { label, text } of plantAspectEntries(it)) lines.push(`**${label}:** ${text}`, "");
+  if (it.tags?.length) lines.push(`Tags: ${it.tags.map((tag: string) => `\`${tag}\``).join(" ")}`, "");
   if (it.note) lines.push(`Nota pessoal: ${it.note}`, "");
   lines.push("---", "");
 }
 
-export function buildPokedexMarkdown(saved, detailCache) {
-  const lines = ["# Cognidex — minha Pokédex", "", `_Exportado em ${new Date().toLocaleDateString("pt-BR")}_`, ""];
+export function buildPokedexMarkdown(saved: SavedState, detailCache: Record<string, any>) {
+  const lines = ["# Cognidex — minha Pokédex", "", `_Atualizado em ${new Date().toLocaleDateString("pt-BR")}_`, ""];
 
   const techniqueSections = sectionsOf(saved, "technique");
   const knowledgeSections = sectionsOf(saved, "knowledge");
@@ -85,7 +69,7 @@ export function buildPokedexMarkdown(saved, detailCache) {
     lines.push("## Técnicas", "");
     for (const { group, items } of techniqueSections) {
       lines.push(`## ${group.displayName}`, "");
-      for (const t of items) writeTechnique(lines, group.displayName, t, detailCache);
+      for (const t of items) writeTechnique(lines, group.displayName || "", t, detailCache);
     }
   }
 
@@ -106,8 +90,4 @@ export function buildPokedexMarkdown(saved, detailCache) {
   }
 
   return lines.join("\n");
-}
-
-export function countMarkdownItems(saved: SavedState) {
-  return Object.values(saved || {}).reduce((sum: number, group) => sum + groupItems(group).length, 0);
 }

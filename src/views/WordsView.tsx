@@ -14,15 +14,22 @@ const CONFIRM_THRESHOLD = 3;
  * Pokédex. Agora ela é o modo "pal:" da barra única, e esta tela faz o mesmo
  * que as outras categorias: mostra o que já foi capturado.
  */
-export default function WordsView(_props: { searchEffort?: string } = {}) {
+interface WordsViewProps {
+  searchEffort?: string;
+  /** Sobrepõe o acervo vindo do contexto — usado pelo DexView pra passar já filtrado pela busca. */
+  words?: ReturnType<typeof useData>["words"];
+}
+
+export default function WordsView({ words: wordsOverride }: WordsViewProps = {}) {
   const {
-    words,
+    words: wordsFromContext,
     storageLoaded,
     toggleWordSave: onToggleWord,
     removeWordGroup: onRemoveGroup,
     updateWordTags: onUpdateTags,
     updateWordNote: onUpdateNote,
   } = useData();
+  const words = wordsOverride ?? wordsFromContext;
   const [collapsed, setCollapsed] = useState({});
   const [confirmingRemove, setConfirmingRemove] = useState(null);
 
@@ -37,16 +44,23 @@ export default function WordsView(_props: { searchEffort?: string } = {}) {
 
   const groups = Object.entries(words || {}).sort((a, b) => a[1].displayName.localeCompare(b[1].displayName, "pt-BR"));
   const totalWords = Object.values(words || {}).reduce((sum, g) => sum + g.words.length, 0);
+  const totalWordsUnfiltered = Object.values(wordsFromContext || {}).reduce((sum, g) => sum + g.words.length, 0);
 
   return (
     <div>
-      {storageLoaded && totalWords === 0 && (
+      {storageLoaded && totalWordsUnfiltered === 0 && (
         <div className="flex flex-col items-center justify-center text-center" style={{ minHeight: "260px", color: COLORS.screenBorder }}>
           <Type size={32} strokeWidth={1.5} style={{ marginBottom: "10px" }} />
           <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", maxWidth: "230px" }}>
             Nenhuma palavra capturada ainda. Busque com pal: na barra de baixo e toque na pokébola para guardá-la.
           </p>
         </div>
+      )}
+
+      {totalWordsUnfiltered > 0 && totalWords === 0 && (
+        <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12.5px", color: "var(--text-muted)", textAlign: "center", marginTop: "20px" }}>
+          Nenhuma palavra corresponde à busca.
+        </p>
       )}
 
       {totalWords > 0 &&

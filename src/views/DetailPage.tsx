@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Check, X, RefreshCw, KeyRound, Share2, FileDown, Plus, Minus, Loader2, Trash2, ExternalLink } from "lucide-react";
+import { ArrowLeft, Check, X, RefreshCw, KeyRound, Share2, FileDown, Plus, Minus, Loader2, Trash2, ExternalLink, History } from "lucide-react";
 import { COLORS, getTypeColor, primaryButtonStyle, slug } from "../theme";
 import { fetchDetail, fetchStepDeepDive, MissingApiKeyError } from "../lib/anthropic";
 import { useProgressiveMessage } from "../lib/hooks";
@@ -24,7 +24,19 @@ const headerIconBtnStyle = {
   flexShrink: 0,
 };
 
-export default function DetailPage({ subjectDisplay, technique, cacheKey, detailCache, onCached, onDeleteDetail, onBack, onGoSettings, onOpenInSinergia }) {
+export default function DetailPage({
+  subjectDisplay,
+  technique,
+  cacheKey,
+  detailCache,
+  detailHistory,
+  onCached,
+  onDeleteDetail,
+  onRestoreVersion,
+  onBack,
+  onGoSettings,
+  onOpenInSinergia,
+}) {
   const cached = detailCache[cacheKey];
   const [detail, setDetail] = useState(cached || null);
   const [loading, setLoading] = useState(!cached);
@@ -33,6 +45,9 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
   const [shareMsg, setShareMsg] = useState(null);
   const [stepBreakdowns, setStepBreakdowns] = useState({}); // { [i]: { loading, error, substeps, open } }
   const [confirmingRegenerate, setConfirmingRegenerate] = useState(false);
+  const [showVersions, setShowVersions] = useState(false);
+  const [comparingIndex, setComparingIndex] = useState<number | null>(null);
+  const versions = (detailHistory && detailHistory[cacheKey]) || [];
   const color = getTypeColor(technique.type);
   const loadingMsg = useProgressiveMessage(loading, ["MONTANDO O GUIA...", "AINDA MONTANDO...", "QUASE PRONTO..."]);
   const touch = useRef({ active: false, x: 0, y: 0 });
@@ -126,6 +141,17 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
     load();
   }
 
+  /** Restaura uma versão arquivada como o guia ativo — a atual vai pro arquivo no lugar dela. */
+  function handleRestoreVersion(index: number) {
+    const version = versions[index];
+    if (!version) return;
+    onRestoreVersion?.(cacheKey, index);
+    setDetail(version.detail);
+    setStepBreakdowns({});
+    setComparingIndex(null);
+    setShowVersions(false);
+  }
+
   return (
     <div onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
       <div className="flex items-start gap-2" style={{ justifyContent: "space-between", marginBottom: "2px" }}>
@@ -169,6 +195,37 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
             <button onClick={handleShareGuide} aria-label="Compartilhar guia" title="Compartilhar" style={headerIconBtnStyle}>
               <Share2 size={14} />
             </button>
+            {versions.length > 0 && (
+              <button
+                onClick={() => setShowVersions((v) => !v)}
+                aria-label={`Versões anteriores deste guia (${versions.length})`}
+                aria-pressed={showVersions}
+                title="Versões anteriores"
+                style={{ ...headerIconBtnStyle, position: "relative" }}
+              >
+                <History size={14} />
+                <span
+                  style={{
+                    position: "absolute",
+                    top: "-5px",
+                    right: "-5px",
+                    background: COLORS.lensBlue,
+                    color: "#fff",
+                    borderRadius: "999px",
+                    fontSize: "9px",
+                    fontFamily: '"JetBrains Mono", monospace',
+                    minWidth: "14px",
+                    height: "14px",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    padding: "0 2px",
+                  }}
+                >
+                  {versions.length}
+                </span>
+              </button>
+            )}
             {onDeleteDetail && (
               <button
                 onClick={handleRegenerate}
@@ -189,6 +246,71 @@ export default function DetailPage({ subjectDisplay, technique, cacheKey, detail
           )}
         </div>
       </div>
+
+      {showVersions && versions.length > 0 && (
+        <div
+          style={{
+            background: "rgba(120,120,120,0.08)",
+            border: `1.5px solid ${COLORS.screenBorder}`,
+            borderRadius: "8px",
+            padding: "8px 10px",
+            marginBottom: "10px",
+          }}
+        >
+          <div style={{ fontFamily: '"Baloo 2", sans-serif', fontWeight: 700, fontSize: "11.5px", color: COLORS.ink, marginBottom: "6px" }}>
+            Versões anteriores deste guia
+          </div>
+          {[...versions].reverse().map((v, revIdx) => {
+            const i = versions.length - 1 - revIdx;
+            const isComparing = comparingIndex === i;
+            return (
+              <div key={v.generatedAt} style={{ marginBottom: "6px" }}>
+                <div className="flex items-center justify-between gap-2">
+                  <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px", color: "var(--text-muted)" }}>
+                    {new Date(v.generatedAt).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                  </span>
+                  <div className="flex items-center gap-2" style={{ flexShrink: 0 }}>
+                    <button
+                      onClick={() => setComparingIndex(isComparing ? null : i)}
+                      style={{ background: "none", border: "none", color: COLORS.lensBlue, fontFamily: "Inter, sans-serif", fontSize: "11px", cursor: "pointer", padding: 0 }}
+                    >
+                      {isComparing ? "Fechar" : "Comparar"}
+                    </button>
+                    <button
+                      onClick={() => handleRestoreVersion(i)}
+                      style={{ background: "none", border: "none", color: "var(--success)", fontFamily: "Inter, sans-serif", fontSize: "11px", cursor: "pointer", padding: 0 }}
+                    >
+                      Restaurar
+                    </button>
+                  </div>
+                </div>
+                {isComparing && (
+                  <div
+                    style={{
+                      marginTop: "6px",
+                      padding: "8px 10px",
+                      background: COLORS.surface,
+                      borderRadius: "8px",
+                      border: `1px dashed ${COLORS.screenBorder}`,
+                      fontFamily: "Inter, sans-serif",
+                      fontSize: "11.5px",
+                      color: COLORS.ink,
+                      lineHeight: 1.5,
+                    }}
+                  >
+                    {(v.detail as any).overview && <p style={{ margin: "0 0 6px" }}>{(v.detail as any).overview}</p>}
+                    {((v.detail as any).steps || []).map((s: any, si: number) => (
+                      <p key={si} style={{ margin: "0 0 4px" }}>
+                        <strong>{si + 1}. {s.title}</strong> — {s.detail}
+                      </p>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       <div style={{ fontFamily: "Inter, sans-serif", fontStyle: "italic", fontSize: "12px", color: "var(--text-muted)", marginBottom: "8px" }}>
         {subjectDisplay}

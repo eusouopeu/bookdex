@@ -94,6 +94,7 @@ export async function sendMessage({
   maxTokens = 1000,
   effort = DEFAULT_EFFORT,
   model = MODELS.sonnet,
+  signal,
 }) {
   await assertWithinBudget();
   const [apiKey, proxyUrl] = await Promise.all([getApiKey(), getProxyUrl()]);
@@ -121,6 +122,7 @@ export async function sendMessage({
     response = await fetch(url, {
       method: "POST",
       headers,
+      signal,
       body: JSON.stringify({
         model,
         max_tokens: maxTokens,
@@ -131,6 +133,7 @@ export async function sendMessage({
       }),
     });
   } catch (e) {
+    if (e.name === "AbortError") throw e;
     throw new Error(
       "Falha de rede ao falar com a API. Verifique a conexão (ou configure um proxy em Configurações)."
     );
@@ -259,13 +262,14 @@ function avoidNote(avoid) {
   return `\n\n[Preferências do usuário: ele já marcou os itens a seguir como pouco relevantes em buscas anteriores — evite repeti-los ou sugerir variações muito parecidas: ${clean.join(", ")}.]`;
 }
 
-export async function fetchTechniques(subject, avoid, criteria, effort) {
+export async function fetchTechniques(subject, avoid, criteria, effort, signal?: AbortSignal) {
   const parsed = await sendMessageJSON({
     system: buildSearchSystemPrompt(criteria),
     user: subject + avoidNote(avoid),
     maxTokens: 1000,
     effort,
     model: await searchModelFor("technique"),
+    signal,
   });
   if (!parsed.subject || !Array.isArray(parsed.statLabels) || !Array.isArray(parsed.techniques)) {
     throw new Error("Formato inesperado na resposta");
@@ -273,13 +277,14 @@ export async function fetchTechniques(subject, avoid, criteria, effort) {
   return parsed;
 }
 
-export async function fetchDefinition(term, avoid?, effort?) {
+export async function fetchDefinition(term, avoid?, effort?, signal?: AbortSignal) {
   const parsed = await sendMessageJSON({
     system: DEFINITION_SYSTEM_PROMPT,
     user: term + avoidNote(avoid),
     maxTokens: 900,
     effort,
     model: await searchModelFor("definition"),
+    signal,
   });
   if (!parsed.term || !parsed.definition) {
     throw new Error("Formato inesperado na resposta");
@@ -294,13 +299,14 @@ function criteriaNote(criteria) {
   return `\n\n[Critérios de comparação pedidos pelo usuário: ${clean.join(", ")}.]`;
 }
 
-export async function fetchList(subject, avoid, effort, criteria) {
+export async function fetchList(subject, avoid, effort, criteria, signal?: AbortSignal) {
   const parsed = await sendMessageJSON({
     system: LIST_SYSTEM_PROMPT,
     user: subject + avoidNote(avoid) + criteriaNote(criteria),
     maxTokens: 1000,
     effort,
     model: await searchModelFor("list"),
+    signal,
   });
   if (!parsed.subject || !Array.isArray(parsed.items)) {
     throw new Error("Formato inesperado na resposta");
@@ -341,13 +347,14 @@ Formato exato (sem campos extras):
 {"subject":"...","subjectIntro":"...","statLabels":[...],"techniques":[{"name":"...","type":"...","description":"...","bestFor":"...","stats":[...]}]}`;
 }
 
-export async function fetchCompare(names, avoid, criteria, effort) {
+export async function fetchCompare(names, avoid, criteria, effort, signal?: AbortSignal) {
   const parsed = await sendMessageJSON({
     system: buildCompareSystemPrompt(names, criteria),
     user: names.join(" vs ") + avoidNote(avoid),
     maxTokens: 1000,
     effort,
     model: await searchModelFor("compare"),
+    signal,
   });
   if (!parsed.subject || !Array.isArray(parsed.statLabels) || !Array.isArray(parsed.techniques)) {
     throw new Error("Formato inesperado na resposta");
@@ -662,12 +669,13 @@ Formato exato (sem campos extras):
  * consulta de dicionário, não análise, e não justifica o modelo maior. Por
  * isso também ignora o "esforço de busca" configurado.
  */
-export async function fetchWord(word, avoid) {
+export async function fetchWord(word, avoid, signal?: AbortSignal) {
   const parsed = await sendMessageJSON({
     system: WORD_SYSTEM_PROMPT,
     user: word + avoidNote(avoid),
     maxTokens: 900,
     model: modelFor("word"),
+    signal,
   });
   if (!parsed.word || !parsed.language || !parsed.meaning) {
     throw new Error("Formato inesperado na resposta");
@@ -745,13 +753,14 @@ function normalizePlant(parsed) {
   };
 }
 
-export async function fetchPlantByName(name, avoid, effort) {
+export async function fetchPlantByName(name, avoid, effort, signal?: AbortSignal) {
   const parsed = await sendMessageJSON({
     system: PLANT_NAME_SYSTEM_PROMPT,
     user: name + avoidNote(avoid),
     maxTokens: 700,
     effort,
     model: await searchModelFor("plant"),
+    signal,
   });
   const plant = normalizePlant(parsed);
   if (!plant.scientificName && !plant.commonNames.length) {

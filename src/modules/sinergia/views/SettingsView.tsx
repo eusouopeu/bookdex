@@ -436,50 +436,12 @@ export default function SettingsView({
             <Gauge size={15} style={{ color: COLORS.ink }} />
             <h3 style={{ ...sectionTitleStyle, margin: 0 }}>Uso da API</h3>
           </div>
-          {totals!.calls === 0 ? (
-            <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)" }}>
-              Nenhuma chamada registrada ainda neste aparelho.
-            </p>
-          ) : (
-            <>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontFamily: "Inter, sans-serif", fontSize: "11.5px", color: "var(--text)", marginBottom: "8px" }}>
-                <thead>
-                  <tr style={{ color: "var(--text-muted)", textAlign: "left" }}>
-                    <th style={{ fontWeight: 400, paddingBottom: "4px" }}>Modelo</th>
-                    <th style={{ fontWeight: 400, textAlign: "right" }}>Chamadas</th>
-                    <th style={{ fontWeight: 400, textAlign: "right" }}>Tokens (E/S)</th>
-                    <th style={{ fontWeight: 400, textAlign: "right" }}>Custo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(usage.byModel).map(([model, b]: [string, any]) => (
-                    <tr key={model} style={{ borderTop: `1px solid ${COLORS.screenBorder}` }}>
-                      <td style={{ padding: "5px 0", fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px" }}>
-                        {model === MODELS.sonnet ? "Sonnet" : model}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{b.calls}</td>
-                      <td style={{ textAlign: "right" }}>
-                        {(b.inputTokens || 0).toLocaleString("pt-BR")}/{(b.outputTokens || 0).toLocaleString("pt-BR")}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{usd(costOfByModel({ [model]: b }))}</td>
-                    </tr>
-                  ))}
-                  <tr style={{ borderTop: `2px solid ${COLORS.screenBorder}`, fontWeight: 600 }}>
-                    <td style={{ padding: "5px 0" }}>Total</td>
-                    <td style={{ textAlign: "right" }}>{totals!.calls}</td>
-                    <td style={{ textAlign: "right" }}>
-                      {totals!.inputTokens.toLocaleString("pt-BR")}/{totals!.outputTokens.toLocaleString("pt-BR")}
-                    </td>
-                    <td style={{ textAlign: "right" }}>{usd(costOfByModel(usage.byModel))}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <p style={{ ...hintStyle, marginBottom: "10px" }}>
-                Preço de lista, pode variar. O contador vale desde{" "}
-                {usage.since ? new Date(usage.since).toLocaleDateString("pt-BR") : "a primeira chamada"}.
-              </p>
-            </>
-          )}
+          <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)", marginBottom: "10px", lineHeight: 1.45 }}>
+            {totals!.calls === 0
+              ? "Nenhuma chamada registrada ainda neste aparelho."
+              : `${totals!.calls} chamada(s), ${usd(costOfByModel(usage.byModel))} nesta contagem.`}{" "}
+            O detalhamento por modelo, cruzado com o Cognidex, fica em Configurações → Uso da API (todos os módulos).
+          </p>
           <button
             onClick={handleResetUsage}
             style={{ ...primaryButtonStyle, background: "transparent", color: COLORS.ink, border: `2px solid ${COLORS.screenBorder}`, padding: "8px 14px", minHeight: "36px", fontSize: "11.5px" }}

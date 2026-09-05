@@ -39,6 +39,7 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
   const {
     saved,
     detailCache,
+    words,
     collections,
     storageLoaded,
     hasDetail,
@@ -165,6 +166,43 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
   }, [activeEntries, detailCache]);
 
   const debouncedFilterText = useDebouncedValue(filterText, 200);
+
+  /** Texto livre de uma palavra capturada (significado, pinyin, radical, decomposição por caractere, nota), pra busca full-text. */
+  function wordFreeText(w: any) {
+    return [
+      w.word,
+      w.meaning,
+      w.pinyin,
+      w.radical,
+      w.note,
+      ...((w.characters as { hanzi: string; pinyin?: string; meaning?: string }[]) || []).flatMap((c) => [c.hanzi, c.pinyin, c.meaning]),
+      ...((w.tags as string[]) || []),
+    ]
+      .filter(Boolean)
+      .join(" ");
+  }
+
+  /** Mesma ideia do `searchIndex` da Pokédex, cobrindo o acervo de Palavras — que até então não tinha nenhuma busca. */
+  const wordSearchIndex = useMemo(() => {
+    const idx = new Map();
+    for (const group of Object.values(words || {})) {
+      for (const w of (group as any).words || []) {
+        idx.set(w.id, slug(wordFreeText(w)));
+      }
+    }
+    return idx;
+  }, [words]);
+
+  const filteredWords = useMemo(() => {
+    const q = slug(debouncedFilterText.trim());
+    if (!q) return words;
+    const out: typeof words = {};
+    for (const [key, group] of Object.entries(words || {})) {
+      const matched = (group as any).words.filter((w: any) => (wordSearchIndex.get(w.id) || "").includes(q));
+      if (matched.length) out[key] = { ...(group as any), words: matched } as any;
+    }
+    return out;
+  }, [words, wordSearchIndex, debouncedFilterText]);
 
   function filterEntries(list) {
     const q = slug(debouncedFilterText.trim());
@@ -410,7 +448,40 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
       )}
 
       {category === "words" ? (
-        <WordsView />
+        <>
+          {Object.keys(words || {}).length > 0 && (
+            <div className="flex items-center gap-2" style={{ marginBottom: "10px", position: "relative" }}>
+              <Search size={14} style={{ position: "absolute", left: "11px", color: COLORS.screenBorder, pointerEvents: "none" }} />
+              <input
+                value={filterText}
+                onChange={(e) => setFilterText(e.target.value)}
+                placeholder="Buscar nas suas palavras..."
+                style={{
+                  width: "100%",
+                  borderRadius: "8px",
+                  border: `2px solid ${COLORS.screenBorder}`,
+                  padding: "9px 12px 9px 32px",
+                  minHeight: "38px",
+                  fontFamily: "Inter, sans-serif",
+                  fontSize: "12.5px",
+                  background: COLORS.surface,
+                  color: COLORS.ink,
+                  outline: "none",
+                }}
+              />
+              {filterText && (
+                <button
+                  onClick={() => setFilterText("")}
+                  aria-label="Limpar busca"
+                  style={{ position: "absolute", right: "9px", background: "none", border: "none", cursor: "pointer", color: COLORS.screenBorder, display: "flex" }}
+                >
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+          )}
+          <WordsView words={filteredWords} />
+        </>
       ) : (
         <>
       {showArchived && (

@@ -20,6 +20,17 @@ import {
 } from "../lib/savedModel";
 import { plantGroupKey, plantItemId, plantToItem } from "../lib/plants";
 import { applyEnrichment, convertItem as convertItemFields } from "../lib/convert";
+import { scheduleMdMirror } from "../lib/autoMdMirror";
+import { MODELS } from "../lib/models";
+
+/** Uma versão anterior de um guia, guardada quando ele é regenerado (ver `cacheDetail`). */
+export interface DetailVersion {
+  detail: unknown;
+  model: string;
+  generatedAt: number;
+}
+
+const MAX_DETAIL_VERSIONS = 5;
 
 /**
  * Fonte única dos dados capturados (Pokédex, guias, palavras e coleções) e de
@@ -37,6 +48,7 @@ interface ToastState {
 export interface DataContextValue {
   saved: SavedState;
   detailCache: Record<string, unknown>;
+  detailHistory: Record<string, DetailVersion[]>;
   words: WordsState;
   collections: CollectionsState;
   storageLoaded: boolean;
@@ -57,6 +69,7 @@ export interface DataContextValue {
   hasDetail: (subjectDisplay: string, technique: any) => boolean;
   cacheDetail: (cacheKey: string, detail: unknown) => void;
   deleteDetail: (cacheKey: string) => void;
+  restoreDetailVersion: (cacheKey: string, versionIndex: number) => void;
   isSaved: (mode: string, subjectDisplay: string, itemId: string) => boolean;
   isPlantSaved: (plant: any) => boolean;
   toggleSave: (mode: string, subjectDisplay: string, payload: any) => void;
@@ -97,6 +110,7 @@ function activeItems(group: SavedGroup | undefined) {
 export function DataProvider({ children }: { children: ReactNode }) {
   const [saved, setSaved] = useState<SavedState>({});
   const [detailCache, setDetailCache] = useState<Record<string, unknown>>({});
+  const [detailHistory, setDetailHistory] = useState<Record<string, DetailVersion[]>>({});
   const [words, setWords] = useState<WordsState>({});
   const [collections, setCollections] = useState<CollectionsState>({});
   const [storageLoaded, setStorageLoaded] = useState(false);
@@ -115,6 +129,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
     persist(KEYS.prefetchDetails, enabled);
   }
 
+  // Espelho automático em .md na pasta Documentos (Android) — ver
+  // lib/autoMdMirror.ts. Só depois de `storageLoaded` pra não escrever no
+  // boot com dados ainda vazios/pré-migração.
+  useEffect(() => {
+    if (!storageLoaded) return;
+    scheduleMdMirror(saved, detailCache);
+  }, [storageLoaded, saved, detailCache]);
+
   useEffect(() => {
     (async () => {
       const loaded = {
@@ -124,6 +146,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         collections: await getJSON(KEYS.collections, {}),
       };
       setPrefetchDetailsEnabled(await getJSON(KEYS.prefetchDetails, true));
+      setDetailHistory(await getJSON(KEYS.detailHistory, {}));
       const version = await getJSON(KEYS.schemaVersion, 0);
       const { data, migrated } = runMigrations(loaded, version);
       setSaved(data.saved);
@@ -156,6 +179,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
   const persistSaved = (next: SavedState) => persist(KEYS.saved, next);
   const persistDetails = (next: Record<string, unknown>) => persist(KEYS.details, next);
+  const persistDetailHistory = (next: Record<string, DetailVersion[]>) => persist(KEYS.detailHistory, next);
   const persistWords = (next: WordsState) => persist(KEYS.words, next);
   const persistCollections = (next: CollectionsState) => persist(KEYS.collections, next);
 
@@ -174,8 +198,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
   }
 
-  /** Remove um guia do cache — a próxima abertura da página regenera do zero. */
+  /**
+   * Remove um guia do cache pra regenerar do zero — em vez de descartar o
+   * guia atual, arquiva-o em `detailHistory` (limitado a
+   * `MAX_DETAIL_VERSIONS`, o mais antigo cai fora) pra dar pra restaurar ou
+   * comparar depois (ver DetailPage). Assume o modelo fixo de guia
+   * (`MODELS.sonnet`, ver lib/models.ts) — se isso um dia virar configurável,
+   * o modelo real precisa vir de quem chama.
+   */
   function deleteDetail(cacheKey: string) {
+    const current = detailCache[cacheKey];
+    if (current !== undefined) {
+      const versions = [...(detailHistory[cacheKey] || []), { detail: current, model: MODELS.sonnet, generatedAt: Date.now() }].slice(-MAX_DETAIL_VERSIONS);
+      const nextHistory = { ...detailHistory, [cacheKey]: versions };
+      setDetailHistory(nextHistory);
+      persistDetailHistory(nextHistory);
+    }
     setDetailCache((prev) => {
       if (!(cacheKey in prev)) return prev;
       const next = { ...prev };
@@ -183,6 +221,24 @@ export function DataProvider({ children }: { children: ReactNode }) {
       persistDetails(next);
       return next;
     });
+  }
+
+  /** Restaura uma versão arquivada como o guia ativo — a que estava ativa vai pro arquivo no lugar dela. */
+  function restoreDetailVersion(cacheKey: string, versionIndex: number) {
+    const versions = detailHistory[cacheKey] || [];
+    const version = versions[versionIndex];
+    if (!version) return;
+
+    const rest = versions.filter((_, i) => i !== versionIndex);
+    const current = detailCache[cacheKey];
+    const nextVersions = current !== undefined ? [...rest, { detail: current, model: MODELS.sonnet, generatedAt: Date.now() }].slice(-MAX_DETAIL_VERSIONS) : rest;
+    const nextHistory = { ...detailHistory, [cacheKey]: nextVersions };
+    setDetailHistory(nextHistory);
+    persistDetailHistory(nextHistory);
+
+    const nextDetails = { ...detailCache, [cacheKey]: version.detail };
+    setDetailCache(nextDetails);
+    persistDetails(nextDetails);
   }
 
   /** Baixa o guia em background assim que uma técnica é capturada. */
@@ -691,6 +747,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const value = {
     saved,
     detailCache,
+    detailHistory,
     words,
     collections,
     storageLoaded,
@@ -703,6 +760,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     hasDetail,
     cacheDetail,
     deleteDetail,
+    restoreDetailVersion,
     isSaved,
     isPlantSaved,
     toggleSave,

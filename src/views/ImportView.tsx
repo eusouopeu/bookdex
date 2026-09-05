@@ -7,7 +7,6 @@ import { parsePayload, buildExportPayload, mergeData, mergeCollections, mergeWor
 import { setJSON, KEYS } from "../lib/storage";
 import { buildPokedexPdf } from "../lib/pdfExport";
 import { buildAnkiCsv, countAnkiRows } from "../lib/ankiExport";
-import { buildPokedexMarkdown, countMarkdownItems } from "../lib/markdownExport";
 import { shareOrDownloadFile } from "../lib/share";
 import QRScanner from "../components/QRScanner";
 import { useData } from "../state/DataContext";
@@ -15,7 +14,6 @@ import { groupItems, itemKind, categoryOfKind, withItems, type SavedState } from
 
 const EXPORT_FORMATS = [
   { id: "pdf", label: "PDF" },
-  { id: "markdown", label: "Markdown" },
   { id: "anki", label: "Anki (CSV)" },
 ];
 
@@ -161,7 +159,7 @@ export default function ImportView({ onBack }) {
     }
   }
 
-  // PDF/Markdown não sabem exportar palavras — só o Anki cobre os dois acervos.
+  // PDF não sabe exportar palavras — só o Anki cobre os dois acervos.
   const availableScopes = exportFormat === "anki" ? EXPORT_SCOPES : EXPORT_SCOPES.filter((s) => s.id !== "words");
   const effectiveScope = availableScopes.some((s) => s.id === exportScope) ? exportScope : "all";
 
@@ -193,13 +191,8 @@ export default function ImportView({ onBack }) {
         }
         return;
       }
-      if (exportFormat === "anki") {
-        const csv = buildAnkiCsv(scopedSaved, detailCache, scopedWords);
-        await saveOrDownload("cognidex-anki.csv", csv, "text/csv", Encoding.UTF8, "Cognidex — export Anki", "Importe em Anki → Arquivo → Importar.");
-        return;
-      }
-      const md = buildPokedexMarkdown(scopedSaved, detailCache);
-      await saveOrDownload("cognidex-pokedex.md", md, "text/markdown", Encoding.UTF8, "Cognidex — export Markdown");
+      const csv = buildAnkiCsv(scopedSaved, detailCache, scopedWords);
+      await saveOrDownload("cognidex-anki.csv", csv, "text/csv", Encoding.UTF8, "Cognidex — export Anki", "Importe em Anki → Arquivo → Importar.");
     } catch (e) {
       setExportMsg(`Falha ao exportar: ${e.message || e}`);
     } finally {
@@ -222,7 +215,7 @@ export default function ImportView({ onBack }) {
       ? Object.values(words || {}).reduce((sum, g) => sum + (g.words || []).length, 0)
       : exportFormat === "anki"
         ? countAnkiRows(filterSavedByScope(saved, effectiveScope), effectiveScope === "all" ? words : {})
-        : countMarkdownItems(filterSavedByScope(saved, effectiveScope));
+        : Object.values(filterSavedByScope(saved, effectiveScope)).reduce((sum, g) => sum + groupItems(g).length, 0);
   const exportDisabled = generatingExport || scopeCount === 0;
 
   return (

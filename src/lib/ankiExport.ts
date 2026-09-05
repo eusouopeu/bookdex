@@ -5,8 +5,8 @@
  * completo do item, incluindo o guia passo a passo já cacheado, quando existir.
  */
 import { slug } from "../theme";
-import { groupItems, itemKind, isKnowledgeKind, type SavedState, type SavedItem } from "./savedModel";
-import { PLANT_ASPECTS } from "./anthropic";
+import { groupItems, itemKind, type SavedState, type SavedItem } from "./savedModel";
+import { techniqueCacheKey, plantAspectEntries } from "./exportModel";
 import type { WordsState, WordItem, WordGroup } from "./words";
 
 function escapeCsvField(value: unknown) {
@@ -39,7 +39,7 @@ function backOf(kind: string, item: SavedItem, detail: any) {
       item.scientificName ? `Nome científico: ${item.scientificName}` : "",
       (item.commonNames || []).length > 1 ? `Também: ${item.commonNames.slice(1).join(", ")}` : "",
       item.summary || "",
-      ...PLANT_ASPECTS.map((a) => (item.aspects?.[a.id] ? `${a.label}: ${item.aspects[a.id]}` : "")),
+      ...plantAspectEntries(item).map(({ label, text }) => `${label}: ${text}`),
       item.note ? `Nota: ${item.note}` : "",
     ]
       .filter(Boolean)
@@ -94,7 +94,7 @@ export function buildAnkiCsv(saved: SavedState, detailCache: Record<string, any>
   for (const group of Object.values(saved || {})) {
     for (const item of groupItems(group)) {
       const kind = itemKind(item, group);
-      const detail = kind === "technique" ? detailCache?.[`${slug(group.displayName || "")}:${item.id}`] : null;
+      const detail = kind === "technique" ? detailCache?.[techniqueCacheKey(group.displayName, item.id)] : null;
       const row = [frontOf(kind, item), backOf(kind, item, detail), tagsOf(group.displayName, kind, item)]
         .map(escapeCsvField)
         .join(";");

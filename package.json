@@ -11,7 +11,8 @@
     "sync": "npm run build && cap sync",
     "android": "npm run sync && cap open android",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "typecheck:lib": "tsc -p tsconfig.lib.json --noEmit"
   },
   "dependencies": {
     "@capacitor/android": "^7.0.0",
@@ -30,8 +31,8 @@
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.5",
     "@types/node": "^26.4.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
     "@vitejs/plugin-react": "^4.3.4",
     "jsdom": "^29.1.1",
     "typescript": "^7.0.2",

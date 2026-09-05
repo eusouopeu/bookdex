@@ -48,6 +48,8 @@ export function searchReducer(state, action) {
       };
     case "failure":
       return { ...state, loading: false, error: action.error };
+    case "cancelled":
+      return { ...state, loading: false, error: null };
     case "missingKey":
       return { ...state, loading: false, needsKey: true };
     case "clearNeedsKey":

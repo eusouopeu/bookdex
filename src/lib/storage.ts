@@ -150,4 +150,5 @@ export const KEYS = {
   words: "saved-words",
   schemaVersion: "schema-version",
   appModule: "app-module",
+  detailHistory: "pokedex-detail-history",
 };

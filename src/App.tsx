@@ -67,6 +67,7 @@ export default function App() {
   // offline, atalho de compartilhamento); a ref garante que eles chamem SEMPRE
   // a versão atual, com o estado atual, sem re-registrar listener.
   const searchRef = useRef(null);
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     (async () => {
@@ -135,20 +136,20 @@ export default function App() {
   }
 
   /** Executa a chamada de rede do modo pedido. Sem cache, sem estado. */
-  async function runSearch(mode, term, critList) {
+  async function runSearch(mode, term, critList, signal?: AbortSignal) {
     const avoid = prefs.avoidListFor(term);
     const effort = prefs.searchEffort;
-    if (mode === "definition") return await fetchDefinition(term, avoid, effort);
-    if (mode === "list") return await fetchList(term, avoid, effort, critList);
-    if (mode === "word") return await fetchWord(term, avoid);
-    if (mode === "plant") return await fetchPlantByName(term, avoid, effort);
+    if (mode === "definition") return await fetchDefinition(term, avoid, effort, signal);
+    if (mode === "list") return await fetchList(term, avoid, effort, critList, signal);
+    if (mode === "word") return await fetchWord(term, avoid, signal);
+    if (mode === "plant") return await fetchPlantByName(term, avoid, effort, signal);
     if (mode === "compare") {
       const names = splitCompareTerms(term);
       if (names.length < 2) throw new Error('Informe pelo menos 2 itens separados por vírgula, ex.: "melatonina, magnésio".');
       if (names.length > 3) throw new Error("No máximo 3 itens por comparação.");
-      return await fetchCompare(names, avoid, critList, effort);
+      return await fetchCompare(names, avoid, critList, effort, signal);
     }
-    return await fetchTechniques(term, avoid, critList, effort);
+    return await fetchTechniques(term, avoid, critList, effort, signal);
   }
 
   /**
@@ -197,16 +198,29 @@ export default function App() {
     }
 
     dispatch({ type: "start", mode, term });
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
     try {
-      const payload = await runSearch(mode, term, critList);
+      const payload = await runSearch(mode, term, critList, controller.signal);
       dispatch({ type: "success", mode, term, data: payload, source: "network", cacheKey: key });
       persistCache(writeCache(searchCache, key, payload));
       prefs.addToHistory(mode, term);
     } catch (e) {
+      if (e.name === "AbortError") {
+        dispatch({ type: "cancelled" });
+        return;
+      }
       console.error(e);
       if (e instanceof MissingApiKeyError) dispatch({ type: "missingKey" });
       else dispatch({ type: "failure", error: e.message || "Não foi possível escanear esse assunto agora. Tente novamente." });
+    } finally {
+      if (searchAbortRef.current === controller) searchAbortRef.current = null;
     }
+  }
+
+  /** Cancela a busca em andamento — aborta a requisição HTTP de fato, não só ignora a resposta na UI. */
+  function cancelSearch() {
+    searchAbortRef.current?.abort();
   }
 
   searchRef.current = handleSearch;
@@ -442,8 +456,10 @@ export default function App() {
                 technique={detailTarget.technique}
                 cacheKey={detailKey}
                 detailCache={detailCache}
+                detailHistory={data.detailHistory}
                 onCached={data.cacheDetail}
                 onDeleteDetail={data.deleteDetail}
+                onRestoreVersion={data.restoreDetailVersion}
                 onBack={() => setDetailTarget(null)}
                 onGoSettings={() => openScreen("settings")}
                 onOpenInSinergia={openInSinergia}
@@ -557,6 +573,7 @@ export default function App() {
             onSetMode={(mode) => dispatch({ type: "setMode", mode })}
             onSetQuery={(query) => dispatch({ type: "setQuery", query })}
             onSearch={() => handleSearch()}
+            onCancelSearch={cancelSearch}
             onRunHistoryTerm={(mode, term) => handleSearch({ mode, term })}
             onShowHistorySuggestions={setShowHistorySuggestions}
             onPhotoSearch={handlePhotoSearch}

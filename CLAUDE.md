@@ -46,7 +46,10 @@ SEMPRE usar a skill `/caveman` (modo de comunicação ultra-comprimido) em toda 
   viável). Rodar `npx tsc --noEmit` antes de considerar uma mudança concluída. Ligar
   `noImplicitAny` globalmente hoje quebra ~500 pontos (lib/anthropic.ts, DexView, SearchView,
   cardPdf/pdfExport/markdownExport são os piores) — é trabalho pra uma rodada dedicada, não pra
-  fazer de passagem.
+  fazer de passagem. `@types/react`/`@types/react-dom` fixados em `^18` (o app roda React 18.3;
+  antes divergiam pra `^19`, silenciosamente). `tsconfig.lib.json` (`npm run typecheck:lib`) liga
+  `strict`+`noImplicitAny` só em `src/lib/**`, sem afetar o build — hoje ainda acusa ~228 erros
+  (concentrados em `anthropic.ts`), fica disponível pra quem for atacar essa dívida aos poucos.
 
 ## Débito de estilo (App.tsx e módulo Sinergia)
 
@@ -71,6 +74,51 @@ JSX novo.
 - Nessa mesma rodada, atualizar o conteúdo deste **CLAUDE.md** no que couber (novas convenções,
   decisões, mudanças de stack, etc.), mantendo-o coerente com o estado atual do projeto.
 
+## Exportadores unificados e espelho automático em .md
+
+`lib/exportModel.ts` (`sectionsOf`, `techniqueGuide`, `plantAspectEntries`) e `lib/pdfLayout.ts`
+(`PdfWriter`, fluxo de parágrafo/heading com quebra de página) são a base compartilhada de
+`pdfExport.ts`, `cardPdf.ts` e `ankiExport.ts` — cada um virou só o renderizador do seu formato,
+sem reimplementar `sectionsOf`/chave de cache do guia/lista de aspectos de planta.
+
+Não existe mais export manual de Markdown (o botão "Markdown" saiu de Importar → Exportar):
+`lib/markdownExport.ts` agora só gera o conteúdo pra um espelho AUTOMÁTICO — `lib/autoMdMirror.ts`
+grava `Documentos/Cognidex/cognidex-pokedex.md` sozinho (debounced, 4s de inatividade) sempre que
+`saved`/`detailCache` mudam, só em nativo (`Capacitor.isNativePlatform()`; no navegador/PWA não há
+pasta de Documentos, então não faz nada). Fica sempre atualizado sem o usuário precisar exportar.
+
+## Painel de Uso da API unificado
+
+`components/UsageSummaryPanel.tsx` mostra Cognidex + Sinergidex numa tabela só (coluna de módulo),
+usado em Configurações do Cognidex — a tela de Configurações do Sinergia só mostra um resumo de
+uma linha apontando pra lá. O TETO mensal continua configurado e aplicado separadamente por módulo
+(arquitetura deliberada, ver "Unificação com o Sinergia" abaixo) — só a VISÃO de gasto foi somada
+num lugar, pra não parecer que dois tetos independentes são um só.
+
+## Busca: cancelar e Palavras pesquisável
+
+- A busca (`App.tsx` → `handleSearch`) agora usa `AbortController`: o botão ESCANEAR vira CANCELAR
+  durante o carregamento e aborta a requisição HTTP de verdade (não só ignora a resposta). Os
+  `fetch*` de busca em `lib/anthropic.ts` (técnica/conceito/tipo/comparar/palavra/planta) aceitam
+  um `signal` opcional pra isso.
+- A aba Palavras não tinha NENHUMA busca (o campo antigo foi removido de propósito, ver comentário
+  em `WordsView.tsx`, pra não ter dois modelos mentais de busca). Em vez de reintroduzir um campo
+  próprio, `DexView.tsx` ganhou um índice full-text (`wordSearchIndex`, cobrindo palavra/
+  significado/pinyin/radical/caracteres/nota/tags) e mostra a MESMA caixa de busca da Pokédex
+  quando a categoria é "words", filtrando antes de passar pra `WordsView` (que aceita `words` como
+  prop opcional pra isso, com fallback pro contexto).
+
+## Versões de guia
+
+Regenerar um guia (botão de lixeira em `DetailPage.tsx`) não descarta mais o guia anterior: ele vai
+pro `detailHistory` (`DataContext.tsx`, storage próprio `pokedex-detail-history`, até 5 versões por
+guia, mais antiga cai fora). O ícone de histórico ao lado mostra quantas versões existem, com
+"Comparar" (mostra a versão antiga abaixo, empilhado — não lado a lado, a tela é estreita demais
+pra isso) e "Restaurar" (a versão restaurada assume, a que estava ativa vai pro arquivo no lugar
+dela). Assume o modelo fixo de guia (`MODELS.sonnet`) pra cada versão arquivada — não existe
+seletor de modelo pra guias hoje (diferente dos modos de busca), então não tem "regenerar com
+modelo X" ainda.
+
 ## Proibição de leitura de dependências
 
 - NUNCA ler arquivos de dependências (ex.: `node_modules/`, `dist/`, `build/`, pastas de vendor
@@ -94,6 +142,13 @@ parte).
 A navegação do Sinergia (Efeitos/Comparar/Configurações) mora na MESMA barra vermelha do topo
 que o Cognidex usa (`components/AppHeader.tsx`) — o módulo não desenha header próprio; ele só
 recebe `view`/`onViewChange` como props controladas por `App.tsx`.
+
+`EffectProfileDetail.tsx` (era 1285 linhas) e `DiagnosisPanel.tsx` (era 831) foram quebrados por
+seção: `ProfileHeader`/`ItemsTab`/`OthersTab` (mais `ItemSuggestionsRow` à parte) pro primeiro,
+`components/diagnosis/*` (um arquivo por sub-modo — causas/caminhos/consequências/prognóstico/
+protocolo/indicadores/direção/extrair, mais `shared.tsx`) pro segundo. Cada painel de diagnóstico
+tem seu próprio estado de loading/erro/resultado — trocar de sub-modo desmonta o anterior, o que já
+limpa esse estado sozinho, sem precisar de `reset()` compartilhado.
 
 ### Deduplicação (theme/models/usage/anthropic)
 

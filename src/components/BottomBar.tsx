@@ -57,6 +57,7 @@ interface BottomBarProps {
   onSetMode: (mode: string) => void;
   onSetQuery: (value: string) => void;
   onSearch: () => void;
+  onCancelSearch: () => void;
   onRunHistoryTerm: (mode: string, term: string) => void;
   onShowHistorySuggestions: (show: boolean) => void;
   onPhotoSearch: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -88,6 +89,7 @@ export default function BottomBar({
   onSetMode,
   onSetQuery,
   onSearch,
+  onCancelSearch,
   onRunHistoryTerm,
   onShowHistorySuggestions,
   onPhotoSearch,
@@ -257,25 +259,26 @@ export default function BottomBar({
               </>
             )}
             <button
-              onClick={onSearch}
-              disabled={loading || !query.trim()}
+              onClick={loading ? onCancelSearch : onSearch}
+              disabled={!loading && !query.trim()}
+              aria-label={loading ? "Cancelar busca" : "Escanear"}
               style={{
-                background: COLORS.gold,
-                color: "#4A3300",
+                background: loading ? "transparent" : COLORS.gold,
+                color: loading ? COLORS.white : "#4A3300",
                 fontWeight: 800,
-                border: "none",
+                border: loading ? "2px solid rgba(255,255,255,0.6)" : "none",
                 borderRadius: "8px",
                 padding: "9px 14px",
                 minHeight: "40px",
                 fontFamily: '"Baloo 2", sans-serif',
                 fontSize: "13px",
                 whiteSpace: "nowrap",
-                cursor: loading || !query.trim() ? "default" : "pointer",
-                opacity: loading || !query.trim() ? 0.6 : 1,
+                cursor: !loading && !query.trim() ? "default" : "pointer",
+                opacity: !loading && !query.trim() ? 0.6 : 1,
                 flexShrink: 0,
               }}
             >
-              {loading ? "..." : "ESCANEAR"}
+              {loading ? "CANCELAR" : "ESCANEAR"}
             </button>
           </div>
         </div>

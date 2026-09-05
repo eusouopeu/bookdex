@@ -3,169 +3,122 @@
  * ou palavra), pra compartilhar/baixar — usado pelo botão "Compartilhar" dos
  * cards, no lugar do texto simples ou da imagem PNG.
  */
-import { jsPDF } from "jspdf";
+import { PdfWriter } from "./pdfLayout";
 import { PLANT_ASPECTS } from "./anthropic";
 
-const MARGIN = 18;
-const CONTENT_WIDTH = 210 - MARGIN * 2;
-
-function newDoc() {
-  return new jsPDF({ unit: "mm", format: "a4" });
-}
-
-function writeMeta(doc, text, y) {
-  if (!text) return y;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  doc.setTextColor("#5c6b52");
-  doc.text(text.toUpperCase(), MARGIN, y);
-  return y + 7;
-}
-
-function writeTitle(doc, text, y) {
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(22);
-  doc.setTextColor("#23291F");
-  const lines = doc.splitTextToSize(text || "", CONTENT_WIDTH);
-  doc.text(lines, MARGIN, y);
-  return y + lines.length * 9 + 4;
-}
-
-function writeParagraph(doc, text, y, { size = 11, color = "#3a3a30", style = "normal", gap = 5 } = {}) {
-  if (!text) return y;
-  doc.setFont("helvetica", style);
-  doc.setFontSize(size);
-  doc.setTextColor(color);
-  const lines = doc.splitTextToSize(text, CONTENT_WIDTH);
-  doc.text(lines, MARGIN, y);
-  return y + lines.length * size * 0.42 + gap;
-}
-
-function writeHeading(doc, text, y) {
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.setTextColor("#23291F");
-  doc.text(text, MARGIN, y);
-  return y + 7;
-}
-
-function writeFooter(doc) {
-  doc.setFont("helvetica", "italic");
-  doc.setFontSize(9);
-  doc.setTextColor("#5c6b52");
-  doc.text("via Cognidex", MARGIN, 285);
-}
-
-export function techniqueCardPdfBlob(subjectDisplay, technique, statLabels) {
-  const doc = newDoc();
-  let y = 22;
-  y = writeMeta(doc, subjectDisplay, y);
-  y = writeTitle(doc, technique.name, y);
-  y = writeMeta(doc, technique.type || "", y) + 2;
-  y = writeParagraph(doc, technique.description || "", y);
+export function techniqueCardPdfBlob(subjectDisplay: string, technique: any, statLabels: string[]) {
+  const w = new PdfWriter({ margin: 18 });
+  w.y = 22;
+  w.meta(subjectDisplay);
+  w.title(technique.name);
+  w.meta(technique.type || "");
+  w.y += 2;
+  w.paragraph(technique.description || "");
   (statLabels || []).forEach((label, i) => {
     const v = technique.stats ? technique.stats[i] || 0 : 0;
-    y = writeParagraph(doc, `${label}: ${"●".repeat(v)}${"○".repeat(Math.max(0, 5 - v))} (${v}/5)`, y, { size: 10.5, gap: 3 });
+    w.paragraph(`${label}: ${"●".repeat(v)}${"○".repeat(Math.max(0, 5 - v))} (${v}/5)`, { size: 10.5, gap: 3 });
   });
-  y += 3;
-  if (technique.bestFor) y = writeParagraph(doc, `Ideal para: ${technique.bestFor}`, y, { size: 10.5, style: "italic", color: "#5c6b52" });
-  writeFooter(doc);
-  return doc.output("blob");
+  w.y += 3;
+  if (technique.bestFor) w.paragraph(`Ideal para: ${technique.bestFor}`, { size: 10.5, style: "italic", color: "#5c6b52" });
+  w.footer();
+  return w.doc.output("blob");
 }
 
-export function definitionCardPdfBlob(definition) {
-  const doc = newDoc();
-  let y = 22;
-  y = writeMeta(doc, "Conceito", y);
-  y = writeTitle(doc, definition.term, y);
-  y = writeMeta(doc, definition.category || "", y) + 2;
-  y = writeParagraph(doc, definition.definition || "", y);
+export function definitionCardPdfBlob(definition: any) {
+  const w = new PdfWriter({ margin: 18 });
+  w.y = 22;
+  w.meta("Conceito");
+  w.title(definition.term);
+  w.meta(definition.category || "");
+  w.y += 2;
+  w.paragraph(definition.definition || "");
   if ((definition.keyPoints || []).length) {
-    y = writeHeading(doc, "Pontos-chave", y);
+    w.heading("Pontos-chave", 13);
     for (const p of definition.keyPoints) {
-      y = writeParagraph(doc, `•  ${p}`, y, { size: 10.5, gap: 3 });
+      w.paragraph(`•  ${p}`, { size: 10.5, gap: 3 });
     }
-    y += 3;
+    w.y += 3;
   }
   if (definition.example) {
-    y = writeParagraph(doc, `Exemplo: ${definition.example}`, y, { size: 10.5, style: "italic", color: "#5c6b52" });
+    w.paragraph(`Exemplo: ${definition.example}`, { size: 10.5, style: "italic", color: "#5c6b52" });
   }
   if ((definition.relatedTerms || []).length) {
-    y = writeParagraph(doc, `Relacionados: ${definition.relatedTerms.join(", ")}`, y, { size: 10, color: "#5c6b52" });
+    w.paragraph(`Relacionados: ${definition.relatedTerms.join(", ")}`, { size: 10, color: "#5c6b52" });
   }
-  writeFooter(doc);
-  return doc.output("blob");
+  w.footer();
+  return w.doc.output("blob");
 }
 
-export function listItemCardPdfBlob(subjectDisplay, item) {
-  const doc = newDoc();
-  let y = 22;
-  y = writeMeta(doc, subjectDisplay, y);
-  y = writeTitle(doc, item.name, y);
-  y = writeMeta(doc, item.category || "", y) + 2;
-  y = writeParagraph(doc, item.description || "", y);
-  writeFooter(doc);
-  return doc.output("blob");
+export function listItemCardPdfBlob(subjectDisplay: string, item: any) {
+  const w = new PdfWriter({ margin: 18 });
+  w.y = 22;
+  w.meta(subjectDisplay);
+  w.title(item.name);
+  w.meta(item.category || "");
+  w.y += 2;
+  w.paragraph(item.description || "");
+  w.footer();
+  return w.doc.output("blob");
 }
 
-export function wordCardPdfBlob(data) {
-  const doc = newDoc();
+export function wordCardPdfBlob(data: any) {
+  const w = new PdfWriter({ margin: 18 });
   const isZh = (data.languageCode || "").toLowerCase() === "zh";
-  let y = 22;
-  y = writeMeta(doc, data.language, y);
-  y = writeTitle(doc, data.word, y);
-  if (isZh && data.pinyin) y = writeMeta(doc, data.pinyin, y) + 2;
-  y = writeParagraph(doc, data.meaning || "", y);
+  w.y = 22;
+  w.meta(data.language);
+  w.title(data.word);
+  if (isZh && data.pinyin) {
+    w.meta(data.pinyin);
+    w.y += 2;
+  }
+  w.paragraph(data.meaning || "");
   if (!isZh && data.radical) {
-    y = writeParagraph(doc, `Radical: ${data.radical}`, y, { size: 10.5, style: "italic", color: "#5c6b52" });
+    w.paragraph(`Radical: ${data.radical}`, { size: 10.5, style: "italic", color: "#5c6b52" });
   }
   if (isZh && (data.characters || []).length) {
-    y = writeHeading(doc, "Por caractere", y);
+    w.heading("Por caractere", 13);
     for (const c of data.characters) {
-      y = writeParagraph(doc, `${c.hanzi} (${c.pinyin || ""})${c.meaning ? ` — ${c.meaning}` : ""}`, y, { size: 11, style: "bold", gap: 4 });
+      w.paragraph(`${c.hanzi} (${c.pinyin || ""})${c.meaning ? ` — ${c.meaning}` : ""}`, { size: 11, style: "bold", gap: 4 });
     }
   }
-  writeFooter(doc);
-  return doc.output("blob");
+  w.footer();
+  return w.doc.output("blob");
 }
 
 /**
  * Card de planta: a foto (quando existe) abre a página em tamanho fixo, e só
  * os aspectos já gerados entram — o PDF não dispara chamada nenhuma.
  */
-export function plantCardPdfBlob(plant, aspects) {
-  const doc = newDoc();
-  let y = 22;
+export function plantCardPdfBlob(plant: any, aspects: Record<string, string>) {
+  const w = new PdfWriter({ margin: 18 });
+  w.y = 22;
   if (plant.images && plant.images[0]) {
-    const w = CONTENT_WIDTH;
     const h = 70;
     try {
-      doc.addImage(plant.images[0], "JPEG", MARGIN, y, w, h, undefined, "FAST");
-      y += h + 8;
+      w.doc.addImage(plant.images[0], "JPEG", w.margin, w.y, w.contentWidth, h, undefined, "FAST");
+      w.y += h + 8;
     } catch {
       /* imagem ilegível: segue sem ela em vez de derrubar o PDF inteiro */
     }
   }
-  y = writeMeta(doc, plant.family || "Planta", y);
-  y = writeTitle(doc, plant.commonNames?.[0] || plant.scientificName || "", y);
-  if (plant.scientificName) y = writeParagraph(doc, plant.scientificName, y, { size: 11, style: "italic", color: "#5c6b52" });
+  w.meta(plant.family || "Planta");
+  w.title(plant.commonNames?.[0] || plant.scientificName || "");
+  if (plant.scientificName) w.paragraph(plant.scientificName, { size: 11, style: "italic", color: "#5c6b52" });
   if ((plant.commonNames || []).length > 1) {
-    y = writeParagraph(doc, `Também conhecida como: ${plant.commonNames.slice(1).join(", ")}`, y, { size: 10, color: "#5c6b52" });
+    w.paragraph(`Também conhecida como: ${plant.commonNames.slice(1).join(", ")}`, { size: 10, color: "#5c6b52" });
   }
-  y += 2;
-  y = writeParagraph(doc, plant.summary || "", y);
-  if (plant.idNote) y = writeParagraph(doc, plant.idNote, y, { size: 10, style: "italic", color: "#5c6b52" });
+  w.y += 2;
+  w.paragraph(plant.summary || "");
+  if (plant.idNote) w.paragraph(plant.idNote, { size: 10, style: "italic", color: "#5c6b52" });
 
+  const source = aspects || plant.aspects || {};
   for (const aspect of PLANT_ASPECTS) {
-    const text = (aspects || plant.aspects || {})[aspect.id];
+    const text = source[aspect.id];
     if (!text) continue;
-    if (y > 250) {
-      doc.addPage();
-      y = 22;
-    }
-    y = writeHeading(doc, aspect.label, y);
-    y = writeParagraph(doc, text, y, { size: 10.5 });
+    w.ensureSpace(4, 10);
+    w.heading(aspect.label, 13);
+    w.paragraph(text, { size: 10.5 });
   }
-  writeFooter(doc);
-  return doc.output("blob");
+  w.footer();
+  return w.doc.output("blob");
 }

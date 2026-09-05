@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ArrowLeft, Eye, EyeOff, Gauge, Sun, Moon, Download, DatabaseZap, Wallet } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, Sun, Moon, Download, DatabaseZap, Wallet } from "lucide-react";
 import { COLORS, primaryButtonStyle } from "../theme";
 import {
   getApiKey,
@@ -10,20 +10,12 @@ import {
   SEARCH_EFFORT_OPTIONS,
 } from "../lib/anthropic";
 import { MODELS, TIER_LABELS, SEARCH_MODE_TIERS, PRICING } from "../lib/models";
-import {
-  getUsageStats,
-  resetUsageStats,
-  getMonthlyBudget,
-  setMonthlyBudget,
-  costOfByModel,
-  totalsOf,
-  monthSpend,
-  emptyBucket,
-  type UsageState,
-} from "../lib/usage";
+import { getUsageStats, resetUsageStats, getMonthlyBudget, setMonthlyBudget, monthSpend, type UsageState } from "../lib/usage";
 import { countValid } from "../lib/searchCache";
 import { useData } from "../state/DataContext";
 import { usePrefs } from "../state/PrefsContext";
+import UsageSummaryPanel from "../components/UsageSummaryPanel";
+import { getUsageStats as getSinergiaUsageStats, resetUsageStats as resetSinergiaUsageStats } from "../modules/sinergia/lib/usage";
 
 const inputStyle = {
   width: "100%",
@@ -94,6 +86,7 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
   const [loaded, setLoaded] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
   const [usage, setUsage] = useState<UsageState | null>(null);
+  const [sinergiaUsage, setSinergiaUsage] = useState<UsageState | null>(null);
   const [budget, setBudget] = useState(0);
   const [budgetDraft, setBudgetDraft] = useState("");
 
@@ -102,6 +95,7 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
       setKey(await getApiKey());
       setProxy(await getProxyUrl());
       setUsage(await getUsageStats());
+      setSinergiaUsage(await getSinergiaUsageStats());
       const b = await getMonthlyBudget();
       setBudget(b);
       setBudgetDraft(b ? String(b) : "");
@@ -109,7 +103,12 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
     })();
   }, []);
 
-  async function handleResetUsage() {
+  async function handleResetUsage(moduleKey: string) {
+    if (moduleKey === "sinergia") {
+      await resetSinergiaUsageStats();
+      setSinergiaUsage(await getSinergiaUsageStats());
+      return;
+    }
     await resetUsageStats();
     setUsage(await getUsageStats());
   }
@@ -154,7 +153,6 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
 
   if (!loaded) return null;
 
-  const totals = usage ? totalsOf(usage.byModel) : emptyBucket();
   const spentThisMonth = usage ? monthSpend(usage) : 0;
   const cachedCount = countValid(searchCache);
 
@@ -483,79 +481,13 @@ export default function SettingsView({ onBack, onCredentialsChanged, searchCache
       )}
 
       {usage && (
-        <div style={{ marginTop: "22px", borderTop: `2px solid ${COLORS.screenBorder}`, paddingTop: "14px" }}>
-          <div className="flex items-center gap-1.5" style={{ marginBottom: "8px" }}>
-            <Gauge size={15} style={{ color: COLORS.ink }} />
-            <h3 style={{ ...sectionTitleStyle, margin: 0 }}>Uso da API</h3>
-          </div>
-          {totals.calls === 0 ? (
-            <p style={{ fontFamily: "Inter, sans-serif", fontSize: "12px", color: "var(--text-muted)" }}>
-              Nenhuma chamada registrada ainda neste aparelho.
-            </p>
-          ) : (
-            <>
-              <table
-                style={{
-                  width: "100%",
-                  borderCollapse: "collapse",
-                  fontFamily: "Inter, sans-serif",
-                  fontSize: "11.5px",
-                  color: "var(--text)",
-                  marginBottom: "8px",
-                }}
-              >
-                <thead>
-                  <tr style={{ color: "var(--text-muted)", textAlign: "left" }}>
-                    <th style={{ fontWeight: 400, paddingBottom: "4px" }}>Modelo</th>
-                    <th style={{ fontWeight: 400, textAlign: "right" }}>Chamadas</th>
-                    <th style={{ fontWeight: 400, textAlign: "right" }}>Tokens (E/S)</th>
-                    <th style={{ fontWeight: 400, textAlign: "right" }}>Custo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {Object.entries(usage.byModel).map(([model, b]) => (
-                    <tr key={model} style={{ borderTop: `1px solid ${COLORS.screenBorder}` }}>
-                      <td style={{ padding: "5px 0", fontFamily: '"JetBrains Mono", monospace', fontSize: "10.5px" }}>
-                        {model === MODELS.sonnet ? "Sonnet" : model === MODELS.haiku ? "Haiku" : model}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{b.calls}</td>
-                      <td style={{ textAlign: "right" }}>
-                        {(b.inputTokens || 0).toLocaleString("pt-BR")}/{(b.outputTokens || 0).toLocaleString("pt-BR")}
-                      </td>
-                      <td style={{ textAlign: "right" }}>{usd(costOfByModel({ [model]: b }))}</td>
-                    </tr>
-                  ))}
-                  <tr style={{ borderTop: `2px solid ${COLORS.screenBorder}`, fontWeight: 600 }}>
-                    <td style={{ padding: "5px 0" }}>Total</td>
-                    <td style={{ textAlign: "right" }}>{totals.calls}</td>
-                    <td style={{ textAlign: "right" }}>
-                      {totals.inputTokens.toLocaleString("pt-BR")}/{totals.outputTokens.toLocaleString("pt-BR")}
-                    </td>
-                    <td style={{ textAlign: "right" }}>{usd(costOfByModel(usage.byModel))}</td>
-                  </tr>
-                </tbody>
-              </table>
-              <p style={{ ...hintStyle, marginBottom: "10px" }}>
-                Preço de lista, pode variar. O contador vale desde{" "}
-                {usage.since ? new Date(usage.since).toLocaleDateString("pt-BR") : "a primeira chamada"}.
-              </p>
-            </>
-          )}
-          <button
-            onClick={handleResetUsage}
-            style={{
-              ...primaryButtonStyle,
-              background: "transparent",
-              color: COLORS.ink,
-              border: `2px solid ${COLORS.screenBorder}`,
-              padding: "8px 14px",
-              minHeight: "36px",
-              fontSize: "11.5px",
-            }}
-          >
-            Zerar contador
-          </button>
-        </div>
+        <UsageSummaryPanel
+          modules={[
+            { key: "cognidex", label: "Cognidex", usage },
+            { key: "sinergia", label: "Sinergidex", usage: sinergiaUsage },
+          ]}
+          onReset={handleResetUsage}
+        />
       )}
     </div>
   );
