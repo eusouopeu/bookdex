@@ -28,11 +28,8 @@ body {
   overscroll-behavior: none;
 }
 
-button,
-input,
-textarea {
-  font: inherit;
-}
+/* `button, input, textarea { font: inherit }` mora em tailwind.css, dentro de
+   @layer base — aqui (fora de camada) ele venceria as classes font-* do Tailwind. */
 
 .flex {
   display: flex;

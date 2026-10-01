@@ -14,7 +14,7 @@
 import { get, set, KEYS } from "./storage";
 import { MODELS, modelFor, getSearchTiers } from "./models";
 import { assertWithinBudget, trackUsage } from "./usage";
-import { looksLikeApiKey, extractJson } from "./anthropicShared";
+import { looksLikeApiKey, extractJson, fetchWithRetry, cachedSystem } from "./anthropicShared";
 
 // Thinking adaptativo ligado em todas as chamadas. O MODELO de cada tarefa vem
 // de lib/models.js (fixo para tarefas que não são busca, escolhido pelo usuário
@@ -117,21 +117,18 @@ export async function sendMessage({
     headers["x-api-key"] = apiKey;
   }
 
+  const body = JSON.stringify({
+    model,
+    max_tokens: maxTokens,
+    system: cachedSystem(system),
+    thinking: { type: "adaptive" },
+    output_config: { effort },
+    messages: [{ role: "user", content }],
+  });
+
   let response;
   try {
-    response = await fetch(url, {
-      method: "POST",
-      headers,
-      signal,
-      body: JSON.stringify({
-        model,
-        max_tokens: maxTokens,
-        system,
-        thinking: { type: "adaptive" },
-        output_config: { effort },
-        messages: [{ role: "user", content }],
-      }),
-    });
+    response = await fetchWithRetry(() => fetch(url, { method: "POST", headers, signal, body }), { signal });
   } catch (e) {
     if (e.name === "AbortError") throw e;
     throw new Error(
@@ -151,7 +148,10 @@ export async function sendMessage({
       throw new Error("API key inválida ou expirada. Confira em Configurações.");
     }
     if (response.status === 429) {
-      throw new Error("Limite de uso da API atingido. Tente de novo em instantes.");
+      throw new Error("Limite de uso da API atingido (já tentamos de novo algumas vezes). Aguarde um minuto.");
+    }
+    if (response.status === 529) {
+      throw new Error("API da Anthropic sobrecarregada no momento. Tente de novo em alguns minutos.");
     }
     throw new Error(`Erro ${response.status} da API${detail ? `: ${detail}` : "."}`);
   }

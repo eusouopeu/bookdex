@@ -15,6 +15,7 @@ import { useData } from "../state/DataContext";
 import { usePrefs } from "../state/PrefsContext";
 import { groupItems, itemKind, itemLabel, categoryOfKind, withItems, type SavedGroup, type SavedItem } from "../lib/savedModel";
 import { plantFreeText } from "../lib/plants";
+import { limitEntries, useIncrementalLimit } from "../lib/incrementalList";
 
 const BACKUP_REMINDER_DAYS = 14;
 const CONFIRM_THRESHOLD = 3; // grupos com mais itens do que isso pedem confirmação antes de apagar
@@ -351,6 +352,71 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
     !bannerDismissed &&
     (lastBackup === null || (daysSinceBackup !== null && daysSinceBackup >= BACKUP_REMINDER_DAYS));
 
+  /** Card de um item salvo, conforme o tipo. Separado do map pra a lista poder envolver cada card. */
+  function renderSavedCard(key: string, group: SavedGroup, item: SavedItem) {
+    const kind = itemKind(item, group);
+    const common = {
+      saved: true,
+      onTagsChange: onUpdateTags ? (tags) => onUpdateTags(key, item.id, kind, tags) : undefined,
+      onNoteChange: onUpdateNote ? (note) => onUpdateNote(key, item.id, kind, note) : undefined,
+      onConvert: selectMode || compareMode ? undefined : (target) => onConvertItem(key, item.id, target),
+      onEnrich: () => onEnrichItem(key, item.id),
+      onAspectGenerated: (aspectId, text) => onUpdateItemAspect(key, item.id, aspectId, text),
+      ...selectionProps(key, item.id, group.displayName, item, kind),
+    };
+    if (kind === "definition") {
+      return (
+        <DefinitionCard
+          key={item.id}
+          {...common}
+          definition={item}
+          onToggle={() => onToggleSave("definition", group.displayName, { definition: item })}
+          onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
+        />
+      );
+    }
+    if (kind === "plant") {
+      return (
+        <PlantCard
+          key={item.id}
+          {...common}
+          plant={item}
+          onToggle={() => onToggleSave("plant", group.displayName, { plant: item })}
+          onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, item.id, kind, images) : undefined}
+          onCareTaskChange={(taskId, patch) => onUpdateItemCareTask(key, item.id, taskId, patch)}
+        />
+      );
+    }
+    if (kind === "list") {
+      return (
+        <ListItemCard
+          key={item.id}
+          {...common}
+          subjectDisplay={group.displayName}
+          item={item}
+          onToggle={() => onToggleSave("list", group.displayName, { item })}
+        />
+      );
+    }
+    return (
+      <TechCard
+        key={item.id}
+        {...common}
+        subjectDisplay={group.displayName}
+        technique={item}
+        statLabels={(item.statLabels as string[]) || []}
+        onToggle={() => onToggleSave("technique", group.displayName, { technique: item, statLabels: item.statLabels })}
+        onOpenDetail={compareMode || selectMode ? undefined : () => onOpenDetail(group.displayName, item)}
+        hasDetail={hasDetail ? hasDetail(group.displayName, item) : false}
+      />
+    );
+  }
+
+  // Antes de qualquer return antecipado — é hook.
+  const { limit, sentinelRef, showMore } = useIncrementalLimit(
+    `${category}|${showArchived}|${debouncedFilterText}|${activeTags.join(",")}|${sortBy}`
+  );
+
   if (storageLoaded && entries.length === 0 && category !== "words") {
     return (
       <div
@@ -403,7 +469,8 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
     );
   }
 
-  const visibleEntries = sortEntries(filterEntries(activeEntries));
+  const allVisibleEntries = sortEntries(filterEntries(activeEntries));
+  const { entries: visibleEntries, hasMore } = limitEntries<SavedGroup>(allVisibleEntries as [string, SavedGroup][], limit, (key) => !!collapsed[key], withItems);
 
   return (
     <>
@@ -541,7 +608,7 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
         </div>
       )}
 
-      {activeEntries.length > 0 && visibleEntries.length === 0 && (
+      {activeEntries.length > 0 && allVisibleEntries.length === 0 && (
         <div
           className="flex flex-col items-center justify-center text-center"
           style={{ minHeight: "180px", color: COLORS.screenBorder }}
@@ -642,67 +709,25 @@ export default function DexView({ onOpenDetail, onOpenImport, onSearchRelated, o
               )}
             </div>
             {open &&
-              group.items.map((item) => {
-                const kind = itemKind(item, group);
-                const common = {
-                  saved: true,
-                  onTagsChange: onUpdateTags ? (tags) => onUpdateTags(key, item.id, kind, tags) : undefined,
-                  onNoteChange: onUpdateNote ? (note) => onUpdateNote(key, item.id, kind, note) : undefined,
-                  onConvert: selectMode || compareMode ? undefined : (target) => onConvertItem(key, item.id, target),
-                  onEnrich: () => onEnrichItem(key, item.id),
-                  onAspectGenerated: (aspectId, text) => onUpdateItemAspect(key, item.id, aspectId, text),
-                  ...selectionProps(key, item.id, group.displayName, item, kind),
-                };
-                if (kind === "definition") {
-                  return (
-                    <DefinitionCard
-                      key={item.id}
-                      {...common}
-                      definition={item}
-                      onToggle={() => onToggleSave("definition", group.displayName, { definition: item })}
-                      onSearchRelated={onSearchRelated ? (term) => onSearchRelated("definition", term) : undefined}
-                    />
-                  );
-                }
-                if (kind === "plant") {
-                  return (
-                    <PlantCard
-                      key={item.id}
-                      {...common}
-                      plant={item}
-                      onToggle={() => onToggleSave("plant", group.displayName, { plant: item })}
-                      onImagesChange={onUpdateImages ? (images) => onUpdateImages(key, item.id, kind, images) : undefined}
-                      onCareTaskChange={(taskId, patch) => onUpdateItemCareTask(key, item.id, taskId, patch)}
-                    />
-                  );
-                }
-                if (kind === "list") {
-                  return (
-                    <ListItemCard
-                      key={item.id}
-                      {...common}
-                      subjectDisplay={group.displayName}
-                      item={item}
-                      onToggle={() => onToggleSave("list", group.displayName, { item })}
-                    />
-                  );
-                }
-                return (
-                  <TechCard
-                    key={item.id}
-                    {...common}
-                    subjectDisplay={group.displayName}
-                    technique={item}
-                    statLabels={item.statLabels || []}
-                    onToggle={() => onToggleSave("technique", group.displayName, { technique: item, statLabels: item.statLabels })}
-                    onOpenDetail={compareMode || selectMode ? undefined : () => onOpenDetail(group.displayName, item)}
-                    hasDetail={hasDetail ? hasDetail(group.displayName, item) : false}
-                  />
-                );
-              })}
+              group.items.map((item) => (
+                // content-visibility: o navegador pula layout/pintura de card fora da tela.
+                <div key={item.id} className="[content-visibility:auto] [contain-intrinsic-size:auto_180px]">
+                  {renderSavedCard(key, group, item)}
+                </div>
+              ))}
           </div>
         );
       })}
+      {hasMore && (
+        <div ref={sentinelRef} className="flex justify-center py-3">
+          <button
+            onClick={showMore}
+            className="font-['JetBrains_Mono',monospace] text-[11px] text-[var(--ink)] bg-transparent border border-dashed border-[var(--screen-border)] rounded-lg px-3 py-2 cursor-pointer"
+          >
+            Carregar mais
+          </button>
+        </div>
+      )}
 
       {compareMode && (
         <CompareBar count={compareSelection.length} onLaunch={launchCompare} onCancel={exitCompareMode} />

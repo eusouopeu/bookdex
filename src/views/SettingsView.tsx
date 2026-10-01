@@ -12,7 +12,7 @@ import {
 import { MODELS, TIER_LABELS, SEARCH_MODE_TIERS, PRICING } from "../lib/models";
 import { getUsageStats, resetUsageStats, getMonthlyBudget, setMonthlyBudget, monthSpend, type UsageState } from "../lib/usage";
 import { countValid } from "../lib/searchCache";
-import { useData } from "../state/DataContext";
+import { useDetails } from "../state/DataContext";
 import { usePrefs } from "../state/PrefsContext";
 import UsageSummaryPanel from "../components/UsageSummaryPanel";
 import { getUsageStats as getSinergiaUsageStats, resetUsageStats as resetSinergiaUsageStats } from "../modules/sinergia/lib/usage";
@@ -76,7 +76,7 @@ function usd(value) {
 }
 
 export default function SettingsView({ onBack, onCredentialsChanged, searchCache, onClearSearchCache }) {
-  const { prefetchDetailsEnabled, changePrefetchDetails } = useData();
+  const { prefetchDetailsEnabled, changePrefetchDetails } = useDetails();
   const { theme, changeTheme, searchEffort, changeSearchEffort, searchTiers, changeSearchTier } = usePrefs();
 
   const [key, setKey] = useState("");

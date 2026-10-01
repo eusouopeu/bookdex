@@ -12,7 +12,7 @@
 import { get, set, KEYS } from "./storage";
 import { MODELS } from "./models";
 import { assertWithinBudget, trackUsage } from "./usage";
-import { looksLikeApiKey, extractJson } from "../../../lib/anthropicShared";
+import { looksLikeApiKey, extractJson, fetchWithRetry, cachedSystem } from "../../../lib/anthropicShared";
 
 const API_URL = "https://api.anthropic.com/v1/messages";
 
@@ -94,7 +94,7 @@ export async function sendMessage({
   const body: any = {
     model,
     max_tokens: maxTokens,
-    system,
+    system: cachedSystem(system),
     output_config: { effort },
     messages: [{ role: "user", content: user }],
   };
@@ -102,11 +102,8 @@ export async function sendMessage({
 
   let response: Response;
   try {
-    response = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(body),
-    });
+    const payload = JSON.stringify(body);
+    response = await fetchWithRetry(() => fetch(url, { method: "POST", headers, body: payload }));
   } catch (e) {
     throw new Error("Falha de rede ao falar com a API. Verifique a conexão (ou configure um proxy em Configurações).");
   }
@@ -120,7 +117,8 @@ export async function sendMessage({
       /* corpo não-JSON */
     }
     if (response.status === 401) throw new Error("API key inválida ou expirada. Confira em Configurações.");
-    if (response.status === 429) throw new Error("Limite de uso da API atingido. Tente de novo em instantes.");
+    if (response.status === 429) throw new Error("Limite de uso da API atingido (já tentamos de novo algumas vezes). Aguarde um minuto.");
+    if (response.status === 529) throw new Error("API da Anthropic sobrecarregada no momento. Tente de novo em alguns minutos.");
     throw new Error(`Erro ${response.status} da API${detail ? `: ${detail}` : "."}`);
   }
 

@@ -51,14 +51,27 @@ SEMPRE usar a skill `/caveman` (modo de comunicação ultra-comprimido) em toda 
   `strict`+`noImplicitAny` só em `src/lib/**`, sem afetar o build — hoje ainda acusa ~228 erros
   (concentrados em `anthropic.ts`), fica disponível pra quem for atacar essa dívida aos poucos.
 
-## Débito de estilo (App.tsx e módulo Sinergia)
+## Tailwind e débito de estilo
 
-`App.tsx` foi quebrado em componentes menores (`components/AppHeader.tsx`,
-`components/BottomBar.tsx`, `components/DexCategoryNav.tsx`, `components/Toast.tsx`), mas o
-CSS de todos eles (e da maior parte do resto do app, inclusive `src/modules/sinergia/`) ainda é
-`style={{...}}` inline, não Tailwind. Migrar pra Tailwind é trabalho de v2 — ao tocar num desses
-arquivos por outro motivo, não é obrigatório migrar de brinde, mas prefira Tailwind em qualquer
-JSX novo.
+Tailwind v4 instalado de verdade (`tailwindcss` + `@tailwindcss/vite`, entrada em
+`src/tailwind.css`) — antes só existia o subconjunto caseiro `utilities.css`. Importado SEM
+preflight (só `theme.css` + `utilities.css` do Tailwind), pra não mexer em margens/botões das
+telas ainda inline. Pegadinhas:
+- Regra CSS fora de `@layer` vence QUALQUER classe do Tailwind (que mora em `@layer utilities`).
+  Por isso o `button, input, textarea { font: inherit }` saiu de `utilities.css` e foi pra
+  `@layer base` em `tailwind.css` — senão `font-display`/`text-[..]` em botão não pegam.
+- Tokens do app em `@theme inline` (`bg-shell-red-dark`, `text-cream`, `bg-gold`, `text-ink`,
+  `border-screen-border`, `bg-surface`, `text-muted`, `font-display`/`font-body`/`font-mono`).
+  Com `inline` as variáveis `--color-*` NÃO existem em runtime — dentro de `@utility` use valor
+  literal ou as vars do app (`--ink`, `--surface`…).
+- Componentes recorrentes como `@utility`: `dex-tab` (aba da barra vermelha, = `tabStyle()`),
+  `mode-pill` (pílula de modo de busca), `shell-icon-btn` (= `iconButtonStyle`). Estado ativo via
+  `aria-pressed="true"`, não classe condicional.
+
+Já migrados: `AppHeader.tsx`, `BottomBar.tsx`, `DexCategoryNav.tsx`. O resto (inclusive
+`src/modules/sinergia/`) ainda é `style={{...}}` inline — ao tocar num arquivo por outro motivo,
+não é obrigatório migrar de brinde, mas JSX novo deve ser Tailwind. Gradientes/cores que dependem
+de dado em runtime (ex.: cor do módulo na lente) continuam em `style`.
 
 ## Testes
 
@@ -138,10 +151,46 @@ modelo X" ainda.
   API nem migração de schema (campo `care` é opcional, planta sem cronograma configurado
   simplesmente não computa nada diferente). `updateItemCareTask` no `DataContext`, UI em
   `components/CareSchedulePanel.tsx` (só aparece em planta já salva, com botão "Feito hoje").
+- `lib/careReminders.ts` (`@capacitor/local-notifications`): `planCareReminders` (puro, testado)
+  gera 1 lembrete por tarefa ligada às 9h do dia do vencimento; atrasada vira o próximo 9h. Tarefa
+  nunca feita (`lastDoneAt: null`) não avisa. `scheduleCareReminders` (só nativo, debounced 3s)
+  roda a cada mudança de `saved` e SUBSTITUI o conjunto todo (cancela pendentes com
+  `extra.source === "care"` e reagenda) — sem estado de diff. Permissão só é pedida quando existe
+  algo a agendar.
 - Não implementado (ficou fora do escopo pedido): medidor de luz em tempo real (precisa de preview
-  contínuo de câmera, não só 1 foto), lembretes/notificações push (exigiria
-  `@capacitor/local-notifications`, dependência nova) e chat "pergunte ao botânico" (conversa
-  multi-turno — o cliente Anthropic do app hoje é só single-shot).
+  contínuo de câmera, não só 1 foto) e chat "pergunte ao botânico" (conversa multi-turno — o
+  cliente Anthropic do app hoje é só single-shot).
+
+## Estado: DataContext quebrado por domínio
+
+`state/DataContext.tsx` virou só compositor: cada domínio mora num store em `state/data/`
+(`savedStore`, `detailsStore`, `wordsStore`, `collectionsStore`, mais `persist.ts`) e o toast em
+`state/ToastContext.tsx`. Cada um é publicado num contexto próprio com valor `useMemo` sobre o
+próprio estado — hooks estreitos: `useSaved()`, `useDetails()`, `useWords()`, `useCollections()`,
+`useToast()`, `useDataMeta()` (counts/applyImport) e `useStorageLoaded()`. `useData()` continua
+como fachada que junta tudo (re-renderiza com qualquer mudança) — App/DexView/ImportView usam;
+telas novas devem preferir o hook estreito (WordsView e SettingsView já usam). Prefetch de guia
+lê `detailCacheRef`/`prefetchRef` e usa `cacheDetail` estável, pra Pokédex não depender do cache de
+guias. Carga inicial + migração de schema e `applyImport` ficam no compositor (mexem em vários
+domínios de uma vez).
+
+## Pokédex: renderização incremental
+
+`lib/incrementalList.ts`: `DexView` monta 40 itens por vez (`limitEntries` corta entre grupos;
+grupos recolhidos não contam) e uma sentinela com IntersectionObserver (`rootMargin` 600px) +
+botão "Carregar mais" de fallback libera mais 40. Reinicia ao mudar aba/filtro/tags/ordenação.
+Cada card vai num wrapper com `content-visibility: auto`. Escolhido no lugar de react-window porque
+os cards têm altura variável e expandem no lugar. Obs.: no Browser pane oculto
+(`visibilityState: hidden`) o IntersectionObserver não dispara — testar pelo botão.
+
+## Cliente Anthropic: retry e prompt caching
+
+`lib/anthropicShared.ts` ganhou `fetchWithRetry` (até 3 repetições em 408/429/5xx/529 e falha de
+rede, backoff 1s/2s/4s com jitter, respeita `retry-after`, nunca repete `AbortError` nem 4xx de
+cliente) e `cachedSystem` (system prompt vira bloco com `cache_control: ephemeral`; abaixo do
+mínimo cacheável do modelo a API só ignora). Usados nos DOIS clientes (Cognidex e Sinergia). O
+contador de uso (`usageCore.ts`) guarda `cacheWriteTokens`/`cacheReadTokens` só quando > 0 e
+`costOf` cobra escrita a 1,25× e leitura a 0,1× do preço de entrada.
 
 ## Proibição de leitura de dependências
 

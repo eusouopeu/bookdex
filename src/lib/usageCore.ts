@@ -19,6 +19,18 @@ export interface UsageBucket {
   calls: number;
   inputTokens: number;
   outputTokens: number;
+  /** Tokens gravados no cache de prompt (cobrados a 1,25× a entrada). */
+  cacheWriteTokens?: number;
+  /** Tokens lidos do cache de prompt (cobrados a 0,1× a entrada). */
+  cacheReadTokens?: number;
+}
+
+/** Campo `usage` da resposta da API, inclusive os contadores de prompt caching. */
+export interface ApiUsage {
+  input_tokens?: number;
+  output_tokens?: number;
+  cache_creation_input_tokens?: number;
+  cache_read_input_tokens?: number;
 }
 
 export interface UsageByModel {
@@ -69,19 +81,25 @@ export function normalizeUsage(raw: unknown): UsageState {
   return { since: r.since ?? null, byModel: { [MODELS.sonnet]: legacy }, months: {} };
 }
 
-function addTo(bucket: Partial<UsageBucket> | undefined, usage: { input_tokens?: number; output_tokens?: number }): UsageBucket {
-  return {
+function addTo(bucket: Partial<UsageBucket> | undefined, usage: ApiUsage): UsageBucket {
+  const next: UsageBucket = {
     calls: (bucket?.calls || 0) + 1,
     inputTokens: (bucket?.inputTokens || 0) + (usage.input_tokens || 0),
     outputTokens: (bucket?.outputTokens || 0) + (usage.output_tokens || 0),
   };
+  // Campos de cache só aparecem quando houve cache — estado antigo/sem cache fica igual.
+  const cacheWrite = (bucket?.cacheWriteTokens || 0) + (usage.cache_creation_input_tokens || 0);
+  const cacheRead = (bucket?.cacheReadTokens || 0) + (usage.cache_read_input_tokens || 0);
+  if (cacheWrite) next.cacheWriteTokens = cacheWrite;
+  if (cacheRead) next.cacheReadTokens = cacheRead;
+  return next;
 }
 
 /** Soma uma chamada ao acumulado e ao mês corrente. Função pura. */
 export function recordCall(
   state: unknown,
   model: string,
-  usage: { input_tokens?: number; output_tokens?: number },
+  usage: ApiUsage,
   now = Date.now()
 ): UsageState {
   const base = normalizeUsage(state);
@@ -100,7 +118,7 @@ export function recordCall(
 /** Custo total (USD) de um mapa `byModel`. */
 export function costOfByModel(byModel: UsageByModel | undefined) {
   return Object.entries(byModel || {}).reduce(
-    (sum, [model, b]) => sum + costOf(model, b.inputTokens || 0, b.outputTokens || 0),
+    (sum, [model, b]) => sum + costOf(model, b.inputTokens || 0, b.outputTokens || 0, b.cacheWriteTokens || 0, b.cacheReadTokens || 0),
     0
   );
 }

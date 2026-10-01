@@ -1,4 +1,3 @@
-import { tabStyle } from "../theme";
 import { usePrefs } from "../state/PrefsContext";
 
 interface DexCategoryNavProps {
@@ -12,17 +11,18 @@ interface DexCategoryNavProps {
  */
 export default function DexCategoryNav({ counts }: DexCategoryNavProps) {
   const { dexCategory, setDexCategory } = usePrefs();
+  const tabs = [
+    { id: "technique", label: `TÉCNICAS (${counts.techniques})` },
+    { id: "knowledge", label: `CONCEITOS (${counts.knowledge})` },
+    { id: "words", label: `PALAVRAS (${counts.words})` },
+  ];
   return (
-    <div className="flex gap-2" style={{ flexWrap: "wrap" }}>
-      <button onClick={() => setDexCategory("technique")} style={tabStyle(dexCategory === "technique")}>
-        TÉCNICAS ({counts.techniques})
-      </button>
-      <button onClick={() => setDexCategory("knowledge")} style={tabStyle(dexCategory === "knowledge")}>
-        CONCEITOS ({counts.knowledge})
-      </button>
-      <button onClick={() => setDexCategory("words")} style={tabStyle(dexCategory === "words")}>
-        PALAVRAS ({counts.words})
-      </button>
+    <div className="flex flex-wrap gap-2">
+      {tabs.map((t) => (
+        <button key={t.id} onClick={() => setDexCategory(t.id)} aria-pressed={dexCategory === t.id} className="dex-tab">
+          {t.label}
+        </button>
+      ))}
     </div>
   );
 }

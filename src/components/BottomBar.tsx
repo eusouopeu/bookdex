@@ -1,6 +1,5 @@
 import { RefObject } from "react";
 import { Camera, History } from "lucide-react";
-import { COLORS } from "../theme";
 import { PLACEHOLDER_BY_MODE } from "../lib/searchQuery";
 import DexCategoryNav from "./DexCategoryNav";
 import type { AppModule, AppScreen } from "./AppHeader";
@@ -94,17 +93,11 @@ export default function BottomBar({
   onShowHistorySuggestions,
   onPhotoSearch,
 }: BottomBarProps) {
+  const canSearch = loading || !!query.trim();
   return (
-    <div
-      style={{
-        background: COLORS.shellRedDark,
-        padding:
-          "9px calc(16px + env(safe-area-inset-right)) calc(9px + env(safe-area-inset-bottom)) calc(16px + env(safe-area-inset-left))",
-        flexShrink: 0,
-      }}
-    >
+    <div className="shrink-0 bg-shell-red-dark pt-[9px] pr-[calc(16px+env(safe-area-inset-right))] pb-[calc(9px+env(safe-area-inset-bottom))] pl-[calc(16px+env(safe-area-inset-left))]">
       {showSearchBar ? (
-        <div style={{ width: "100%", minWidth: 0 }}>
+        <div className="w-full min-w-0">
           {CRITERIA_MODES.includes(searchMode) && (
             <input
               value={criteria}
@@ -113,68 +106,22 @@ export default function BottomBar({
                 if (e.key === "Enter") onSearch();
               }}
               placeholder="Critérios de comparação (opcional) — ex.: custo, dificuldade, tempo"
-              style={{
-                width: "100%",
-                marginBottom: "6px",
-                borderRadius: "8px",
-                border: "none",
-                padding: "8px 12px",
-                minHeight: "32px",
-                fontFamily: "Inter, sans-serif",
-                fontSize: "12.5px",
-                outline: "none",
-                background: "rgba(255,255,255,0.85)",
-              }}
+              aria-label="Critérios de comparação"
+              className="mb-1.5 min-h-8 w-full rounded-lg border-0 bg-white/85 px-3 py-2 font-body text-[12.5px] outline-none"
             />
           )}
           {appModule === "bookdex" && (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(4, 1fr)",
-                gap: "6px",
-                marginBottom: "6px",
-              }}
-            >
+            <div className="mb-1.5 grid grid-cols-4 gap-1.5" role="group" aria-label="Modo de busca">
               {SEARCH_MODES.map(({ mode, label }) => (
-                <button
-                  key={mode}
-                  onClick={() => onSetMode(mode)}
-                  style={{
-                    padding: "6px 8px",
-                    minHeight: "28px",
-                    borderRadius: "999px",
-                    border: "none",
-                    cursor: "pointer",
-                    fontFamily: '"Baloo 2", sans-serif',
-                    fontWeight: 700,
-                    fontSize: "11px",
-                    background: searchMode === mode ? COLORS.gold : "rgba(255,255,255,0.18)",
-                    color: searchMode === mode ? "#4A3300" : COLORS.white,
-                    transition: "background 0.15s ease",
-                  }}
-                >
+                <button key={mode} onClick={() => onSetMode(mode)} aria-pressed={searchMode === mode} className="mode-pill">
                   {label}
                 </button>
               ))}
             </div>
           )}
-          <div className="flex gap-2" style={{ position: "relative" }}>
+          <div className="relative flex gap-2">
             {showHistorySuggestions && matchingHistory.length > 0 && (
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: "calc(100% + 6px)",
-                  left: 0,
-                  right: 0,
-                  background: COLORS.surface,
-                  border: `2px solid ${COLORS.screenBorder}`,
-                  borderRadius: "8px",
-                  overflow: "hidden",
-                  zIndex: 10,
-                  boxShadow: "0 -4px 10px rgba(0,0,0,0.3)",
-                }}
-              >
+              <div className="absolute right-0 bottom-[calc(100%+6px)] left-0 z-10 overflow-hidden rounded-lg border-2 border-solid border-screen-border bg-surface shadow-[0_-4px_10px_rgba(0,0,0,0.3)]">
                 {matchingHistory.map((h, i) => (
                   <button
                     key={h.mode + h.term + i}
@@ -183,25 +130,13 @@ export default function BottomBar({
                       onShowHistorySuggestions(false);
                       onRunHistoryTerm(h.mode, h.term);
                     }}
-                    className="flex items-center gap-2"
-                    style={{
-                      width: "100%",
-                      padding: "9px 12px",
-                      background: "none",
-                      border: "none",
-                      borderBottom: i < matchingHistory.length - 1 ? `1px solid ${COLORS.screenBorder}` : "none",
-                      cursor: "pointer",
-                      fontFamily: "Inter, sans-serif",
-                      fontSize: "12.5px",
-                      color: COLORS.ink,
-                      textAlign: "left",
-                    }}
+                    className={`flex w-full cursor-pointer items-center gap-2 border-0 bg-transparent px-3 py-[9px] text-left font-body text-[12.5px] text-ink ${
+                      i < matchingHistory.length - 1 ? "border-b border-solid border-screen-border" : ""
+                    }`}
                   >
-                    <History size={12} style={{ flexShrink: 0, color: "var(--text-muted)" }} />
-                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.term}</span>
-                    <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "9.5px", color: "var(--text-muted)" }}>
-                      {MODE_LABELS_SHORT[h.mode] || h.mode}
-                    </span>
+                    <History size={12} className="shrink-0 text-muted" />
+                    <span className="flex-1 truncate">{h.term}</span>
+                    <span className="font-mono text-[9.5px] text-muted">{MODE_LABELS_SHORT[h.mode] || h.mode}</span>
                   </button>
                 ))}
               </div>
@@ -218,19 +153,9 @@ export default function BottomBar({
                 }
               }}
               placeholder={PLACEHOLDER_BY_MODE[searchMode]}
+              aria-label="Termo de busca"
               enterKeyHint="search"
-              style={{
-                flex: "1 1 0%",
-                minWidth: 0,
-                width: "100%",
-                borderRadius: "8px",
-                border: "none",
-                padding: "10px 12px",
-                minHeight: "40px",
-                fontFamily: "Inter, sans-serif",
-                fontSize: "16px",
-                outline: "none",
-              }}
+              className="min-h-10 w-full min-w-0 flex-1 rounded-lg border-0 px-3 py-2.5 font-body text-base outline-none"
             />
             {searchMode === "plant" && (
               <>
@@ -239,44 +164,24 @@ export default function BottomBar({
                   disabled={loading}
                   aria-label="Identificar planta por foto"
                   title="Identificar planta por foto"
-                  style={{
-                    background: "rgba(255,255,255,0.18)",
-                    color: COLORS.white,
-                    border: "none",
-                    borderRadius: "8px",
-                    minWidth: "40px",
-                    minHeight: "40px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    cursor: loading ? "default" : "pointer",
-                    flexShrink: 0,
-                  }}
+                  className={`flex min-h-10 min-w-10 shrink-0 items-center justify-center rounded-lg border-0 bg-white/18 text-cream ${
+                    loading ? "cursor-default" : "cursor-pointer"
+                  }`}
                 >
                   <Camera size={17} />
                 </button>
-                <input ref={photoInput} type="file" accept="image/*" capture="environment" onChange={onPhotoSearch} style={{ display: "none" }} />
+                <input ref={photoInput} type="file" accept="image/*" capture="environment" onChange={onPhotoSearch} className="hidden" />
               </>
             )}
             <button
               onClick={loading ? onCancelSearch : onSearch}
-              disabled={!loading && !query.trim()}
+              disabled={!canSearch}
               aria-label={loading ? "Cancelar busca" : "Escanear"}
-              style={{
-                background: loading ? "transparent" : COLORS.gold,
-                color: loading ? COLORS.white : "#4A3300",
-                fontWeight: 800,
-                border: loading ? "2px solid rgba(255,255,255,0.6)" : "none",
-                borderRadius: "8px",
-                padding: "9px 14px",
-                minHeight: "40px",
-                fontFamily: '"Baloo 2", sans-serif',
-                fontSize: "13px",
-                whiteSpace: "nowrap",
-                cursor: !loading && !query.trim() ? "default" : "pointer",
-                opacity: !loading && !query.trim() ? 0.6 : 1,
-                flexShrink: 0,
-              }}
+              className={`min-h-10 shrink-0 rounded-lg px-3.5 py-[9px] font-display text-[13px] font-extrabold whitespace-nowrap ${
+                loading
+                  ? "border-2 border-solid border-white/60 bg-transparent text-cream"
+                  : "border-0 bg-gold text-gold-ink"
+              } ${canSearch ? "cursor-pointer opacity-100" : "cursor-default opacity-60"}`}
             >
               {loading ? "CANCELAR" : "ESCANEAR"}
             </button>
@@ -285,7 +190,7 @@ export default function BottomBar({
       ) : showDexNav && appModule === "bookdex" ? (
         <DexCategoryNav counts={{ techniques: countsTechniques, knowledge: countsKnowledge, words: countsWords }} />
       ) : (
-        <div style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: "11px", color: "rgba(255,255,255,0.75)", textAlign: "center" }}>
+        <div className="text-center font-mono text-[11px] text-white/75">
           {view === "collections"
             ? `${countsCollections} coleções`
             : isTab || hasDetailTarget

@@ -1,5 +1,4 @@
 import { Settings as SettingsIcon, Upload, ListTree, GitCompare } from "lucide-react";
-import { COLORS, tabStyle, iconButtonStyle } from "../theme";
 import type { SinergiaView } from "../modules/sinergia/SinergiaModule";
 
 export interface ModuleColor {
@@ -50,95 +49,56 @@ export default function AppHeader({
   onSetSinergiaView,
 }: AppHeaderProps) {
   const current = moduleColors[appModule];
+  // Gradiente da "lente" depende da cor do módulo (dado em runtime), então fica em style.
+  const lens = (c: ModuleColor) => ({ background: `radial-gradient(circle at 35% 30%, ${c.light}, ${c.main} 60%, #1B4F7A 100%)` });
 
   return (
-    <div
-      style={{
-        background: `linear-gradient(180deg, ${COLORS.shellRed}, ${COLORS.shellRedDark})`,
-        padding:
-          "calc(12px + env(safe-area-inset-top)) calc(16px + env(safe-area-inset-right)) 14px calc(16px + env(safe-area-inset-left))",
-        flexShrink: 0,
-      }}
-    >
-      <div className="flex items-center gap-3 mb-1" style={{ position: "relative" }}>
+    <div className="shrink-0 bg-linear-to-b from-shell-red to-shell-red-dark pt-[calc(12px+env(safe-area-inset-top))] pr-[calc(16px+env(safe-area-inset-right))] pb-3.5 pl-[calc(16px+env(safe-area-inset-left))]">
+      <div className="relative mb-1 flex items-center gap-3">
         <button
           onClick={onToggleModulePicker}
           aria-label={`Módulo atual: ${current.label}. Trocar módulo.`}
+          aria-expanded={showModulePicker}
           title={`Módulo: ${current.label}`}
-          style={{
-            width: "40px",
-            height: "40px",
-            borderRadius: "50%",
-            flexShrink: 0,
-            padding: 0,
-            background: `radial-gradient(circle at 35% 30%, ${current.light}, ${current.main} 60%, #1B4F7A 100%)`,
-            border: "3px solid #1B2A33",
-            boxShadow: loading ? undefined : "0 0 0 3px rgba(0,0,0,0.15)",
-            animation: loading ? "lensPulse 1s ease-in-out infinite" : "none",
-            cursor: "pointer",
-          }}
+          className={`size-10 shrink-0 cursor-pointer rounded-full border-[3px] border-solid border-[#1B2A33] p-0 ${
+            loading ? "animate-[lensPulse_1s_ease-in-out_infinite]" : "shadow-[0_0_0_3px_rgba(0,0,0,0.15)]"
+          }`}
+          style={lens(current)}
         />
         {showModulePicker && (
-          <div
-            className="flex items-center gap-2"
-            style={{
-              position: "absolute",
-              top: "48px",
-              left: 0,
-              zIndex: 20,
-              background: COLORS.surface,
-              border: `2px solid ${COLORS.screenBorder}`,
-              borderRadius: "999px",
-              padding: "6px",
-              boxShadow: "0 4px 12px rgba(0,0,0,0.35)",
-            }}
-          >
+          <div className="absolute top-12 left-0 z-20 flex items-center gap-2 rounded-full border-2 border-solid border-screen-border bg-surface p-1.5 shadow-[0_4px_12px_rgba(0,0,0,0.35)]">
             {Object.entries(moduleColors).map(([mod, c]) => (
               <button
                 key={mod}
                 onClick={() => onSwitchModule(mod as AppModule)}
                 aria-label={c.label}
+                aria-pressed={mod === appModule}
                 title={c.label}
-                style={{
-                  width: "32px",
-                  height: "32px",
-                  borderRadius: "50%",
-                  border: mod === appModule ? "3px solid #1B2A33" : "2px solid rgba(0,0,0,0.25)",
-                  background: `radial-gradient(circle at 35% 30%, ${c.light}, ${c.main} 60%, #1B4F7A 100%)`,
-                  cursor: "pointer",
-                }}
+                className={`size-8 cursor-pointer rounded-full border-solid ${
+                  mod === appModule ? "border-[3px] border-[#1B2A33]" : "border-2 border-black/25"
+                }`}
+                style={lens(c)}
               />
             ))}
           </div>
         )}
-        <div className="flex gap-1.5">
-          <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: COLORS.gold, border: "1.5px solid #7A5A00" }} />
-          <div style={{ width: "8px", height: "8px", borderRadius: "50%", background: "#6A9955", border: "1.5px solid #2E4A1F" }} />
+        <div className="flex gap-1.5" aria-hidden="true">
+          <div className="size-2 rounded-full border-[1.5px] border-solid border-[#7A5A00] bg-gold" />
+          <div className="size-2 rounded-full border-[1.5px] border-solid border-[#2E4A1F] bg-[#6A9955]" />
         </div>
-        <h1
-          style={{
-            flex: 1,
-            fontFamily: '"Baloo 2", sans-serif',
-            color: COLORS.white,
-            fontWeight: 800,
-            fontSize: "19px",
-            letterSpacing: "0.01em",
-            textShadow: "0 2px 0 rgba(0,0,0,0.2)",
-            margin: 0,
-          }}
-        >
+        <h1 className="m-0 flex-1 font-display text-[19px] font-extrabold tracking-[0.01em] text-cream [text-shadow:0_2px_0_rgba(0,0,0,0.2)]">
           {current.label}
         </h1>
         {appModule === "sinergia" ? (
-          <button onClick={() => onSetSinergiaView("settings")} aria-label="Configurações" title="Configurações" style={iconButtonStyle}>
+          <button onClick={() => onSetSinergiaView("settings")} aria-label="Configurações" title="Configurações" className="shell-icon-btn">
             <SettingsIcon size={17} />
           </button>
         ) : (
           <>
-            <button onClick={() => onOpenScreen("import")} aria-label="Importar dados" title="Importar dados" style={iconButtonStyle}>
+            <button onClick={() => onOpenScreen("import")} aria-label="Importar dados" title="Importar dados" className="shell-icon-btn">
               <Upload size={17} />
             </button>
-            <button onClick={() => onOpenScreen("settings")} aria-label="Configurações" title="Configurações" style={iconButtonStyle}>
+            <button onClick={() => onOpenScreen("settings")} aria-label="Configurações" title="Configurações" className="shell-icon-btn">
               <SettingsIcon size={17} />
             </button>
           </>
@@ -146,32 +106,32 @@ export default function AppHeader({
       </div>
 
       {appModule === "sinergia" ? (
-        <div className="flex gap-2" style={{ marginTop: "6px" }}>
+        <div className="mt-1.5 flex gap-2">
           <button
             onClick={() => onSetSinergiaView("effects")}
-            className="flex items-center justify-center gap-1.5"
-            style={tabStyle(sinergiaView === "effects")}
+            aria-pressed={sinergiaView === "effects"}
+            className="dex-tab flex items-center justify-center gap-1.5"
           >
             <ListTree size={13} /> EFEITOS
           </button>
           <button
             onClick={() => onSetSinergiaView("compare")}
-            className="flex items-center justify-center gap-1.5"
-            style={tabStyle(sinergiaView === "compare")}
+            aria-pressed={sinergiaView === "compare"}
+            className="dex-tab flex items-center justify-center gap-1.5"
           >
             <GitCompare size={13} /> COMPARAR
           </button>
         </div>
       ) : (
-        <div className="flex gap-2" style={{ marginTop: "6px" }}>
-          <button onClick={() => onGoTab("search")} style={tabStyle(view === "search")}>
+        <div className="mt-1.5 flex gap-2">
+          <button onClick={() => onGoTab("search")} aria-pressed={view === "search"} className="dex-tab">
             BUSCAR
           </button>
-          <button onClick={() => onGoTab("dex")} style={tabStyle(view === "dex")}>
+          <button onClick={() => onGoTab("dex")} aria-pressed={view === "dex"} className="dex-tab">
             POKÉDEX ({countsTotal})
           </button>
           {showCollectionsTab && (
-            <button onClick={() => onGoTab("collections")} style={tabStyle(view === "collections")}>
+            <button onClick={() => onGoTab("collections")} aria-pressed={view === "collections"} className="dex-tab">
               COLEÇÕES ({countsCollections})
             </button>
           )}

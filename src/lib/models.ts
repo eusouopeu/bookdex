@@ -98,9 +98,14 @@ export function modelFor(task: string, searchTiers?: Record<string, string> | nu
 }
 
 /** Custo em USD de um par (entrada, saída) de tokens num modelo. */
-export function costOf(model: string, inputTokens: number, outputTokens: number) {
+/**
+ * Custo em USD. Tokens de prompt caching seguem a tabela da Anthropic sobre o
+ * preço de entrada: escrita no cache (TTL de 5 min) a 1,25×, leitura a 0,1×.
+ */
+export function costOf(model: string, inputTokens: number, outputTokens: number, cacheWriteTokens = 0, cacheReadTokens = 0) {
   const price = PRICING[model] || PRICING[MODELS.sonnet];
-  return (inputTokens / 1e6) * price.input + (outputTokens / 1e6) * price.output;
+  const effectiveInput = inputTokens + cacheWriteTokens * 1.25 + cacheReadTokens * 0.1;
+  return (effectiveInput / 1e6) * price.input + (outputTokens / 1e6) * price.output;
 }
 
 /**

@@ -1,0 +1,106 @@
+/*
+ * Tailwind v4 SEM o preflight (reset global): o app ainda é majoritariamente
+ * style inline calibrado sobre os defaults do navegador + utilities.css, e o
+ * reset mudaria margens/botões em telas que ninguém tocou. Só tema + utilitárias.
+ * Ordem das camadas: utilities.css (sem camada) continua vencendo em empate,
+ * mas as classes dele têm a mesma semântica das do Tailwind.
+ */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@layer base {
+  button,
+  input,
+  textarea {
+    font: inherit;
+  }
+}
+
+/* Tokens do app (espelham COLORS em src/theme.ts). `inline` pra as classes
+   apontarem direto pras variáveis de tema claro/escuro já existentes. */
+@theme inline {
+  --color-shell-red: #d6293b;
+  --color-shell-red-dark: #a81f2e;
+  --color-shell-red-darker: #7a1620;
+  --color-lens-blue: #2e86de;
+  --color-gold: #ffc947;
+  --color-gold-ink: #4a3300;
+  --color-cream: #f5f5f0;
+  --color-screen-bg: var(--screen-bg);
+  --color-screen-border: var(--screen-border);
+  --color-ink: var(--ink);
+  --color-surface: var(--surface);
+  --color-body: var(--text);
+  --color-muted: var(--text-muted);
+  --color-faint: var(--text-faint);
+  --color-danger: var(--danger);
+  --color-success: var(--success);
+
+  --font-display: "Baloo 2", sans-serif;
+  --font-body: Inter, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+}
+
+/* (Valores literais abaixo: com `@theme inline` as variáveis --color-* não
+   existem em runtime, só dentro das classes geradas.) */
+
+/* Aba da barra vermelha (equivale a tabStyle() em theme.ts). Estado ativo via
+   aria-pressed — acessível e sem depender da ordem entre utilitárias. */
+@utility dex-tab {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 4px;
+  min-height: 44px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 700;
+  font-size: 10px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: rgb(255 255 255 / 0.18);
+  color: #f5f5f0;
+  transition: background 0.15s ease;
+  &[aria-pressed="true"] {
+    background: #ffc947;
+    color: #4a3300;
+  }
+}
+
+/* Pílula de modo de busca na barra de baixo. */
+@utility mode-pill {
+  padding: 6px 8px;
+  min-height: 28px;
+  border-radius: 999px;
+  border: none;
+  cursor: pointer;
+  font-family: "Baloo 2", sans-serif;
+  font-weight: 700;
+  font-size: 11px;
+  background: rgb(255 255 255 / 0.18);
+  color: #f5f5f0;
+  transition: background 0.15s ease;
+  &[aria-pressed="true"] {
+    background: #ffc947;
+    color: #4a3300;
+  }
+}
+
+/* Botão-ícone translúcido sobre a casca vermelha (equivale a iconButtonStyle). */
+@utility shell-icon-btn {
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  border: none;
+  background: rgb(255 255 255 / 0.18);
+  color: #f5f5f0;
+  cursor: pointer;
+  flex-shrink: 0;
+}

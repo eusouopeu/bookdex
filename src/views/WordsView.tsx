@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Languages, ChevronDown, ChevronRight, Trash2, X, Type } from "lucide-react";
 import { COLORS } from "../theme";
 import WordCard from "../components/WordCard";
-import { useData } from "../state/DataContext";
+import { useStorageLoaded, useWords } from "../state/DataContext";
 
 const CONFIRM_THRESHOLD = 3;
 
@@ -17,18 +17,18 @@ const CONFIRM_THRESHOLD = 3;
 interface WordsViewProps {
   searchEffort?: string;
   /** Sobrepõe o acervo vindo do contexto — usado pelo DexView pra passar já filtrado pela busca. */
-  words?: ReturnType<typeof useData>["words"];
+  words?: ReturnType<typeof useWords>["words"];
 }
 
 export default function WordsView({ words: wordsOverride }: WordsViewProps = {}) {
   const {
     words: wordsFromContext,
-    storageLoaded,
     toggleWordSave: onToggleWord,
     removeWordGroup: onRemoveGroup,
     updateWordTags: onUpdateTags,
     updateWordNote: onUpdateNote,
-  } = useData();
+  } = useWords();
+  const storageLoaded = useStorageLoaded();
   const words = wordsOverride ?? wordsFromContext;
   const [collapsed, setCollapsed] = useState({});
   const [confirmingRemove, setConfirmingRemove] = useState(null);
